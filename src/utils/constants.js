@@ -1,8 +1,15 @@
 export const ROLES = {
-  SUPER_ADMIN: 'Super Admin',
-  VENDOR_ADMIN: 'Vendor Admin',
-  FACILITY_MANAGER: 'Facility Manager',
-  VIEWER: 'Viewer',
+  SUPER_ADMIN: 'super_admin',
+  VENDOR_ADMIN: 'vendor_admin',
+  FACILITY_MANAGER: 'facility_manager',
+  VIEWER: 'viewer',
+}
+
+export const ROLE_LABELS = {
+  [ROLES.SUPER_ADMIN]: 'Super Admin',
+  [ROLES.VENDOR_ADMIN]: 'Vendor Admin',
+  [ROLES.FACILITY_MANAGER]: 'Facility Manager',
+  [ROLES.VIEWER]: 'Viewer',
 }
 
 export const FEEDBACK_TYPES = {
@@ -26,6 +33,7 @@ export const ALERT_STATUS = {
 export const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/live-feedback', label: 'Live Feedback', icon: '💬' },
+  { path: '/sidemap', label: 'Sidemap', icon: '🗺️' },
   { path: '/reports', label: 'Reports', icon: '📈' },
   { path: '/devices', label: 'Device Management', icon: '📱' },
   { path: '/restrooms', label: 'Restroom Management', icon: '🚻' },
@@ -35,7 +43,23 @@ export const NAV_ITEMS = [
   { path: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
+export const ROLE_ROUTE_ACCESS = {
+  [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
+  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/settings', '/profile'],
+  [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
+  [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/reports', '/profile'],
+}
+
+export function canAccessRoute(role, path) {
+  const allowedRoutes = ROLE_ROUTE_ACCESS[role] ?? []
+  return allowedRoutes.includes(path)
+}
+
+export function getRoleLabel(role) {
+  return ROLE_LABELS[role] ?? 'User'
+}
+
 export const DEMO_USERS = [
-  { email: 'admin@restroom.io', password: 'admin123', role: ROLES.SUPER_ADMIN, name: 'Super Admin' },
-  { email: 'vendor@restroom.io', password: 'vendor123', role: ROLES.VENDOR_ADMIN, name: 'Vendor Admin' },
+  { email: 'vendor@smartrestroom.com', password: 'Vendor@123', role: ROLES.VENDOR_ADMIN, name: 'Vendor Admin' },
+  { email: 'admin@smartrestroom.com', password: 'Admin@123', role: ROLES.SUPER_ADMIN, name: 'Super Admin' },
 ]

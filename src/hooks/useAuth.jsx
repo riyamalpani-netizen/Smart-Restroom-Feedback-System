@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback } from 'react'
-import { DEMO_USERS } from '../utils/constants'
 
 const AuthContext = createContext(null)
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -9,20 +9,47 @@ export function AuthProvider({ children }) {
     return stored ? JSON.parse(stored) : null
   })
 
-  const login = useCallback((email, password) => {
-    const found = DEMO_USERS.find(
-      (u) => u.email === email && u.password === password,
-    )
-    if (!found) return { success: false, error: 'Invalid email or password' }
+  const login = useCallback(async (email, password) => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    const session = { email: found.email, name: found.name, role: found.role }
-    localStorage.setItem('srfs_user', JSON.stringify(session))
-    setUser(session)
-    return { success: true }
+      const data = await response.json()
+      console.log('Login response:', data)
+
+      if (!response.ok) {
+        console.error('Login failed:', data)
+        return { success: false, error: data.message || 'Invalid email or password' }
+      }
+
+      const session = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name,
+        role: data.user.role,
+      }
+
+      localStorage.setItem('srfs_user', JSON.stringify(session))
+      localStorage.setItem('srfs_token', data.token)
+      setUser(session)
+      console.log('User signed in successfully:', session)
+
+      return { success: true }
+    } catch (error) {
+      console.error('Login request failed:', error)
+      return {
+        success: false,
+        error: 'Unable to connect to the server. Please start the backend.',
+      }
+    }
   }, [])
 
   const logout = useCallback(() => {
     localStorage.removeItem('srfs_user')
+    localStorage.removeItem('srfs_token')
     setUser(null)
   }, [])
 

@@ -1,19 +1,38 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import { devices, getRestroomName } from '../services/mockData'
+import api from '../services/api'
 
 export default function DeviceManagement() {
+  const [devices, setDevices] = useState([])
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      setLoading(true)
+      try {
+        const data = await api.get('/api/devices')
+        if (mounted) setDevices(data.devices || [])
+      } catch (e) {
+        console.error('DeviceManagement load error:', e)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
 
   const filtered = devices.filter(
     (d) =>
       !search ||
-      d.badgeId.toLowerCase().includes(search.toLowerCase()) ||
-      getRestroomName(d.restroomId).toLowerCase().includes(search.toLowerCase()),
+      d.badgeId?.toLowerCase().includes(search.toLowerCase()) ||
+      d.restroomName?.toLowerCase().includes(search.toLowerCase()),
   )
 
   return (
@@ -32,40 +51,51 @@ export default function DeviceManagement() {
 
       <div className="device-layout">
         <div className="card">
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Badge ID</th>
-                  <th>Restroom</th>
-                  <th>Battery</th>
-                  <th>Status</th>
-                  <th>Health</th>
-                  <th>Last Communication</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((device) => (
-                  <tr
-                    key={device.id}
-                    className={selected?.id === device.id ? 'data-table__row--selected' : ''}
-                    onClick={() => setSelected(device)}
-                  >
-                    <td><code>{device.badgeId}</code></td>
-                    <td>{getRestroomName(device.restroomId)}</td>
-                    <td>
-                      <span className={`battery battery--${device.battery >= 30 ? 'ok' : 'low'}`}>
-                        {device.battery}%
-                      </span>
-                    </td>
-                    <td><StatusBadge status={device.status} variant="device" /></td>
-                    <td><StatusBadge status={device.health} variant="health" /></td>
-                    <td>{formatDateTime(device.lastCommunication)}</td>
+          {loading ? (
+            <div className="loader-wrap"><div className="loader" /></div>
+          ) : (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Badge ID</th>
+                    <th>Restroom</th>
+                    <th>Battery</th>
+                    <th>Status</th>
+                    <th>Health</th>
+                    <th>Last Communication</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map((device) => (
+                    <tr
+                      key={device.id}
+                      className={selected?.id === device.id ? 'data-table__row--selected' : ''}
+                      onClick={() => setSelected(device)}
+                    >
+                      <td><code>{device.badgeId}</code></td>
+                      <td>{device.restroomName}</td>
+                      <td>
+                        <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
+                          {device.battery ?? '—'}%
+                        </span>
+                      </td>
+                      <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
+                      <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
+                      <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', color: '#64748b' }}>
+                        No devices found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {selected && (
@@ -75,15 +105,15 @@ export default function DeviceManagement() {
               <dt>Badge ID</dt>
               <dd><code>{selected.badgeId}</code></dd>
               <dt>Restroom</dt>
-              <dd>{getRestroomName(selected.restroomId)}</dd>
+              <dd>{selected.restroomName}</dd>
               <dt>Battery</dt>
-              <dd>{selected.battery}%</dd>
+              <dd>{selected.battery ?? '—'}%</dd>
               <dt>Status</dt>
-              <dd><StatusBadge status={selected.status} variant="device" /></dd>
+              <dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
               <dt>Health</dt>
-              <dd><StatusBadge status={selected.health} variant="health" /></dd>
+              <dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
               <dt>Last Communication</dt>
-              <dd>{formatDateTime(selected.lastCommunication)}</dd>
+              <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
             </dl>
             <div className="btn-group">
               <button type="button" className="btn btn--secondary">Replace Badge</button>

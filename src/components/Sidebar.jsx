@@ -1,7 +1,15 @@
 import { NavLink } from 'react-router-dom'
-import { NAV_ITEMS } from '../utils/constants'
+import { useAuth } from '../hooks/useAuth'
+import { NAV_ITEMS, canAccessRoute } from '../utils/constants'
 
 export default function Sidebar({ collapsed, onToggle }) {
+  const { user } = useAuth()
+
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!user) return false
+    return canAccessRoute(user.role, item.path)
+  })
+
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__brand">
@@ -10,7 +18,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar__nav">
-        {NAV_ITEMS.map((item) => (
+        {visibleItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}

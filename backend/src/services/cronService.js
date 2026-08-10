@@ -1,0 +1,159 @@
+const cron = require("node-cron");
+const prisma = require("../config/database");
+const { sendTeamsWebhook } = require("./teamsWebhookService");
+const logger = require("../middleware/logger");
+
+let cronJob = null;
+
+function startCronJobs() {
+  if (cronJob) {
+    logger.info("Cron jobs already running");
+    return;
+  }
+
+  cronJob = cron.schedule("0 8 * * *", async () => {
+    await generateDailyReport();
+  }, {
+    timezone: "UTC",
+  });
+
+  cronJob = cron.schedule("0 8 * * 1", async () => {
+    await generateWeeklyReport();
+  }, {
+    timezone: "UTC",
+  });
+
+  cronJob = cron.schedule("0 8 1 * *", async () => {
+    await generateMonthlyReport();
+  }, {
+    timezone: "UTC",
+  });
+
+  logger.info("Cron jobs started");
+}
+
+function stopCronJobs() {
+  if (cronJob) {
+    cronJob.stop();
+    cronJob = null;
+    logger.info("Cron jobs stopped");
+  }
+}
+
+async function generateDailyReport() {
+  try {
+    logger.info("Generating daily report...");
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+    const today = new Date(yesterday);
+    today.setDate(today.getDate() + 1);
+
+    const feedback = await prisma.feedback.findMany({
+      where: { timestamp: { gte: yesterday, lt: today } },
+      include: { restroom: true },
+    });
+
+    const alerts = await prisma.alert.findMany({
+      where: { createdAt: { gte: yesterday, lt: today } },
+    });
+
+    const report = {
+      period: "daily",
+      date: yesterday.toISOString().split("T")[0],
+      totalFeedback: feedback.length,
+      feedbackByType: {
+        happy: feedback.filter((f) => f.feedbackType === "happy").length,
+        average: feedback.filter((f) => f.feedbackType === "average").length,
+        needs_cleaning: feedback.filter((f) => f.feedbackType === "needs_cleaning").length,
+        emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
+      },
+      alertsCreated: alerts.length,
+      alertsResolved: alerts.filter((a) => a.resolvedAt && a.resolvedAt >= yesterday && a.resolvedAt < today).length,
+    };
+
+    const settings = await prisma.settings.findFirst();
+    if (settings?.teamsWebhook) {
+      await sendTeamsWebhook(settings.teamsWebhook, {
+        report,
+      });
+    }
+
+    logger.info("Daily report generated", { report });
+    return report;
+  } catch (error) {
+    logger.error("Error generating daily report:", error);
+  }
+}
+
+async function generateWeeklyReport() {
+  try {
+    logger.info("Generating weekly report...");
+    const now = new Date();
+    const endOfWeek = new Date(now);
+    endOfWeek.setHours(23, 59, 59, 999);
+    const startOfWeek = new Date(endOfWeek);
+    startOfWeek.setDate(startOfWeek.getDate() - 6);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const feedback = await prisma.feedback.findMany({
+      where: { timestamp: { gte: startOfWeek, lte: endOfWeek } },
+    });
+
+    const report = {
+      period: "weekly",
+      startDate: startOfWeek.toISOString().split("T")[0],
+      endDate: endOfWeek.toISOString().split("T")[0],
+      totalFeedback: feedback.length,
+      feedbackByType: {
+        happy: feedback.filter((f) => f.feedbackType === "happy").length,
+        average: feedback.filter((f) => f.feedbackType === "average").length,
+        needs_cleaning: feedback.filter((f) => f.feedbackType === "needs_cleaning").length,
+        emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
+      },
+    };
+
+    logger.info("Weekly report generated", { report });
+    return report;
+  } catch (error) {
+    logger.error("Error generating weekly report:", error);
+  }
+}
+
+async function generateMonthlyReport() {
+  try {
+    logger.info("Generating monthly report...");
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const feedback = await prisma.feedback.findMany({
+      where: { timestamp: { gte: startOfMonth, lte: endOfMonth } },
+    });
+
+    const report = {
+      period: "monthly",
+      month: now.toISOString().slice(0, 7),
+      totalFeedback: feedback.length,
+      feedbackByType: {
+        happy: feedback.filter((f) => f.feedbackType === "happy").length,
+        average: feedback.filter((f) => f.feedbackType === "average").length,
+        needs_cleaning: feedback.filter((f) => f.feedbackType === "needs_cleaning").length,
+        emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
+      },
+    };
+
+    logger.info("Monthly report generated", { report });
+    return report;
+  } catch (error) {
+    logger.error("Error generating monthly report:", error);
+  }
+}
+
+module.exports = {
+  startCronJobs,
+  stopCronJobs,
+  generateDailyReport,
+  generateWeeklyReport,
+  generateMonthlyReport,
+};

@@ -1,25 +1,62 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
-import { users as initialUsers } from '../services/mockData'
+import StatusBadge from '../components/common/StatusBadge'
+import api from '../services/api'
+import { ROLE_LABELS } from '../utils/constants'
 
 export default function UserManagement() {
-  const [users, setUsers] = useState(initialUsers)
+  const [users, setUsers] = useState([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', role: 'Viewer' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'viewer', organizationId: '' })
+  const [loading, setLoading] = useState(true)
 
-  function handleAdd(e) {
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      setLoading(true)
+      try {
+        const data = await api.get('/api/users')
+        if (mounted) setUsers(data.users || [])
+      } catch (e) {
+        console.error('UserManagement load error:', e)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
+
+  async function handleAdd(e) {
     e.preventDefault()
-    setUsers([...users, { id: `u${Date.now()}`, ...form, active: true }])
-    setForm({ name: '', email: '', role: 'Viewer' })
-    setShowForm(false)
+    try {
+      const data = await api.post('/api/users', form)
+      setUsers([...users, data.user])
+      setForm({ name: '', email: '', password: '', role: 'viewer', organizationId: '' })
+      setShowForm(false)
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
-  function toggleActive(id) {
-    setUsers(users.map((u) => (u.id === id ? { ...u, active: !u.active } : u)))
+  async function toggleActive(id) {
+    try {
+      const user = users.find((u) => u.id === id)
+      if (!user) return
+      const data = await api.put(`/api/users/${id}`, { active: !user.active })
+      setUsers(users.map((u) => u.id === id ? data.user : u))
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
-  function handleDelete(id) {
-    setUsers(users.filter((u) => u.id !== id))
+  async function handleDelete(id) {
+    try {
+      await api.delete(`/api/users/${id}`)
+      setUsers(users.filter((u) => u.id !== id))
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
   return (
@@ -54,70 +91,99 @@ export default function UserManagement() {
             />
           </label>
           <label>
+            Password
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+          </label>
+          <label>
             Role
             <select
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
               className="select"
             >
-              <option>Super Admin</option>
-              <option>Vendor Admin</option>
-              <option>Facility Manager</option>
-              <option>Viewer</option>
+              <option value="super_admin">Super Admin</option>
+              <option value="vendor_admin">Vendor Admin</option>
+              <option value="facility_manager">Facility Manager</option>
+              <option value="viewer">Viewer</option>
             </select>
+          </label>
+          <label>
+            Organization ID
+            <input
+              value={form.organizationId}
+              onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
+              placeholder="org-demo"
+              required
+            />
           </label>
           <button type="submit" className="btn btn--primary">Save User</button>
         </form>
       )}
 
       <div className="card">
-        <div className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>{user.role}</td>
-                  <td>
-                    <span className={`status-badge ${user.active ? '' : 'status-badge--inactive'}`}
-                      style={{ '--badge-color': user.active ? '#22c55e' : '#94a3b8' }}
-                    >
-                      {user.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <button type="button" className="btn btn--ghost btn--sm">Edit</button>
-                    <button type="button" className="btn btn--ghost btn--sm">Reset Password</button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      onClick={() => toggleActive(user.id)}
-                    >
-                      {user.active ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm btn--danger"
-                      onClick={() => handleDelete(user.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
+        {loading ? (
+          <div className="loader-wrap"><div className="loader" /></div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <td>{user.name}</td>
+                    <td>{user.email}</td>
+                    <td>{ROLE_LABELS[user.role] || user.role}</td>
+                    <td>
+                      <span className={`status-badge ${user.active ? '' : 'status-badge--inactive'}`}
+                        style={{ '--badge-color': user.active ? '#22c55e' : '#94a3b8' }}
+                      >
+                        {user.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <button type="button" className="btn btn--ghost btn--sm">Edit</button>
+                      <button type="button" className="btn btn--ghost btn--sm">Reset Password</button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => toggleActive(user.id)}
+                      >
+                        {user.active ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm btn--danger"
+                        onClick={() => handleDelete(user.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', color: '#64748b' }}>
+                      No users found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

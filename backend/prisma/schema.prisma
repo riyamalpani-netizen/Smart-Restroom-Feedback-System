@@ -6,80 +6,11 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id                 String   @id @default(cuid())
-  name               String
-  email              String   @unique
-  role               UserRole @default(viewer)
-  active             Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  acknowledgedAlerts Alert[]  @relation("AlertAcknowledgedBy")
-  assignedAlerts     Alert[]  @relation("AlertAssignedTo")
-}
-
-model Restroom {
-  id            String          @id @default(cuid())
-  name          String
-  floor         Int
-  location      String
-  badgeId       String          @unique
-  status        String          @default("good")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  alerts        Alert[]
-  devices       Device[]
-  feedbackItems FeedbackEntry[]
-}
-
-model Device {
-  id                String          @id @default(cuid())
-  badgeId           String          @unique
-  restroomId        String
-  battery           Int
-  status            DeviceStatus    @default(online)
-  lastCommunication DateTime?
-  health            DeviceHealth    @default(healthy)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  restroom          Restroom        @relation(fields: [restroomId], references: [id])
-  feedbackItems     FeedbackEntry[]
-}
-
-model FeedbackEntry {
-  id           String        @id @default(cuid())
-  time         DateTime      @default(now())
-  restroomId   String
-  deviceId     String?
-  type         FeedbackType
-  badgeId      String?
-  battery      Int?
-  deviceStatus DeviceStatus?
-  createdAt    DateTime      @default(now())
-  device       Device?       @relation(fields: [deviceId], references: [id])
-  restroom     Restroom      @relation(fields: [restroomId], references: [id])
-}
-
-model Alert {
-  id               String      @id @default(cuid())
-  time             DateTime    @default(now())
-  restroomId       String
-  type             String
-  status           AlertStatus @default(open)
-  assignedToId     String?
-  acknowledgedById String?
-  resolvedTime     DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  acknowledgedBy   User?       @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
-  assignedTo       User?       @relation("AlertAssignedTo", fields: [assignedToId], references: [id])
-  restroom         Restroom    @relation(fields: [restroomId], references: [id])
-}
-
 enum FeedbackType {
   happy
-  neutral
-  unhappy
+  average
+  needs_cleaning
+  emergency
 }
 
 enum DeviceStatus {
@@ -95,8 +26,16 @@ enum DeviceHealth {
 
 enum AlertStatus {
   open
-  acknowledged
-  resolved
+  assigned
+  in_progress
+  closed
+}
+
+enum AlertPriority {
+  low
+  medium
+  high
+  critical
 }
 
 enum UserRole {
@@ -104,4 +43,224 @@ enum UserRole {
   vendor_admin
   facility_manager
   viewer
+}
+
+enum NotificationType {
+  teams
+  email
+  dashboard
+  push
+}
+
+enum GatewayStatusEnum {
+  online
+  offline
+  degraded
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  address   String?
+  timezone  String?   @default("UTC")
+  logo      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  locations    Location[]
+  users        User[]
+  settings     Settings?
+  auditLogs    AuditLog[]
+  restrooms    Restroom[]  @relation("OrganizationRestrooms")
+
+  @@map("organizations")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  name               String
+  email              String    @unique
+  password           String
+  role               UserRole  @default(viewer)
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignedAlerts     Alert[]   @relation("AlertAssignedTo")
+  acknowledgedAlerts Alert[]   @relation("AlertAcknowledgedBy")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+
+  @@map("users")
+}
+
+model Location {
+  id             String     @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  city           String
+  officeName     String
+  address        String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  floors Floor[]
+
+  @@map("locations")
+}
+
+model Floor {
+  id         String    @id @default(cuid())
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id])
+  floorName  String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  restrooms Restroom[]
+
+  @@map("floors")
+}
+
+model Restroom {
+  id         String    @id @default(cuid())
+  floorId    String
+  floor      Floor     @relation(fields: [floorId], references: [id])
+  organizationId String
+  organization Organization @relation("OrganizationRestrooms", fields: [organizationId], references: [id])
+  name       String
+  gender     String?
+  status     String    @default("good")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  devices    Device[]
+  feedback   Feedback[]
+  alerts     Alert[]
+
+  @@map("restrooms")
+}
+
+model Device {
+  id              String       @id @default(cuid())
+  deviceEui       String       @unique
+  badgeId         String       @unique
+  restroomId      String
+  restroom        Restroom     @relation(fields: [restroomId], references: [id])
+  batteryLevel    Int
+  lastSeen        DateTime?
+  healthStatus    DeviceHealth @default(healthy)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  feedback        Feedback[]
+  deviceHealth    DeviceHealthRecord[]
+
+  @@map("devices")
+}
+
+model Feedback {
+  id             String       @id @default(cuid())
+  deviceId       String
+  device         Device       @relation(fields: [deviceId], references: [id])
+  restroomId     String
+  restroom       Restroom     @relation(fields: [restroomId], references: [id])
+  feedbackType   FeedbackType
+  timestamp      DateTime     @default(now())
+  battery        Int?
+  signalStrength Int?
+  rawPayload     String?
+
+  alert          Alert?
+
+  @@map("feedback")
+}
+
+model Alert {
+  id              String        @id @default(cuid())
+  feedbackId      String        @unique
+  feedback        Feedback      @relation(fields: [feedbackId], references: [id])
+  restroomId      String
+  restroom        Restroom      @relation(fields: [restroomId], references: [id])
+  status          AlertStatus   @default(open)
+  priority        AlertPriority @default(medium)
+  assignedToId    String?
+  assignedTo      User?         @relation("AlertAssignedTo", fields: [assignedToId], references: [id])
+  acknowledgedById String?
+  acknowledgedBy  User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  resolvedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  notifications   Notification[]
+
+  @@map("alerts")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  alertId   String
+  alert     Alert            @relation(fields: [alertId], references: [id])
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id])
+  type      NotificationType
+  recipient String
+  status    String           @default("pending")
+  sentAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model DeviceHealthRecord {
+  id          String      @id @default(cuid())
+  deviceId    String
+  device      Device      @relation(fields: [deviceId], references: [id])
+  battery     Int
+  signal      Int
+  online      Boolean
+  recordedAt  DateTime    @default(now())
+
+  @@map("device_health")
+}
+
+model GatewayStatus {
+  id         String         @id @default(cuid())
+  gatewayName String        @unique
+  status     GatewayStatusEnum
+  lastSeen   DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("gateway_status")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id])
+  module      String
+  action      String
+  description String
+  createdAt   DateTime  @default(now())
+
+  @@map("audit_logs")
+}
+
+model Settings {
+  id              String    @id @default(cuid())
+  organizationId  String    @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  teamsWebhook    String?
+  reportFrequency String?   @default("daily")
+  sessionTimeout  Int?      @default(28800)
+  passwordPolicy  String?   @default("min 8 chars, 1 uppercase, 1 number")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("settings")
 }

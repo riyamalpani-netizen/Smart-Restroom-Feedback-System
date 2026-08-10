@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import LiveFeedback from './pages/LiveFeedback'
+import SideMap from './pages/SideMap'
 import Reports from './pages/Reports'
 import DeviceManagement from './pages/DeviceManagement'
 import RestroomManagement from './pages/RestroomManagement'
@@ -13,6 +14,7 @@ import UserManagement from './pages/UserManagement'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import NotFound from './pages/NotFound'
+import { ROLES } from './utils/constants'
 
 export default function App() {
   return (
@@ -26,16 +28,17 @@ export default function App() {
         }
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="live-feedback" element={<LiveFeedback />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="devices" element={<DeviceManagement />} />
-        <Route path="restrooms" element={<RestroomManagement />} />
-        <Route path="alerts" element={<AlertManagement />} />
-        <Route path="disaster" element={<DisasterManagement />} />
-        <Route path="users" element={<UserManagement />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="profile" element={<Profile />} />
+        <Route path="dashboard" element={<ProtectedRoute path="/dashboard"><Dashboard /></ProtectedRoute>} />
+        <Route path="live-feedback" element={<ProtectedRoute path="/live-feedback"><LiveFeedback /></ProtectedRoute>} />
+        <Route path="sidemap" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/sidemap"><SideMap /></ProtectedRoute>} />
+        <Route path="reports" element={<ProtectedRoute path="/reports"><Reports /></ProtectedRoute>} />
+        <Route path="devices" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/devices"><DeviceManagement /></ProtectedRoute>} />
+        <Route path="restrooms" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/restrooms"><RestroomManagement /></ProtectedRoute>} />
+        <Route path="alerts" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/alerts"><AlertManagement /></ProtectedRoute>} />
+        <Route path="disaster" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/disaster"><DisasterManagement /></ProtectedRoute>} />
+        <Route path="users" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/users"><UserManagement /></ProtectedRoute>} />
+        <Route path="settings" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/settings"><Settings /></ProtectedRoute>} />
+        <Route path="profile" element={<ProtectedRoute path="/profile"><Profile /></ProtectedRoute>} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

@@ -1,23 +1,64 @@
-import { useState } from 'react'
-import ReportsChart from '../components/ReportsChart'
+import { useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
-import { feedbackTrend, devices, alerts } from '../services/mockData'
+import ReportsChart from '../components/ReportsChart'
+import api from '../services/api'
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState('weekly')
   const [reportType, setReportType] = useState('feedback')
+  const [summary, setSummary] = useState([
+    { label: 'Total Feedback', value: 0 },
+    { label: 'Unhappy Reports', value: 0 },
+    { label: 'Device Health Issues', value: 0 },
+    { label: 'Alerts Generated', value: 0 },
+  ])
+  const [chartData, setChartData] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const chartData = feedbackTrend.map((d) => ({
-    label: d.day,
-    value: d.happy + d.neutral + d.unhappy,
-  }))
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      setLoading(true)
+      try {
+        const [reportsRes, devicesRes, alertsRes] = await Promise.all([
+          api.get('/api/reports/daily'),
+          api.get('/api/devices'),
+          api.get('/api/alerts'),
+        ])
 
-  const summary = [
-    { label: 'Total Feedback', value: chartData.reduce((s, d) => s + d.value, 0) },
-    { label: 'Unhappy Reports', value: feedbackTrend.reduce((s, d) => s + d.unhappy, 0) },
-    { label: 'Device Health Issues', value: devices.filter((d) => d.health !== 'healthy').length },
-    { label: 'Alerts Generated', value: alerts.length },
-  ]
+        if (!mounted) return
+
+        const reports = reportsRes.data || []
+        const devices = devicesRes.devices || []
+        const alerts = alertsRes.alerts || []
+
+        const totalFeedback = reports.length
+        const unhappyReports = reports.filter((r) => r.feedbackType === 'needs_cleaning' || r.feedbackType === 'emergency').length
+        const deviceHealthIssues = devices.filter((d) => d.status !== 'healthy').length
+
+        setSummary([
+          { label: 'Total Feedback', value: totalFeedback },
+          { label: 'Unhappy Reports', value: unhappyReports },
+          { label: 'Device Health Issues', value: deviceHealthIssues },
+          { label: 'Alerts Generated', value: alerts.length },
+        ])
+
+        const trendMap = new Map()
+        reports.forEach((r) => {
+          const day = new Date(r.timestamp).toLocaleDateString('en-US', { weekday: 'short' })
+          if (!trendMap.has(day)) trendMap.set(day, { day, value: 0 })
+          trendMap.get(day).value += 1
+        })
+        setChartData(Array.from(trendMap.values()))
+      } catch (e) {
+        console.error('Reports load error:', e)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [dateRange])
 
   return (
     <div className="page">
@@ -62,16 +103,22 @@ export default function Reports() {
         </label>
       </div>
 
-      <div className="report-summary">
-        {summary.map((item) => (
-          <div key={item.label} className="report-summary__item card">
-            <span className="report-summary__value">{item.value}</span>
-            <span className="report-summary__label">{item.label}</span>
+      {loading ? (
+        <div className="loader-wrap"><div className="loader" /></div>
+      ) : (
+        <>
+          <div className="report-summary">
+            {summary.map((item) => (
+              <div key={item.label} className="report-summary__item card">
+                <span className="report-summary__value">{item.value}</span>
+                <span className="report-summary__label">{item.label}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <ReportsChart data={chartData} type={reportType} />
+          <ReportsChart data={chartData} type={reportType} />
+        </>
+      )}
     </div>
   )
 }
