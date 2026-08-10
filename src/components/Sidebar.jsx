@@ -14,7 +14,7 @@ export default function Sidebar({ collapsed, onToggle }) {
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__brand">
         <span className="sidebar__logo" aria-hidden="true">🚻</span>
-        {!collapsed && <span className="sidebar__title">Smart Restroom</span>}
+         {!collapsed && <span className="sidebar__title">AtlasIED Smart Restroom Feedback System</span>}
       </div>
 
       <nav className="sidebar__nav">

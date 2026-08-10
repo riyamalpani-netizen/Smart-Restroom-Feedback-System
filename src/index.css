@@ -10,7 +10,7 @@
   --sidebar-bg: #0f172a;
   --sidebar-text: #94a3b8;
   --sidebar-active: #ffffff;
-  --sidebar-width: 260px;
+  --sidebar-width: 300px;
   --sidebar-collapsed: 72px;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
@@ -95,7 +95,7 @@ code {
 
 .sidebar__brand {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 20px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -108,8 +108,9 @@ code {
 .sidebar__title {
   color: #fff;
   font-weight: 600;
-  font-size: 15px;
-  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .sidebar__nav {
