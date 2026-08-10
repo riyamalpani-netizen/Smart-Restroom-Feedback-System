@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  role               UserRole @default(viewer)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  acknowledgedAlerts Alert[]  @relation("AlertAcknowledgedBy")
+  assignedAlerts     Alert[]  @relation("AlertAssignedTo")
+}
+
+model Restroom {
+  id            String          @id @default(cuid())
+  name          String
+  floor         Int
+  location      String
+  badgeId       String          @unique
+  status        String          @default("good")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  alerts        Alert[]
+  devices       Device[]
+  feedbackItems FeedbackEntry[]
+}
+
+model Device {
+  id                String          @id @default(cuid())
+  badgeId           String          @unique
+  restroomId        String
+  battery           Int
+  status            DeviceStatus    @default(online)
+  lastCommunication DateTime?
+  health            DeviceHealth    @default(healthy)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  restroom          Restroom        @relation(fields: [restroomId], references: [id])
+  feedbackItems     FeedbackEntry[]
+}
+
+model FeedbackEntry {
+  id           String        @id @default(cuid())
+  time         DateTime      @default(now())
+  restroomId   String
+  deviceId     String?
+  type         FeedbackType
+  badgeId      String?
+  battery      Int?
+  deviceStatus DeviceStatus?
+  createdAt    DateTime      @default(now())
+  device       Device?       @relation(fields: [deviceId], references: [id])
+  restroom     Restroom      @relation(fields: [restroomId], references: [id])
+}
+
+model Alert {
+  id               String      @id @default(cuid())
+  time             DateTime    @default(now())
+  restroomId       String
+  type             String
+  status           AlertStatus @default(open)
+  assignedToId     String?
+  acknowledgedById String?
+  resolvedTime     DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  acknowledgedBy   User?       @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  assignedTo       User?       @relation("AlertAssignedTo", fields: [assignedToId], references: [id])
+  restroom         Restroom    @relation(fields: [restroomId], references: [id])
+}
+
+enum FeedbackType {
+  happy
+  neutral
+  unhappy
+}
+
+enum DeviceStatus {
+  online
+  offline
+}
+
+enum DeviceHealth {
+  healthy
+  warning
+  critical
+}
+
+enum AlertStatus {
+  open
+  acknowledged
+  resolved
+}
+
+enum UserRole {
+  super_admin
+  vendor_admin
+  facility_manager
+  viewer
+}
