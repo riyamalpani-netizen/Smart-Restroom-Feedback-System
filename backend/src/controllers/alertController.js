@@ -1,9 +1,17 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getAlerts(req, res) {
   try {
     const { status, priority, restroomId, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const orgFilter = getOrgFilter(req);
+    const where = { ...orgFilter };
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (restroomId) where.restroomId = restroomId;
@@ -41,9 +49,10 @@ async function getAlerts(req, res) {
 async function getAlertById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const alert = await prisma.alert.findUnique({
-      where: { id },
+    const alert = await prisma.alert.findFirst({
+      where: { id, restroom: { ...orgFilter } },
       include: {
         feedback: true,
         restroom: { include: { floor: { include: { location: true } } } },
@@ -67,9 +76,20 @@ async function getAlertById(req, res) {
 async function createAlert(req, res) {
   try {
     const { feedbackId, restroomId, priority } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!feedbackId || !restroomId) {
       return res.status(400).json({ message: "Feedback ID and restroom ID are required" });
+    }
+
+    const restroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
+    if (!restroom) {
+      return res.status(404).json({ message: "Restroom not found" });
+    }
+
+    if (userRole === "vendor_admin" && restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create alerts for restrooms in your organization" });
     }
 
     const alert = await prisma.alert.create({
@@ -88,8 +108,14 @@ async function updateAlert(req, res) {
   try {
     const { id } = req.params;
     const { status, priority, assignedToId } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.alert.findUnique({ where: { id } });
+    const existing = await prisma.alert.findFirst({
+      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+      include: { restroom: true },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
     }
@@ -116,13 +142,18 @@ async function acknowledgeAlert(req, res) {
   try {
     const { id } = req.params;
     const userId = req.user?.sub;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!userId) {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const alert = await prisma.alert.findUnique({ where: { id } });
-    if (!alert) {
+    const existing = await prisma.alert.findFirst({
+      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+    });
+
+    if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
     }
 
@@ -142,9 +173,14 @@ async function acknowledgeAlert(req, res) {
 async function resolveAlert(req, res) {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const alert = await prisma.alert.findUnique({ where: { id } });
-    if (!alert) {
+    const existing = await prisma.alert.findFirst({
+      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+    });
+
+    if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
     }
 

@@ -1,9 +1,17 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getFeedback(req, res) {
   try {
     const { restroomId, deviceId, feedbackType, startDate, endDate, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const orgFilter = getOrgFilter(req);
+    const where = { ...orgFilter };
     if (restroomId) where.restroomId = restroomId;
     if (deviceId) where.deviceId = deviceId;
     if (feedbackType) where.feedbackType = feedbackType;
@@ -44,9 +52,10 @@ async function getFeedback(req, res) {
 async function getFeedbackById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const feedback = await prisma.feedback.findUnique({
-      where: { id },
+    const feedback = await prisma.feedback.findFirst({
+      where: { id, restroom: { ...orgFilter } },
       include: {
         device: true,
         restroom: { include: { floor: { include: { location: true } } } },
@@ -68,6 +77,8 @@ async function getFeedbackById(req, res) {
 async function createFeedback(req, res) {
   try {
     const { deviceId, restroomId, feedbackType, battery, signalStrength } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!deviceId || !restroomId || !feedbackType) {
       return res.status(400).json({ message: "Device ID, restroom ID, and feedback type are required" });
@@ -76,6 +87,15 @@ async function createFeedback(req, res) {
     const validTypes = ["happy", "average", "needs_cleaning", "emergency"];
     if (!validTypes.includes(feedbackType)) {
       return res.status(400).json({ message: "Invalid feedback type" });
+    }
+
+    const restroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
+    if (!restroom) {
+      return res.status(404).json({ message: "Restroom not found" });
+    }
+
+    if (userRole === "vendor_admin" && restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create feedback for restrooms in your organization" });
     }
 
     const feedback = await prisma.feedback.create({
@@ -93,8 +113,13 @@ async function createFeedback(req, res) {
 async function deleteFeedback(req, res) {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.feedback.findUnique({ where: { id } });
+    const existing = await prisma.feedback.findFirst({
+      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Feedback not found" });
     }

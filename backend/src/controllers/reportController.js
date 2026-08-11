@@ -1,9 +1,17 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getReports(req, res) {
   try {
     const { type, startDate, endDate, organizationId, restroomId, deviceId } = req.query;
     const where = {};
+    const orgFilter = getOrgFilter(req);
 
     if (startDate || endDate) {
       where.timestamp = {};
@@ -15,10 +23,13 @@ async function getReports(req, res) {
       where.restroomId = restroomId;
       const restroom = await prisma.restroom.findUnique({ where: { id: restroomId }, select: { organizationId: true } });
       if (restroom) where.organizationId = restroom.organizationId;
+    } else if (organizationId) {
+      where.organizationId = organizationId;
+    } else {
+      where.organizationId = orgFilter.organizationId;
     }
 
     if (deviceId) where.deviceId = deviceId;
-    if (organizationId) where.organizationId = organizationId;
 
     const feedback = await prisma.feedback.findMany({
       where,
@@ -84,7 +95,8 @@ async function exportExcel(req, res) {
 async function exportCsv(req, res) {
   try {
     const { startDate, endDate } = req.query;
-    const where = {};
+    const orgFilter = getOrgFilter(req);
+    const where = { ...orgFilter };
     if (startDate) where.timestamp = { ...where.timestamp, gte: new Date(startDate) };
     if (endDate) where.timestamp = { ...where.timestamp, lte: new Date(endDate) };
 

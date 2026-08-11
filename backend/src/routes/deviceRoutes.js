@@ -4,11 +4,11 @@ const { authenticate, authorize } = require("../auth/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", authenticate, getDevices);
-router.get("/:id", authenticate, getDeviceById);
+router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDevices);
+router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceById);
 router.post("/", authenticate, authorize("super_admin", "vendor_admin"), createDevice);
 router.put("/:id", authenticate, authorize("super_admin", "vendor_admin"), updateDevice);
-router.get("/health/:deviceId", authenticate, getDeviceHealth);
-router.get("/offline", authenticate, getOfflineDevices);
+router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceHealth);
+router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getOfflineDevices);
 
 module.exports = router;

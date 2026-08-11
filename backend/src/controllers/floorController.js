@@ -1,9 +1,22 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getFloors(req, res) {
   try {
     const { locationId } = req.query;
+    const orgFilter = getOrgFilter(req);
     const where = locationId ? { locationId } : {};
+
+    const location = locationId ? await prisma.location.findUnique({ where: { id: locationId } }) : null;
+    if (location && req.user?.role !== "super_admin" && location.organizationId !== req.user?.organizationId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
 
     const floors = await prisma.floor.findMany({
       where,
@@ -27,9 +40,10 @@ async function getFloors(req, res) {
 async function getFloorById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const floor = await prisma.floor.findUnique({
-      where: { id },
+    const floor = await prisma.floor.findFirst({
+      where: { id, location: { ...orgFilter } },
       include: {
         restrooms: { include: { devices: true } },
         location: true,
@@ -50,9 +64,20 @@ async function getFloorById(req, res) {
 async function createFloor(req, res) {
   try {
     const { locationId, floorName } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!locationId || !floorName) {
       return res.status(400).json({ message: "Location ID and floor name are required" });
+    }
+
+    const location = await prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) {
+      return res.status(404).json({ message: "Location not found" });
+    }
+
+    if (userRole === "vendor_admin" && location.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create floors in your own organization" });
     }
 
     const floor = await prisma.floor.create({
@@ -70,8 +95,14 @@ async function updateFloor(req, res) {
   try {
     const { id } = req.params;
     const { floorName } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.floor.findUnique({ where: { id } });
+    const existing = await prisma.floor.findFirst({
+      where: { id, location: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+      include: { location: true },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Floor not found" });
     }
@@ -91,8 +122,13 @@ async function updateFloor(req, res) {
 async function deleteFloor(req, res) {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.floor.findUnique({ where: { id } });
+    const existing = await prisma.floor.findFirst({
+      where: { id, location: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Floor not found" });
     }

@@ -6,8 +6,8 @@ import { DEMO_USERS } from '../utils/constants'
 export default function Login() {
   const { login, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('vendor@smartrestroom.com')
-  const [password, setPassword] = useState('Vendor@123')
+  const [email, setEmail] = useState('superadmin@smartrestroom.com')
+  const [password, setPassword] = useState('SuperAdmin@123')
   const [error, setError] = useState('')
 
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
@@ -29,8 +29,8 @@ export default function Login() {
       <div className="login-card">
         <div className="login-card__header">
           <span className="login-card__logo" aria-hidden="true">🚻</span>
-          <h1>Smart Restroom Feedback</h1>
-          <p>Sign in to access the admin portal</p>
+          <h1>AtlasIED Smart Restroom Feedback System</h1>
+          <p>Sign in to access the portal</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">

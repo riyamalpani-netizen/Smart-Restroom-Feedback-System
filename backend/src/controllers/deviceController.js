@@ -1,9 +1,17 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getDevices(req, res) {
   try {
     const { restroomId, healthStatus } = req.query;
-    const where = {};
+    const orgFilter = getOrgFilter(req);
+    const where = { ...orgFilter };
     if (restroomId) where.restroomId = restroomId;
     if (healthStatus) where.healthStatus = healthStatus;
 
@@ -29,9 +37,10 @@ async function getDevices(req, res) {
 async function getDeviceById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const device = await prisma.device.findUnique({
-      where: { id },
+    const device = await prisma.device.findFirst({
+      where: { id, ...orgFilter },
       include: {
         restroom: { include: { floor: { include: { location: true } } } },
         feedback: { orderBy: { timestamp: "desc" }, take: 20 },
@@ -53,9 +62,20 @@ async function getDeviceById(req, res) {
 async function createDevice(req, res) {
   try {
     const { deviceEui, badgeId, restroomId, batteryLevel } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!deviceEui || !badgeId || !restroomId) {
       return res.status(400).json({ message: "Device EUI, badge ID, and restroom ID are required" });
+    }
+
+    const restroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
+    if (!restroom) {
+      return res.status(404).json({ message: "Restroom not found" });
+    }
+
+    if (userRole === "vendor_admin" && restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create devices for restrooms in your organization" });
     }
 
     const device = await prisma.device.create({
@@ -82,10 +102,23 @@ async function updateDevice(req, res) {
   try {
     const { id } = req.params;
     const { badgeId, restroomId, batteryLevel, healthStatus } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.device.findUnique({ where: { id } });
+    const existing = await prisma.device.findFirst({
+      where: { id, ...(userRole !== "super_admin" ? { restroom: { organizationId: userOrgId } } : {}) },
+      include: { restroom: true },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Device not found" });
+    }
+
+    if (userRole === "vendor_admin" && restroomId) {
+      const newRestroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
+      if (!newRestroom || newRestroom.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "You can only assign devices to restrooms in your organization" });
+      }
     }
 
     const device = await prisma.device.update({
@@ -106,9 +139,10 @@ async function updateDevice(req, res) {
 async function getDeviceHealth(req, res) {
   try {
     const { deviceId } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const device = await prisma.device.findUnique({
-      where: { id: deviceId },
+    const device = await prisma.device.findFirst({
+      where: { id: deviceId, ...orgFilter },
       include: {
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 50 },
       },
@@ -139,9 +173,11 @@ async function getOfflineDevices(req, res) {
   try {
     const fiveMinutesAgo = new Date();
     fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+    const orgFilter = getOrgFilter(req);
 
     const offlineDevices = await prisma.device.findMany({
       where: {
+        ...orgFilter,
         OR: [
           { lastSeen: { lt: fiveMinutesAgo } },
           { healthStatus: { not: "healthy" } },

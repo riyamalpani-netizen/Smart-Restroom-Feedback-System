@@ -1,11 +1,19 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getRestrooms(req, res) {
   try {
     const { floorId, organizationId } = req.query;
-    const where = {};
+    const orgFilter = getOrgFilter(req);
+    const where = { ...orgFilter };
     if (floorId) where.floorId = floorId;
-    if (organizationId) where.organizationId = organizationId;
+    if (organizationId && req.user?.role === "super_admin") where.organizationId = organizationId;
 
     const restrooms = await prisma.restroom.findMany({
       where,
@@ -30,9 +38,10 @@ async function getRestrooms(req, res) {
 async function getRestroomById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const restroom = await prisma.restroom.findUnique({
-      where: { id },
+    const restroom = await prisma.restroom.findFirst({
+      where: { id, ...orgFilter },
       include: {
         floor: { include: { location: true } },
         devices: true,
@@ -55,9 +64,15 @@ async function getRestroomById(req, res) {
 async function createRestroom(req, res) {
   try {
     const { floorId, organizationId, name, gender, status } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!floorId || !organizationId || !name) {
       return res.status(400).json({ message: "Floor ID, organization ID, and name are required" });
+    }
+
+    if (userRole === "vendor_admin" && organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create restrooms in your own organization" });
     }
 
     const restroom = await prisma.restroom.create({
@@ -75,8 +90,13 @@ async function updateRestroom(req, res) {
   try {
     const { id } = req.params;
     const { name, gender, status } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.restroom.findUnique({ where: { id } });
+    const existing = await prisma.restroom.findFirst({
+      where: { id, ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Restroom not found" });
     }
@@ -96,8 +116,13 @@ async function updateRestroom(req, res) {
 async function deleteRestroom(req, res) {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.restroom.findUnique({ where: { id } });
+    const existing = await prisma.restroom.findFirst({
+      where: { id, ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Restroom not found" });
     }

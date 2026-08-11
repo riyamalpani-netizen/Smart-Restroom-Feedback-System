@@ -15,39 +15,36 @@ const {
 
 const router = express.Router();
 
-// Get all users
+// Super Admin can access all users
+// Vendor Admin can only access users in their own organization
 router.get(
   "/",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "vendor_admin"),
   getUsers
 );
 
-// Get user by ID
 router.get(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "vendor_admin"),
   getUserById
 );
 
-// Create user
 router.post(
   "/",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "vendor_admin"),
   createUser
 );
 
-// Update user
 router.put(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "vendor_admin"),
   updateUser
 );
 
-// Deactivate user
 router.delete(
   "/:id",
   authenticate,

@@ -30,12 +30,12 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<ProtectedRoute path="/dashboard"><Dashboard /></ProtectedRoute>} />
         <Route path="live-feedback" element={<ProtectedRoute path="/live-feedback"><LiveFeedback /></ProtectedRoute>} />
-        <Route path="sidemap" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/sidemap"><SideMap /></ProtectedRoute>} />
+        <Route path="sidemap" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/sidemap"><SideMap /></ProtectedRoute>} />
         <Route path="reports" element={<ProtectedRoute path="/reports"><Reports /></ProtectedRoute>} />
-        <Route path="devices" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/devices"><DeviceManagement /></ProtectedRoute>} />
-        <Route path="restrooms" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/restrooms"><RestroomManagement /></ProtectedRoute>} />
-        <Route path="alerts" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/alerts"><AlertManagement /></ProtectedRoute>} />
-        <Route path="disaster" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/disaster"><DisasterManagement /></ProtectedRoute>} />
+        <Route path="devices" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/devices"><DeviceManagement /></ProtectedRoute>} />
+        <Route path="restrooms" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/restrooms"><RestroomManagement /></ProtectedRoute>} />
+        <Route path="alerts" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/alerts"><AlertManagement /></ProtectedRoute>} />
+        <Route path="disaster" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/disaster"><DisasterManagement /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/users"><UserManagement /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/settings"><Settings /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute path="/profile"><Profile /></ProtectedRoute>} />

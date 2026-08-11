@@ -5,11 +5,20 @@ function formatDayLabel(date) {
   return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
 }
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getDashboard(req, res) {
   try {
     const now = new Date();
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
+
+    const orgFilter = getOrgFilter(req);
 
     const [
       totalRestrooms,
@@ -21,25 +30,49 @@ async function getDashboard(req, res) {
       alerts,
       feedbackEntries,
     ] = await Promise.all([
-      prisma.restroom.count(),
-      prisma.device.count(),
-      prisma.alert.count({ where: { status: { not: "closed" } } }),
-      prisma.feedback.count({ where: { timestamp: { gte: startOfToday } } }),
+      prisma.restroom.count({ where: orgFilter }),
+      prisma.device.count({
+        where: {
+          restroom: { ...orgFilter },
+        },
+      }),
+      prisma.alert.count({
+        where: {
+          status: { not: "closed" },
+          restroom: { ...orgFilter },
+        },
+      }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: startOfToday },
+          restroom: { ...orgFilter },
+        },
+      }),
       prisma.restroom.findMany({
+        where: orgFilter,
         orderBy: [{ floor: { createdAt: "asc" } }, { name: "asc" }],
         include: { devices: true, _count: { select: { feedback: true, alerts: true } } },
       }),
       prisma.device.findMany({
+        where: {
+          restroom: { ...orgFilter },
+        },
         orderBy: { batteryLevel: "desc" },
         include: { restroom: { include: { floor: { include: { location: true } } } } },
       }),
       prisma.alert.findMany({
-        where: { status: { not: "closed" } },
+        where: {
+          status: { not: "closed" },
+          restroom: { ...orgFilter },
+        },
         orderBy: { createdAt: "desc" },
         take: 8,
         include: { restroom: { include: { floor: { include: { location: true } } } } },
       }),
       prisma.feedback.findMany({
+        where: {
+          restroom: { ...orgFilter },
+        },
         orderBy: { timestamp: "desc" },
         take: 30,
         include: { restroom: true, device: true },
@@ -124,6 +157,8 @@ async function getDashboardSummary(req, res) {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
+    const orgFilter = getOrgFilter(req);
+
     const [
       totalRestrooms,
       totalDevices,
@@ -132,12 +167,39 @@ async function getDashboardSummary(req, res) {
       onlineDevices,
       batterySummary,
     ] = await Promise.all([
-      prisma.restroom.count(),
-      prisma.device.count(),
-      prisma.alert.count({ where: { status: { not: "closed" } } }),
-      prisma.feedback.count({ where: { timestamp: { gte: startOfToday } } }),
-      prisma.device.count({ where: { healthStatus: "healthy", lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) } } }),
-      prisma.device.aggregate({ _avg: { batteryLevel: true }, _min: { batteryLevel: true }, _max: { batteryLevel: true } }),
+      prisma.restroom.count({ where: orgFilter }),
+      prisma.device.count({
+        where: {
+          restroom: { ...orgFilter },
+        },
+      }),
+      prisma.alert.count({
+        where: {
+          status: { not: "closed" },
+          restroom: { ...orgFilter },
+        },
+      }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: startOfToday },
+          restroom: { ...orgFilter },
+        },
+      }),
+      prisma.device.count({
+        where: {
+          restroom: { ...orgFilter },
+          healthStatus: "healthy",
+          lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+      }),
+      prisma.device.aggregate({
+        where: {
+          restroom: { ...orgFilter },
+        },
+        _avg: { batteryLevel: true },
+        _min: { batteryLevel: true },
+        _max: { batteryLevel: true },
+      }),
     ]);
 
     res.status(200).json({
@@ -168,8 +230,13 @@ async function getDashboardCharts(req, res) {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
+    const orgFilter = getOrgFilter(req);
+
     const feedback = await prisma.feedback.findMany({
-      where: { timestamp: { gte: sevenDaysAgo } },
+      where: {
+        restroom: { ...orgFilter },
+        timestamp: { gte: sevenDaysAgo },
+      },
       orderBy: { timestamp: "asc" },
     });
 
@@ -229,6 +296,7 @@ async function getHeatMapData(req, res) {
   try {
     const { period, floorId, locationId } = req.query;
     const now = new Date();
+    const orgFilter = getOrgFilter(req);
 
     let dateFilter = {};
     if (period === "today") {
@@ -245,7 +313,7 @@ async function getHeatMapData(req, res) {
       dateFilter = { timestamp: { gte: monthAgo } };
     }
 
-    const whereRestroom = {};
+    const whereRestroom = { ...orgFilter };
     if (floorId) whereRestroom.floorId = floorId;
     if (locationId) {
       const floors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
@@ -314,7 +382,9 @@ async function getHeatMapData(req, res) {
 
     const maxScore = Math.max(...heatMapData.map((item) => item.score || 0), 1)
 
+    const sitesWhere = orgFilter.organizationId ? { organizationId: orgFilter.organizationId } : {};
     const sites = await prisma.location.findMany({
+      where: sitesWhere,
       include: {
         floors: { include: { restrooms: true } },
       },

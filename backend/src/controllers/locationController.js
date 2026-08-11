@@ -1,9 +1,18 @@
 const prisma = require("../config/database");
 
+function getOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+  return { organizationId: orgId };
+}
+
 async function getLocations(req, res) {
   try {
     const { organizationId } = req.query;
-    const where = organizationId ? { organizationId } : {};
+    const orgFilter = getOrgFilter(req);
+    const where = orgFilter.organizationId ? { organizationId: orgFilter.organizationId } : {};
+    if (organizationId && req.user?.role === "super_admin") where.organizationId = organizationId;
 
     const locations = await prisma.location.findMany({
       where,
@@ -27,9 +36,10 @@ async function getLocations(req, res) {
 async function getLocationById(req, res) {
   try {
     const { id } = req.params;
+    const orgFilter = getOrgFilter(req);
 
-    const location = await prisma.location.findUnique({
-      where: { id },
+    const location = await prisma.location.findFirst({
+      where: { id, ...orgFilter },
       include: {
         floors: { include: { restrooms: true } },
       },
@@ -49,9 +59,15 @@ async function getLocationById(req, res) {
 async function createLocation(req, res) {
   try {
     const { organizationId, city, officeName, address } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!organizationId || !city || !officeName) {
       return res.status(400).json({ message: "Organization ID, city, and office name are required" });
+    }
+
+    if (userRole === "vendor_admin" && organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only create locations in your own organization" });
     }
 
     const location = await prisma.location.create({
@@ -69,8 +85,13 @@ async function updateLocation(req, res) {
   try {
     const { id } = req.params;
     const { city, officeName, address } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.location.findUnique({ where: { id } });
+    const existing = await prisma.location.findFirst({
+      where: { id, ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Location not found" });
     }
@@ -90,8 +111,13 @@ async function updateLocation(req, res) {
 async function deleteLocation(req, res) {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
-    const existing = await prisma.location.findUnique({ where: { id } });
+    const existing = await prisma.location.findFirst({
+      where: { id, ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) },
+    });
+
     if (!existing) {
       return res.status(404).json({ message: "Location not found" });
     }

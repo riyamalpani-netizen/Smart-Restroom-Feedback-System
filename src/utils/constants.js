@@ -45,9 +45,9 @@ export const NAV_ITEMS = [
 
 export const ROLE_ROUTE_ACCESS = {
   [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
-  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/settings', '/profile'],
+  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
   [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
-  [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/reports', '/profile'],
+  [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
 }
 
 export function canAccessRoute(role, path) {
@@ -60,6 +60,8 @@ export function getRoleLabel(role) {
 }
 
 export const DEMO_USERS = [
+  { email: 'superadmin@smartrestroom.com', password: 'SuperAdmin@123', role: ROLES.SUPER_ADMIN, name: 'Super Admin' },
   { email: 'vendor@smartrestroom.com', password: 'Vendor@123', role: ROLES.VENDOR_ADMIN, name: 'Vendor Admin' },
-  { email: 'admin@smartrestroom.com', password: 'Admin@123', role: ROLES.SUPER_ADMIN, name: 'Super Admin' },
+  { email: 'facility@smartrestroom.com', password: 'Facility@123', role: ROLES.FACILITY_MANAGER, name: 'Facility Manager' },
+  { email: 'viewer@smartrestroom.com', password: 'Viewer@123', role: ROLES.VIEWER, name: 'Viewer' },
 ]

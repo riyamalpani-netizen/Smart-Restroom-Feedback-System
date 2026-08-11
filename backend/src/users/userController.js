@@ -5,7 +5,17 @@ const prisma = require("../config/database");
 // Get all users
 const getUsers = async (req, res) => {
   try {
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+
+    const where = {};
+    if (userRole === "vendor_admin") {
+      where.organizationId = userOrgId;
+      where.role = { not: "super_admin" };
+    }
+
     const users = await prisma.user.findMany({
+      where,
       select: {
         id: true,
         name: true,
@@ -37,11 +47,17 @@ const getUsers = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+
+    const where = { id };
+    if (userRole === "vendor_admin") {
+      where.organizationId = userOrgId;
+      where.role = { not: "super_admin" };
+    }
 
     const user = await prisma.user.findUnique({
-      where: {
-        id,
-      },
+      where,
       select: {
         id: true,
         name: true,
@@ -76,6 +92,8 @@ const getUserById = async (req, res) => {
 const createUser = async (req, res) => {
   try {
     const { name, email, password, role, organizationId } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     if (!name || !email || !password || !role || !organizationId) {
       return res.status(400).json({
@@ -94,6 +112,21 @@ const createUser = async (req, res) => {
       return res.status(400).json({
         message: "Invalid user role",
       });
+    }
+
+    // Vendor Admin cannot create super_admin or vendor_admin users
+    if (userRole === "vendor_admin") {
+      if (role === "super_admin" || role === "vendor_admin") {
+        return res.status(403).json({
+          message: "You do not have permission to create this role",
+        });
+      }
+      // Vendor Admin can only create users in their own organization
+      if (organizationId !== userOrgId) {
+        return res.status(403).json({
+          message: "You can only create users in your own organization",
+        });
+      }
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -147,6 +180,8 @@ const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, password, role, active, organizationId } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     const existingUser = await prisma.user.findUnique({
       where: {
@@ -157,6 +192,20 @@ const updateUser = async (req, res) => {
     if (!existingUser) {
       return res.status(404).json({
         message: "User not found",
+      });
+    }
+
+    // Vendor Admin cannot modify super_admin users
+    if (userRole === "vendor_admin" && existingUser.role === "super_admin") {
+      return res.status(403).json({
+        message: "You do not have permission to modify this user",
+      });
+    }
+
+    // Vendor Admin can only modify users in their own organization
+    if (userRole === "vendor_admin" && existingUser.organizationId !== userOrgId) {
+      return res.status(403).json({
+        message: "You can only modify users in your own organization",
       });
     }
 
@@ -184,6 +233,13 @@ const updateUser = async (req, res) => {
         });
       }
 
+      // Vendor Admin cannot promote users to super_admin or vendor_admin
+      if (userRole === "vendor_admin" && (role === "super_admin" || role === "vendor_admin")) {
+        return res.status(403).json({
+          message: "You do not have permission to assign this role",
+        });
+      }
+
       updateData.role = role;
     }
 
@@ -192,6 +248,12 @@ const updateUser = async (req, res) => {
     }
 
     if (organizationId !== undefined) {
+      // Vendor Admin cannot move users to another organization
+      if (userRole === "vendor_admin" && organizationId !== userOrgId) {
+        return res.status(403).json({
+          message: "You can only assign users to your own organization",
+        });
+      }
       updateData.organizationId = organizationId;
     }
 
@@ -232,6 +294,8 @@ const updateUser = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
 
     const existingUser = await prisma.user.findUnique({
       where: {
@@ -242,6 +306,20 @@ const deleteUser = async (req, res) => {
     if (!existingUser) {
       return res.status(404).json({
         message: "User not found",
+      });
+    }
+
+    // Vendor Admin cannot deactivate super_admin users
+    if (userRole === "vendor_admin" && existingUser.role === "super_admin") {
+      return res.status(403).json({
+        message: "You do not have permission to deactivate this user",
+      });
+    }
+
+    // Vendor Admin can only deactivate users in their own organization
+    if (userRole === "vendor_admin" && existingUser.organizationId !== userOrgId) {
+      return res.status(403).json({
+        message: "You can only deactivate users in your own organization",
       });
     }
 
