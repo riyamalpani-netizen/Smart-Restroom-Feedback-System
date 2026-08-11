@@ -101,7 +101,7 @@ async function createDevice(req, res) {
 async function updateDevice(req, res) {
   try {
     const { id } = req.params;
-    const { badgeId, restroomId, batteryLevel, healthStatus } = req.body;
+    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -123,7 +123,14 @@ async function updateDevice(req, res) {
 
     const device = await prisma.device.update({
       where: { id },
-      data: { badgeId, restroomId, batteryLevel, healthStatus },
+      data: {
+        badgeId,
+        restroomId,
+        batteryLevel,
+        healthStatus,
+        floorPlanPosX,
+        floorPlanPosY,
+      },
     });
 
     res.status(200).json({ message: "Device updated successfully", device });

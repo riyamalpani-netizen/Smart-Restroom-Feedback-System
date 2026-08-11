@@ -11,6 +11,7 @@ const authRoutes = require("./auth/authRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const locationRoutes = require("./routes/locationRoutes");
 const floorRoutes = require("./routes/floorRoutes");
+const floorPlanRoutes = require("./routes/floorPlanRoutes");
 const restroomRoutes = require("./routes/restroomRoutes");
 const deviceRoutes = require("./routes/deviceRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -463,13 +464,14 @@ const swaggerOptions = {
 const specs = swaggerJsDoc(swaggerOptions);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/locations", locationRoutes);
 app.use("/api/floors", floorRoutes);
+app.use("/api/floor-plans", floorPlanRoutes);
 app.use("/api/restrooms", restroomRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/feedback", feedbackRoutes);

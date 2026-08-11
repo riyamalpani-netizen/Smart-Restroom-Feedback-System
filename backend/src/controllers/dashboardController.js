@@ -353,8 +353,10 @@ async function getHeatMapData(req, res) {
       return {
         id: room.id,
         name: room.name,
+        floorId: room.floorId,
         floor: room.floor.floorName,
         location: room.floor.location.city,
+        site: `${room.floor.location.city} - ${room.floor.location.officeName}`,
         x,
         y,
         latitude: 28.6 + Math.random() * 0.05,

@@ -398,7 +398,7 @@
 //     </div>
 //   )
 // }
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import { io } from 'socket.io-client'
 
@@ -423,6 +423,8 @@ import 'leaflet/dist/leaflet.css'
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:5000'
+
+import { floorPlanAPI } from '../services/api'
 
 /*
 |--------------------------------------------------------------------------
@@ -751,9 +753,6 @@ export default function SideMap() {
   const [siteFilter, setSiteFilter] =
     useState('all')
 
-  const [viewMode, setViewMode] =
-    useState('floor')
-
   const [restroomData, setRestroomData] =
     useState([])
 
@@ -765,6 +764,41 @@ export default function SideMap() {
 
   const [loading, setLoading] =
     useState(true)
+
+  const [selectedFloorId, setSelectedFloorId] =
+    useState('')
+
+  const [floorPlans, setFloorPlans] = // eslint-disable-line no-unused-vars
+    useState([])
+
+  const [activeFloorPlan, setActiveFloorPlan] =
+    useState(null)
+
+  const [editMode, setEditMode] =
+    useState(false)
+
+  const [uploadError, setUploadError] =
+    useState(null)
+
+  const fileInputRef =
+    useRef(null)
+
+  const dragRef =
+    useRef({
+      active: false,
+      type: null,
+      startX: 0,
+      startY: 0,
+      startLeft: 0,
+      startTop: 0,
+      startWidth: 0,
+      startHeight: 0,
+      target: null,
+      startDeviceX: 0,
+      startDeviceY: 0,
+      lastX: 0,
+      lastY: 0,
+    })
 
   /*
   |--------------------------------------------------------------------------
@@ -1133,6 +1167,36 @@ export default function SideMap() {
 
   /*
   |--------------------------------------------------------------------------
+  | Load floor plans for selected floor
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    async function loadFloorPlans() {
+      if (!selectedFloorId) {
+        setFloorPlans([])
+        setActiveFloorPlan(null)
+        return
+      }
+
+      try {
+        const data = await floorPlanAPI.getByFloor(selectedFloorId)
+        const plans = data.floorPlans || []
+        setFloorPlans(plans)
+        setActiveFloorPlan((prev) => {
+          if (prev && plans.some((p) => p.id === prev.id)) return prev
+          return plans[0] || null
+        })
+      } catch (error) {
+        console.error('Floor plans load error:', error)
+      }
+    }
+
+    loadFloorPlans()
+  }, [selectedFloorId])
+
+   /*
+  |--------------------------------------------------------------------------
   | Filtered restrooms
   |--------------------------------------------------------------------------
   */
@@ -1157,6 +1221,338 @@ export default function SideMap() {
       restroomData,
       siteFilter,
     ])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Available floors for selector
+  |--------------------------------------------------------------------------
+  */
+
+  const availableFloors =
+    useMemo(() => {
+      const floorMap = new Map()
+      filteredRestrooms.forEach((room) => {
+        if (room.floorId && room.floor) {
+          floorMap.set(room.floorId, { id: room.floorId, floorName: room.floor })
+        }
+      })
+      return Array.from(floorMap.values())
+    }, [filteredRestrooms])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Auto-select first available floor
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!selectedFloorId && availableFloors.length > 0) {
+      setSelectedFloorId(availableFloors[0].id)
+    }
+  }, [availableFloors, selectedFloorId])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Update device position in local data
+  |--------------------------------------------------------------------------
+  */
+
+  function updateDevicePositionInData(deviceId, x, y) {
+    setRestroomData((prev) =>
+      prev.map((room) => ({
+        ...room,
+        devices: (room.devices || []).map((d) =>
+          d.id === deviceId ? { ...d, floorPlanPosX: x, floorPlanPosY: y } : d
+        ),
+      }))
+    )
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Save active floor plan
+  |--------------------------------------------------------------------------
+  */
+
+  const saveActiveFloorPlan = useCallback(async () => {
+    if (!activeFloorPlan) return
+    try {
+      const data = await floorPlanAPI.update(activeFloorPlan.id, {
+        posX: Math.round(activeFloorPlan.posX),
+        posY: Math.round(activeFloorPlan.posY),
+        width: Math.round(activeFloorPlan.width),
+        height: Math.round(activeFloorPlan.height),
+      })
+      setActiveFloorPlan(data.floorPlan)
+      setFloorPlans((prev) =>
+        prev.map((p) => (p.id === data.floorPlan.id ? data.floorPlan : p))
+      )
+    } catch (error) {
+      console.error('Save floor plan error:', error)
+    }
+  }, [activeFloorPlan])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Save device position
+  |--------------------------------------------------------------------------
+  */
+
+  const saveDevicePosition = useCallback(async (deviceId, x, y) => {
+    try {
+      await floorPlanAPI.updateDevicePosition(deviceId, Math.round(x), Math.round(y))
+    } catch (error) {
+      console.error('Save device position error:', error)
+    }
+  }, [])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Document-level drag handlers
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    function handleMouseMove(e) {
+      const state = dragRef.current
+      if (!state.active) return
+
+      if (state.type === 'plan') {
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        setActiveFloorPlan((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            posX: Math.max(0, state.startLeft + dx),
+            posY: Math.max(0, state.startTop + dy),
+          }
+        })
+      } else if (state.type === 'resize') {
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        setActiveFloorPlan((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            width: Math.max(100, state.startWidth + dx),
+            height: Math.max(100, state.startHeight + dy),
+          }
+        })
+      } else if (state.type === 'device') {
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        const newX = state.startDeviceX + dx
+        const newY = state.startDeviceY + dy
+        state.lastX = dx
+        state.lastY = dy
+        updateDevicePositionInData(state.target.id, newX, newY)
+      }
+    }
+
+    function handleMouseUp() {
+      const state = dragRef.current
+      if (!state.active) return
+
+      if (state.type === 'plan' || state.type === 'resize') {
+        saveActiveFloorPlan()
+      } else if (state.type === 'device') {
+        const newX = state.startDeviceX + (state.lastX || 0)
+        const newY = state.startDeviceY + (state.lastY || 0)
+        saveDevicePosition(state.target.id, newX, newY)
+      }
+
+      dragRef.current = {
+        active: false,
+        type: null,
+        startX: 0,
+        startY: 0,
+        startLeft: 0,
+        startTop: 0,
+        startWidth: 0,
+        startHeight: 0,
+        target: null,
+        startDeviceX: 0,
+        startDeviceY: 0,
+        lastX: 0,
+        lastY: 0,
+      }
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [activeFloorPlan, saveActiveFloorPlan, saveDevicePosition])
+
+  /*
+  |--------------------------------------------------------------------------
+  | Floor plan drag handlers
+  |--------------------------------------------------------------------------
+  */
+
+  function handlePlanMouseDown(e) {
+    if (!editMode || !activeFloorPlan) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = {
+      active: true,
+      type: 'plan',
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: activeFloorPlan.posX,
+      startTop: activeFloorPlan.posY,
+      startWidth: activeFloorPlan.width,
+      startHeight: activeFloorPlan.height,
+      target: null,
+    }
+  }
+
+  function handleResizeMouseDown(e) {
+    if (!editMode || !activeFloorPlan) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = {
+      active: true,
+      type: 'resize',
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: activeFloorPlan.posX,
+      startTop: activeFloorPlan.posY,
+      startWidth: activeFloorPlan.width,
+      startHeight: activeFloorPlan.height,
+      target: null,
+    }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Device drag handlers
+  |--------------------------------------------------------------------------
+  */
+
+  function handleDeviceMouseDown(e, device) {
+    if (!editMode) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = {
+      active: true,
+      type: 'device',
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: 0,
+      startTop: 0,
+      startWidth: 0,
+      startHeight: 0,
+      target: device,
+      startDeviceX: device.floorPlanPosX || 0,
+      startDeviceY: device.floorPlanPosY || 0,
+      lastX: 0,
+      lastY: 0,
+    }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | File upload handler
+  |--------------------------------------------------------------------------
+  */
+
+  function handleFileUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const img = new Image()
+      img.onload = async () => {
+        const maxDim = 1200
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width)
+            width = maxDim
+          } else {
+            width = Math.round((width * maxDim) / height)
+            height = maxDim
+          }
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const imageData = canvas.toDataURL('image/jpeg', 0.7)
+
+        try {
+          const data = await floorPlanAPI.create({
+            floorId: selectedFloorId,
+            name: file.name,
+            imageData,
+            width: 400,
+            height: 300,
+            posX: 50,
+            posY: 50,
+          })
+          setFloorPlans((prev) => [data.floorPlan, ...prev])
+          setActiveFloorPlan(data.floorPlan)
+          setUploadError(null)
+        } catch (error) {
+          console.error('Upload floor plan error:', error)
+          setUploadError(error.message || 'Failed to upload floor plan')
+        }
+      }
+      img.src = event.target.result
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Delete floor plan
+  |--------------------------------------------------------------------------
+  */
+
+  async function handleDeleteFloorPlan() {
+    if (!activeFloorPlan) return
+    try {
+      await floorPlanAPI.delete(activeFloorPlan.id)
+      setFloorPlans((prev) => prev.filter((p) => p.id !== activeFloorPlan.id))
+      setActiveFloorPlan(null)
+    } catch (error) {
+      console.error('Delete floor plan error:', error)
+    }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Flatten devices from filtered restrooms
+  |--------------------------------------------------------------------------
+  */
+
+  const floorDevices =
+    useMemo(() => {
+      const devices = []
+      filteredRestrooms.forEach((room) => {
+        if (selectedFloorId && room.floorId !== selectedFloorId) return
+        if (room.devices && room.devices.length > 0) {
+          room.devices.forEach((device) => {
+            devices.push({
+              ...device,
+              restroomName: room.name,
+              restroomId: room.id,
+              score: room.score,
+            })
+          })
+        }
+      })
+      return devices
+    }, [filteredRestrooms, selectedFloorId])
 
   /*
   |--------------------------------------------------------------------------
@@ -1605,6 +2001,7 @@ export default function SideMap() {
   |--------------------------------------------------------------------------
   */
 
+  // eslint-disable-next-line no-unused-vars
   function renderGeoView() {
     const locations =
       filteredRestrooms.filter(
@@ -1905,10 +2302,290 @@ export default function SideMap() {
 
   /*
   |--------------------------------------------------------------------------
+  | Unified Map
+  |--------------------------------------------------------------------------
+  */
+
+  function renderUnifiedMap() {
+    const geoLocations =
+      filteredRestrooms.filter(
+        (room) =>
+          Number.isFinite(Number(room.latitude)) &&
+          Number.isFinite(Number(room.longitude))
+      )
+
+    return (
+      <div
+        style={{
+          position: 'relative',
+          height: '100%',
+          width: '100%',
+        }}
+      >
+        <MapContainer
+          center={DEFAULT_CENTER}
+          zoom={13}
+          scrollWheelZoom={true}
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayer
+            attribution="&copy; OpenStreetMap contributors"
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          <GeoMapController locations={geoLocations} />
+
+          {geoLocations.map((room) => {
+            const latitude = Number(room.latitude)
+            const longitude = Number(room.longitude)
+            const color = getHeatColor(room.score)
+
+            return (
+              <div key={room.id}>
+                <Circle
+                  center={[latitude, longitude]}
+                  radius={Number(room.score) >= 75 ? 700 : 450}
+                  pathOptions={{
+                    color,
+                    fillColor: color,
+                    fillOpacity: 0.16,
+                    weight: 1,
+                  }}
+                />
+                <Marker
+                  position={[latitude, longitude]}
+                  icon={createGeoIcon(color)}
+                  eventHandlers={{
+                    click: () => setSelectedRestroom(room),
+                  }}
+                >
+                  <Popup>
+                    <div style={{ minWidth: 220 }}>
+                      <strong style={{ fontSize: 15, color: '#0f172a' }}>
+                        {room.name || room.id}
+                      </strong>
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                        {room.site || room.location || 'Site'}
+                      </div>
+                      <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: 8,
+                          fontSize: 11,
+                        }}
+                      >
+                        <div>
+                          Status
+                          <br />
+                          <strong>{getSeverityLabel(room.score)}</strong>
+                        </div>
+                        <div>
+                          Feedback
+                          <br />
+                          <strong>{room.total}</strong>
+                        </div>
+                        <div>
+                          Alerts
+                          <br />
+                          <strong>{room.alerts}</strong>
+                        </div>
+                        <div>
+                          Battery
+                          <br />
+                          <strong>
+                            {room.battery != null ? `${room.battery}%` : '--'}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              </div>
+            )
+          })}
+        </MapContainer>
+
+        {geoLocations.length === 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 20,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 1000,
+              background: '#ffffff',
+              padding: '10px 16px',
+              borderRadius: 10,
+              fontSize: 11,
+              color: '#64748b',
+              boxShadow: '0 5px 20px rgba(15,23,42,0.12)',
+            }}
+          >
+            No geographic coordinates available.
+          </div>
+        )}
+
+        {geoLocations.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 18,
+              bottom: 18,
+              zIndex: 1000,
+            }}
+          >
+            <HeatLegend />
+          </div>
+        )}
+
+        {/* Floor plan overlay */}
+        {activeFloorPlan && (
+          <div
+            style={{
+              position: 'absolute',
+              left: activeFloorPlan.posX,
+              top: activeFloorPlan.posY,
+              width: activeFloorPlan.width,
+              height: activeFloorPlan.height,
+              border: editMode ? '2px dashed #2563eb' : '2px solid rgba(255,255,255,0.6)',
+              borderRadius: 8,
+              overflow: 'hidden',
+              cursor: editMode ? 'move' : 'default',
+              zIndex: 1000,
+              boxShadow: editMode
+                ? '0 0 0 4px rgba(37,99,235,0.15)'
+                : '0 8px 30px rgba(15,23,42,0.25)',
+            }}
+            onMouseDown={handlePlanMouseDown}
+          >
+            <img
+              src={activeFloorPlan.imageData}
+              alt={activeFloorPlan.name}
+              draggable={false}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                display: 'block',
+              }}
+            />
+
+            {/* Edit mode overlay */}
+            {editMode && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(37,99,235,0.03)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+
+            {/* Resize handle */}
+            {editMode && (
+              <div
+                onMouseDown={handleResizeMouseDown}
+                style={{
+                  position: 'absolute',
+                  right: -6,
+                  bottom: -6,
+                  width: 18,
+                  height: 18,
+                  background: '#2563eb',
+                  border: '2px solid #fff',
+                  borderRadius: 4,
+                  cursor: 'nwse-resize',
+                  zIndex: 1002,
+                }}
+              />
+            )}
+
+            {/* Device markers */}
+            {floorDevices.map((device) => {
+              const dx = device.floorPlanPosX ?? 50
+              const dy = device.floorPlanPosY ?? 50
+              const color = getHeatColor(device.score || 0)
+
+              return (
+                <div
+                  key={device.id}
+                  style={{
+                    position: 'absolute',
+                    left: dx,
+                    top: dy,
+                    transform: 'translate(-50%, -50%)',
+                    cursor: editMode ? 'move' : 'pointer',
+                    zIndex: 1001,
+                  }}
+                  onMouseDown={(e) => handleDeviceMouseDown(e, device)}
+                  onClick={() => {
+                    if (!editMode) {
+                      setSelectedRestroom({
+                        ...device,
+                        name: device.restroomName || device.id,
+                        floor: device.floor?.floorName || '--',
+                        location: device.floor?.location?.city || '--',
+                      })
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: color,
+                      border: '3px solid #fff',
+                      boxShadow: '0 3px 12px rgba(15,23,42,0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      fontSize: 9,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {device.badgeId?.slice(-2) || '??'}
+                  </div>
+                  {editMode && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: -18,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: 'rgba(15,23,42,0.85)',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontSize: 9,
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {device.restroomName || device.id}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  /*
+  |--------------------------------------------------------------------------
   | Floor Plan
   |--------------------------------------------------------------------------
   */
 
+  // eslint-disable-next-line no-unused-vars
   function renderFloorPlan() {
     return (
       <div
@@ -3060,103 +3737,132 @@ export default function SideMap() {
       />
 
       {/* ================================================================
-          VIEW SWITCH
+          UNIFIED MAP TOOLBAR
       ================================================================= */}
 
       <div
         style={{
-          display:
-            'flex',
-
-          alignItems:
-            'center',
-
-          gap: 28,
-
-          marginBottom: 20,
-
-          borderBottom:
-            '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 18,
+          padding: 14,
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: 13,
         }}
       >
-        <button
-          type="button"
-          onClick={() =>
-            setViewMode(
-              'geo'
-            )
-          }
-          style={{
-            border: 0,
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>Floor</span>
+          <select
+            value={selectedFloorId}
+            onChange={(e) => setSelectedFloorId(e.target.value)}
+            style={{
+              minWidth: 170,
+              padding: '8px 12px',
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: 11,
+              outline: 'none',
+            }}
+          >
+            <option value="">All Floors</option>
+            {availableFloors.map((floor) => (
+              <option key={floor.id} value={floor.id}>
+                {floor.floorName}
+              </option>
+            ))}
+          </select>
 
-            background:
-              'transparent',
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!selectedFloorId}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid #2563eb',
+              background: selectedFloorId ? '#2563eb' : '#94a3b8',
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: selectedFloorId ? 'pointer' : 'not-allowed',
+              opacity: selectedFloorId ? 1 : 0.7,
+            }}
+          >
+            + Upload Floor Plan
+          </button>
 
-            padding:
-              '12px 3px',
+          {uploadError && (
+            <div
+              style={{
+                fontSize: 10,
+                color: '#ef4444',
+                background: '#fef2f2',
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: '1px solid #fecaca',
+              }}
+            >
+              {uploadError}
+            </div>
+          )}
 
-            fontSize: 13,
+          <button
+            type="button"
+            onClick={() => setEditMode((prev) => !prev)}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: editMode ? '1px solid #ef4444' : '1px solid #cbd5e1',
+              background: editMode ? '#fef2f2' : '#f8fafc',
+              color: editMode ? '#ef4444' : '#475569',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {editMode ? '✓ Done Editing' : '✎ Edit Layout'}
+          </button>
 
-            fontWeight: 700,
+          {activeFloorPlan && editMode && (
+            <button
+              type="button"
+              onClick={handleDeleteFloorPlan}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid #ef4444',
+                background: '#fff',
+                color: '#ef4444',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Delete Plan
+            </button>
+          )}
+        </div>
 
-            color:
-              viewMode ===
-              'geo'
-                ? '#2563eb'
-                : '#64748b',
-
-            borderBottom:
-              viewMode ===
-              'geo'
-                ? '3px solid #2563eb'
-                : '3px solid transparent',
-
-            cursor:
-              'pointer',
-          }}
-        >
-          🗺️ Geo View
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            setViewMode(
-              'floor'
-            )
-          }
-          style={{
-            border: 0,
-
-            background:
-              'transparent',
-
-            padding:
-              '12px 3px',
-
-            fontSize: 13,
-
-            fontWeight: 700,
-
-            color:
-              viewMode ===
-              'floor'
-                ? '#2563eb'
-                : '#64748b',
-
-            borderBottom:
-              viewMode ===
-              'floor'
-                ? '3px solid #2563eb'
-                : '3px solid transparent',
-
-            cursor:
-              'pointer',
-          }}
-        >
-          ▦ Floor Plan View
-        </button>
+        <div style={{ fontSize: 10, color: '#64748b' }}>
+          {activeFloorPlan
+            ? `Plan: ${activeFloorPlan.name}`
+            : 'No floor plan loaded'}
+        </div>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
 
       {/* ================================================================
           FILTERS
@@ -3438,6 +4144,9 @@ export default function SideMap() {
             borderRadius: 16,
 
             padding: 16,
+
+            position:
+              'relative',
           }}
         >
           <div
@@ -3467,10 +4176,7 @@ export default function SideMap() {
                     '#0f172a',
                 }}
               >
-                {viewMode ===
-                'floor'
-                  ? 'Restroom Heat Map'
-                  : 'Geographic Restroom Map'}
+                Unified Site Map
               </h3>
 
               <p
@@ -3484,10 +4190,7 @@ export default function SideMap() {
                     '#94a3b8',
                 }}
               >
-                {viewMode ===
-                'floor'
-                  ? 'Real-time restroom condition and feedback intensity'
-                  : 'Physical location and health of monitored restrooms'}
+                Geo map with floor plan overlay and device placement
               </p>
             </div>
 
@@ -3504,10 +4207,24 @@ export default function SideMap() {
             </div>
           </div>
 
-          {viewMode ===
-          'floor'
-            ? renderFloorPlan()
-            : renderGeoView()}
+          <div
+            style={{
+              position:
+                'relative',
+
+              height: 560,
+
+              borderRadius: 18,
+
+              overflow:
+                'hidden',
+
+              border:
+                '1px solid #e2e8f0',
+            }}
+          >
+            {renderUnifiedMap()}
+          </div>
         </div>
 
         {/* ============================================================

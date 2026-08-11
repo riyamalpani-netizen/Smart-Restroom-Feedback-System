@@ -59,4 +59,13 @@ export const floorplanAPI = {
     request(`/api/dashboard/heatmap?period=${encodeURIComponent(period || 'today')}${siteId ? `&locationId=${encodeURIComponent(siteId)}` : ''}${floor ? `&floorId=${encodeURIComponent(floor)}` : ''}`),
 }
 
+export const floorPlanAPI = {
+  getByFloor: (floorId) => request(`/api/floor-plans?floorId=${encodeURIComponent(floorId)}`),
+  getById: (id) => request(`/api/floor-plans/${encodeURIComponent(id)}`),
+  create: (data) => request('/api/floor-plans', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updateDevicePosition: (id, x, y) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ floorPlanPosX: x, floorPlanPosY: y }) }),
+}
+
 export default api

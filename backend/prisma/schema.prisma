@@ -120,8 +120,26 @@ model Floor {
   updatedAt  DateTime  @updatedAt
 
   restrooms Restroom[]
+  floorPlans FloorPlan[]
 
   @@map("floors")
+}
+
+model FloorPlan {
+  id          String   @id @default(cuid())
+  floorId     String
+  floor       Floor     @relation(fields: [floorId], references: [id])
+  name        String
+  imageData   String
+  width       Int      @default(400)
+  height      Int      @default(300)
+  posX        Int      @default(0)
+  posY        Int      @default(0)
+  rotation    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("floor_plans")
 }
 
 model Restroom {
@@ -152,6 +170,8 @@ model Device {
   batteryLevel    Int
   lastSeen        DateTime?
   healthStatus    DeviceHealth @default(healthy)
+  floorPlanPosX   Float?
+  floorPlanPosY   Float?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
