@@ -165,8 +165,8 @@ model Device {
   id              String       @id @default(cuid())
   deviceEui       String       @unique
   badgeId         String       @unique
-  restroomId      String
-  restroom        Restroom     @relation(fields: [restroomId], references: [id])
+  restroomId      String?
+  restroom        Restroom?    @relation(fields: [restroomId], references: [id])
   batteryLevel    Int
   lastSeen        DateTime?
   healthStatus    DeviceHealth @default(healthy)

@@ -65,24 +65,29 @@ async function createDevice(req, res) {
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
-    if (!deviceEui || !badgeId || !restroomId) {
-      return res.status(400).json({ message: "Device EUI, badge ID, and restroom ID are required" });
+    if (!deviceEui || !badgeId) {
+      return res.status(400).json({ message: "Device EUI and badge ID are required" });
     }
 
-    const restroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
-    if (!restroom) {
-      return res.status(404).json({ message: "Restroom not found" });
-    }
+    let finalRestroomId = restroomId;
+    let organizationId = null;
 
-    if (userRole === "vendor_admin" && restroom.organizationId !== userOrgId) {
-      return res.status(403).json({ message: "You can only create devices for restrooms in your organization" });
+    if (finalRestroomId) {
+      const restroom = await prisma.restroom.findUnique({ where: { id: finalRestroomId } });
+      if (!restroom) {
+        return res.status(404).json({ message: "Restroom not found" });
+      }
+      if (userRole === "vendor_admin" && restroom.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "You can only create devices for restrooms in your organization" });
+      }
+      organizationId = restroom.organizationId;
     }
 
     const device = await prisma.device.create({
       data: {
         deviceEui,
         badgeId,
-        restroomId,
+        restroomId: finalRestroomId || null,
         batteryLevel: batteryLevel ?? 100,
         healthStatus: "healthy",
       },

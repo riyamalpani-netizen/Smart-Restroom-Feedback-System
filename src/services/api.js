@@ -65,7 +65,9 @@ export const floorPlanAPI = {
   create: (data) => request('/api/floor-plans', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  updateDevicePosition: (id, x, y) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ floorPlanPosX: x, floorPlanPosY: y }) }),
+  updateDevicePosition: (id, x, y, restroomId) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ floorPlanPosX: x, floorPlanPosY: y, restroomId: restroomId || null }) }),
+  createRestroom: (data) => request('/api/restrooms', { method: 'POST', body: JSON.stringify(data) }),
+  updateRestroom: (id, data) => request(`/api/restrooms/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
 }
 
 export default api

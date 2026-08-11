@@ -783,9 +783,6 @@ export default function SideMap() {
   const [uploadError, setUploadError] =
     useState(null)
 
-  const [ghostPos, setGhostPos] =
-    useState(null)
-
   const fileInputRef =
     useRef(null)
 
@@ -811,6 +808,39 @@ export default function SideMap() {
       lastX: 0,
       lastY: 0,
     })
+
+  const [interactionMode, setInteractionMode] =
+    useState('view')
+
+  const [selectedDeviceForPlacement, setSelectedDeviceForPlacement] =
+    useState(null)
+
+  const [drawingRestroom, setDrawingRestroom] =
+    useState(null)
+
+  const [drawnRestrooms, setDrawnRestrooms] =
+    useState([])
+
+  const [tempMarker, setTempMarker] =
+    useState(null)
+
+  const [pendingRestroomRect, setPendingRestroomRect] =
+    useState(null)
+
+  const [showRestroomModal, setShowRestroomModal] =
+    useState(false)
+
+  const [newRestroomName, setNewRestroomName] =
+    useState('')
+
+  const [placeDeviceMode, setPlaceDeviceMode] =
+    useState(false)
+
+  const [showDevicePicker, setShowDevicePicker] =
+    useState(false)
+
+  const [pickerPosition, setPickerPosition] =
+    useState({ x: 0, y: 0 })
 
   /*
   |--------------------------------------------------------------------------
@@ -1197,7 +1227,8 @@ export default function SideMap() {
         setFloorPlans(plans)
         setActiveFloorPlan((prev) => {
           if (prev && plans.some((p) => p.id === prev.id)) return prev
-          return plans[0] || null
+          const plan = plans[0] || null
+          return plan ? { ...plan, scale: 1 } : null
         })
       } catch (error) {
         console.error('Floor plans load error:', error)
@@ -1295,7 +1326,7 @@ export default function SideMap() {
         width: Math.round(activeFloorPlan.width),
         height: Math.round(activeFloorPlan.height),
       })
-      setActiveFloorPlan(data.floorPlan)
+      setActiveFloorPlan((prev) => (prev ? { ...data.floorPlan, scale: prev.scale || 1 } : prev))
       setFloorPlans((prev) =>
         prev.map((p) => (p.id === data.floorPlan.id ? data.floorPlan : p))
       )
@@ -1343,28 +1374,15 @@ export default function SideMap() {
       } else if (state.type === 'resize') {
         const dx = e.clientX - state.startX
         const dy = e.clientY - state.startY
+        const scale = activeFloorPlan?.scale || 1
         setActiveFloorPlan((prev) => {
           if (!prev) return prev
           return {
             ...prev,
-            width: Math.max(100, state.startWidth + dx),
-            height: Math.max(100, state.startHeight + dy),
+            width: Math.max(100, state.startWidth + dx / scale),
+            height: Math.max(100, state.startHeight + dy / scale),
           }
         })
-      } else if (state.type === 'device') {
-        const dx = e.clientX - state.startX
-        const dy = e.clientY - state.startY
-        const newX = state.startDeviceX + dx
-        const newY = state.startDeviceY + dy
-        state.lastX = dx
-        state.lastY = dy
-        updateDevicePositionInData(state.target.id, newX, newY)
-      } else if (state.type === 'device-from-panel') {
-        const dx = e.clientX - state.startX
-        const dy = e.clientY - state.startY
-        state.lastX = dx
-        state.lastY = dy
-        setGhostPos({ x: e.clientX, y: e.clientY })
       }
     }
 
@@ -1374,23 +1392,6 @@ export default function SideMap() {
 
       if (state.type === 'plan' || state.type === 'resize') {
         saveActiveFloorPlan()
-      } else if (state.type === 'device') {
-        const newX = state.startDeviceX + (state.lastX || 0)
-        const newY = state.startDeviceY + (state.lastY || 0)
-        saveDevicePosition(state.target.id, newX, newY)
-      } else if (state.type === 'device-from-panel') {
-        const floorPlanEl = floorPlanRef.current
-        if (floorPlanEl && state.target) {
-          const rect = floorPlanEl.getBoundingClientRect()
-          const finalX = (state.startX + (state.lastX || 0)) - rect.left
-          const finalY = (state.startY + (state.lastY || 0)) - rect.top
-          const relX = Math.round(Math.max(0, finalX))
-          const relY = Math.round(Math.max(0, finalY))
-          if (relX <= rect.width && relY <= rect.height) {
-            saveDevicePosition(state.target.id, relX, relY)
-            updateDevicePositionInData(state.target.id, relX, relY)
-          }
-        }
       }
 
       dragRef.current = {
@@ -1408,7 +1409,6 @@ export default function SideMap() {
         lastX: 0,
         lastY: 0,
       }
-      setGhostPos(null)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -1420,6 +1420,77 @@ export default function SideMap() {
     }
   }, [activeFloorPlan, saveActiveFloorPlan, saveDevicePosition])
 
+  useEffect(() => {
+    function handleMouseMove(e) {
+      if (!drawingRestroom || !floorPlanRef.current) return
+      const { x, y } = getBaseCoords(e)
+      setDrawingRestroom((prev) => ({ ...prev, endX: x, endY: y }))
+    }
+
+    function handleMouseUp(e) {
+      if (!drawingRestroom || !floorPlanRef.current) {
+        setDrawingRestroom(null)
+        return
+      }
+
+      const { x, y } = getBaseCoords(e)
+
+      const left = Math.min(drawingRestroom.startX, x)
+      const top = Math.min(drawingRestroom.startY, y)
+      const width = Math.abs(x - drawingRestroom.startX)
+      const height = Math.abs(y - drawingRestroom.startY)
+
+      if (width > 20 && height > 20) {
+        setPendingRestroomRect({ x: left, y: top, width, height })
+        setShowRestroomModal(true)
+      }
+
+      setDrawingRestroom(null)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [drawingRestroom])
+
+  function getBaseCoords(e) {
+    if (!floorPlanRef.current || !activeFloorPlan) return { x: 0, y: 0 }
+    const rect = floorPlanRef.current.getBoundingClientRect()
+    const scale = activeFloorPlan.scale || 1
+    return {
+      x: Math.max(0, Math.min((e.clientX - rect.left) / scale, activeFloorPlan.width)),
+      y: Math.max(0, Math.min((e.clientY - rect.top) / scale, activeFloorPlan.height)),
+    }
+  }
+
+  function handleWheel(e) {
+    if (!activeFloorPlan) return
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = floorPlanRef.current.getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    const oldScale = activeFloorPlan.scale || 1
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
+    const newScale = Math.min(Math.max(oldScale * zoomFactor, 0.5), 4)
+    const scaleChange = newScale / oldScale
+    const newPosX = mouseX - (mouseX - activeFloorPlan.posX) * scaleChange
+    const newPosY = mouseY - (mouseY - activeFloorPlan.posY) * scaleChange
+    setActiveFloorPlan((prev) => (prev ? { ...prev, scale: newScale, posX: newPosX, posY: newPosY } : prev))
+  }
+
+  useEffect(() => {
+    const el = floorPlanRef.current
+    if (!el || !activeFloorPlan) return
+    const onWheel = (e) => handleWheel(e)
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [activeFloorPlan, handleWheel])
+
   /*
   |--------------------------------------------------------------------------
   | Floor plan drag handlers
@@ -1427,7 +1498,7 @@ export default function SideMap() {
   */
 
   function handlePlanMouseDown(e) {
-    if (!editMode || !activeFloorPlan) return
+    if (!activeFloorPlan) return
     e.preventDefault()
     e.stopPropagation()
     dragRef.current = {
@@ -1460,54 +1531,178 @@ export default function SideMap() {
     }
   }
 
+  function isPointInRestroom(x, y, restroom) {
+    return (
+      x >= restroom.x &&
+      x <= restroom.x + restroom.width &&
+      y >= restroom.y &&
+      y <= restroom.y + restroom.height
+    )
+  }
+
+  function findRestroomAtPoint(x, y) {
+    for (let i = drawnRestrooms.length - 1; i >= 0; i--) {
+      if (isPointInRestroom(x, y, drawnRestrooms[i])) {
+        return drawnRestrooms[i]
+      }
+    }
+    return null
+  }
+
+  function handleFloorPlanMouseDown(e) {
+    if (!activeFloorPlan) return
+    if (interactionMode === 'draw-restroom') {
+      e.preventDefault()
+      e.stopPropagation()
+      const { x, y } = getBaseCoords(e)
+      setDrawingRestroom({ startX: x, startY: y, endX: x, endY: y })
+    }
+  }
+
+  function handleCombinedMouseDown(e) {
+    if (interactionMode === 'draw-restroom') {
+      handleFloorPlanMouseDown(e)
+    } else if (interactionMode === 'place-device') {
+      // Let click handler place the device
+    } else {
+      handlePlanMouseDown(e)
+    }
+  }
+
+  function handleFloorPlanMouseMove(e) {
+    if (!drawingRestroom || !floorPlanRef.current) return
+    const { x, y } = getBaseCoords(e)
+    setDrawingRestroom((prev) => ({ ...prev, endX: x, endY: y }))
+  }
+
+  function handleFloorPlanMouseUp(e) {
+    if (!drawingRestroom || !floorPlanRef.current) {
+      setDrawingRestroom(null)
+      return
+    }
+
+    const { x, y } = getBaseCoords(e)
+
+    const left = Math.min(drawingRestroom.startX, x)
+    const top = Math.min(drawingRestroom.startY, y)
+    const width = Math.abs(x - drawingRestroom.startX)
+    const height = Math.abs(y - drawingRestroom.startY)
+
+    if (width > 20 && height > 20) {
+      setPendingRestroomRect({ x: left, y: top, width, height })
+      setShowRestroomModal(true)
+    }
+
+    setDrawingRestroom(null)
+  }
+
+  async function handleCreateRestroom(name) {
+    if (!pendingRestroomRect || !activeFloorPlan || !selectedFloorId) return
+
+    const restroomData = {
+      x: pendingRestroomRect.x,
+      y: pendingRestroomRect.y,
+      width: pendingRestroomRect.width,
+      height: pendingRestroomRect.height,
+      name: name || `Restroom ${drawnRestrooms.length + 1}`,
+    }
+
+    try {
+      const data = await floorPlanAPI.createRestroom({
+        floorId: selectedFloorId,
+        name: restroomData.name,
+        organizationId: user?.organizationId || '',
+      })
+      setDrawnRestrooms((prev) => [...prev, { ...restroomData, id: data.restroom.id, restroomId: data.restroom.id }])
+    } catch (error) {
+      console.error('Create restroom error:', error)
+      setDrawnRestrooms((prev) => [...prev, { ...restroomData, id: `local-${Date.now()}`, restroomId: null }])
+    }
+
+    setPendingRestroomRect(null)
+    setShowRestroomModal(false)
+    setInteractionMode('view')
+  }
+
+  function handleDeviceSelectForPlacement(device) {
+    setSelectedDeviceForPlacement(device)
+    setInteractionMode('place-device')
+    setPlaceDeviceMode(false)
+    setShowDevicePicker(false)
+    setTempMarker(null)
+  }
+
+  function handleFloorPlanClick(e) {
+    if (!activeFloorPlan || !floorPlanRef.current) return
+
+    const { x, y } = getBaseCoords(e)
+
+    if (interactionMode === 'place-device' && selectedDeviceForPlacement) {
+      const relX = Math.round(Math.max(0, Math.min(x, activeFloorPlan.width)))
+      const relY = Math.round(Math.max(0, Math.min(y, activeFloorPlan.height)))
+
+      const restroom = findRestroomAtPoint(relX, relY)
+
+      saveDevicePosition(selectedDeviceForPlacement.id, relX, relY)
+      if (restroom) {
+        floorPlanAPI.updateDevicePosition(selectedDeviceForPlacement.id, relX, relY, restroom.restroomId)
+      } else {
+        floorPlanAPI.updateDevicePosition(selectedDeviceForPlacement.id, relX, relY, null)
+      }
+
+      updateDevicePositionInData(selectedDeviceForPlacement.id, relX, relY)
+
+      setSelectedDeviceForPlacement(null)
+      setInteractionMode('view')
+      setTempMarker(null)
+    } else if (placeDeviceMode) {
+      const relX = Math.round(Math.max(0, Math.min(x, activeFloorPlan.width)))
+      const relY = Math.round(Math.max(0, Math.min(y, activeFloorPlan.height)))
+      setPickerPosition({ x: relX, y: relY })
+      setShowDevicePicker(true)
+      setTempMarker({ x: relX, y: relY })
+    }
+  }
+
+  function handleDevicePickerSelect(device) {
+    if (!device) {
+      setShowDevicePicker(false)
+      setTempMarker(null)
+      return
+    }
+
+    const { x, y } = pickerPosition
+    const restroom = findRestroomAtPoint(x, y)
+
+    saveDevicePosition(device.id, x, y)
+    if (restroom) {
+      floorPlanAPI.updateDevicePosition(device.id, x, y, restroom.restroomId)
+    } else {
+      floorPlanAPI.updateDevicePosition(device.id, x, y, null)
+    }
+
+    updateDevicePositionInData(device.id, x, y)
+    setShowDevicePicker(false)
+    setTempMarker(null)
+    setPlaceDeviceMode(false)
+  }
+
+  function cancelInteraction() {
+    setInteractionMode('view')
+    setSelectedDeviceForPlacement(null)
+    setDrawingRestroom(null)
+    setTempMarker(null)
+    setPlaceDeviceMode(false)
+    setShowDevicePicker(false)
+    setShowRestroomModal(false)
+    setPendingRestroomRect(null)
+  }
+
   /*
   |--------------------------------------------------------------------------
-  | Device drag handlers
+  | File upload handler
   |--------------------------------------------------------------------------
   */
-
-  function handleDeviceMouseDown(e, device) {
-    if (!editMode) return
-    e.preventDefault()
-    e.stopPropagation()
-    dragRef.current = {
-      active: true,
-      type: 'device',
-      startX: e.clientX,
-      startY: e.clientY,
-      startLeft: 0,
-      startTop: 0,
-      startWidth: 0,
-      startHeight: 0,
-      target: device,
-      startDeviceX: device.floorPlanPosX || 0,
-      startDeviceY: device.floorPlanPosY || 0,
-      lastX: 0,
-      lastY: 0,
-    }
-  }
-
-  function handlePanelDeviceMouseDown(e, device) {
-    if (!editMode) return
-    e.preventDefault()
-    e.stopPropagation()
-    dragRef.current = {
-      active: true,
-      type: 'device-from-panel',
-      startX: e.clientX,
-      startY: e.clientY,
-      startLeft: 0,
-      startTop: 0,
-      startWidth: 0,
-      startHeight: 0,
-      target: device,
-      startDeviceX: device.floorPlanPosX || 0,
-      startDeviceY: device.floorPlanPosY || 0,
-      lastX: 0,
-      lastY: 0,
-    }
-    setGhostPos({ x: e.clientX, y: e.clientY })
-  }
 
   /*
   |--------------------------------------------------------------------------
@@ -1553,7 +1748,7 @@ export default function SideMap() {
             posY: 50,
           })
           setFloorPlans((prev) => [data.floorPlan, ...prev])
-          setActiveFloorPlan(data.floorPlan)
+          setActiveFloorPlan({ ...data.floorPlan, scale: 1 })
           setUploadError(null)
         } catch (error) {
           console.error('Upload floor plan error:', error)
@@ -2501,20 +2696,32 @@ export default function SideMap() {
             ref={floorPlanRef}
             style={{
               position: 'absolute',
-              left: activeFloorPlan.posX,
-              top: activeFloorPlan.posY,
+              left: 0,
+              top: 0,
               width: activeFloorPlan.width,
               height: activeFloorPlan.height,
+              transform: `translate(${activeFloorPlan.posX}px, ${activeFloorPlan.posY}px) scale(${activeFloorPlan.scale || 1})`,
+              transformOrigin: '0 0',
               border: editMode ? '2px dashed #2563eb' : '2px solid rgba(255,255,255,0.6)',
               borderRadius: 8,
               overflow: 'hidden',
-              cursor: editMode ? 'move' : 'default',
+              cursor:
+                interactionMode === 'draw-restroom'
+                  ? 'crosshair'
+                  : interactionMode === 'place-device'
+                    ? 'copy'
+                    : editMode
+                      ? 'move'
+                      : 'grab',
               zIndex: 1000,
               boxShadow: editMode
                 ? '0 0 0 4px rgba(37,99,235,0.15)'
                 : '0 8px 30px rgba(15,23,42,0.25)',
             }}
-            onMouseDown={handlePlanMouseDown}
+            onMouseDown={handleCombinedMouseDown}
+            onMouseMove={handleFloorPlanMouseMove}
+            onMouseUp={handleFloorPlanMouseUp}
+            onClick={handleFloorPlanClick}
           >
             <img
               src={activeFloorPlan.imageData}
@@ -2541,6 +2748,180 @@ export default function SideMap() {
               />
             )}
 
+            {/* Drawn restrooms */}
+            <svg
+              viewBox={`0 0 ${activeFloorPlan.width} ${activeFloorPlan.height}`}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 1001,
+              }}
+            >
+              {drawnRestrooms.map((room) => (
+                <rect
+                  key={room.id}
+                  x={room.x}
+                  y={room.y}
+                  width={room.width}
+                  height={room.height}
+                  fill="rgba(34, 197, 94, 0.15)"
+                  stroke="#22c55e"
+                  strokeWidth="2"
+                  strokeDasharray="6 3"
+                />
+              ))}
+              {drawingRestroom && (
+                <rect
+                  x={Math.min(drawingRestroom.startX, drawingRestroom.endX)}
+                  y={Math.min(drawingRestroom.startY, drawingRestroom.endY)}
+                  width={Math.abs(drawingRestroom.endX - drawingRestroom.startX)}
+                  height={Math.abs(drawingRestroom.endY - drawingRestroom.startY)}
+                  fill="rgba(37, 99, 235, 0.1)"
+                  stroke="#2563eb"
+                  strokeWidth="2"
+                  strokeDasharray="4 2"
+                />
+              )}
+            </svg>
+
+            {/* Temp marker for device placement */}
+            {tempMarker && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: tempMarker.x,
+                  top: tempMarker.y,
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 1003,
+                  pointerEvents: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: '#f59e0b',
+                    border: '3px solid #fff',
+                    boxShadow: '0 3px 12px rgba(15,23,42,0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 8,
+                    fontWeight: 700,
+                  }}
+                >
+                  NEW
+                </div>
+              </div>
+            )}
+
+            {/* Device picker popup */}
+            {showDevicePicker && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: Math.min(pickerPosition.x, activeFloorPlan.width - 200),
+                  top: Math.min(pickerPosition.y + 10, activeFloorPlan.height - 150),
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  boxShadow: '0 8px 30px rgba(15,23,42,0.15)',
+                  zIndex: 1004,
+                  padding: 8,
+                  minWidth: 180,
+                  maxHeight: 150,
+                  overflowY: 'auto',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#334155',
+                    marginBottom: 6,
+                    padding: '2px 4px',
+                  }}
+                >
+                  Select Device
+                </div>
+                {floorDevices.length === 0 ? (
+                  <div style={{ fontSize: 10, color: '#94a3b8', padding: '4px' }}>No devices available</div>
+                ) : (
+                  floorDevices.map((device) => (
+                    <div
+                      key={device.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleDevicePickerSelect(device)
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 8px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        background: '#f8fafc',
+                        marginBottom: 2,
+                        border: '1px solid transparent',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#eff6ff'
+                        e.currentTarget.style.borderColor = '#2563eb'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f8fafc'
+                        e.currentTarget.style.borderColor = 'transparent'
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: '#10b981',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#0f172a' }}>
+                          {device.badgeId || device.id}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                          {device.restroomName || '--'}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleDevicePickerSelect(null)
+                  }}
+                  style={{
+                    marginTop: 4,
+                    padding: '4px 8px',
+                    fontSize: 9,
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    borderRadius: 4,
+                  }}
+                >
+                  Cancel
+                </div>
+              </div>
+            )}
+
             {/* Resize handle */}
             {editMode && (
               <div
@@ -2565,6 +2946,7 @@ export default function SideMap() {
               const dx = device.floorPlanPosX ?? 50
               const dy = device.floorPlanPosY ?? 50
               const color = getHeatColor(device.score || 0)
+              const isSelected = selectedDeviceForPlacement?.id === device.id
 
               return (
                 <div
@@ -2574,11 +2956,19 @@ export default function SideMap() {
                     left: dx,
                     top: dy,
                     transform: 'translate(-50%, -50%)',
-                    cursor: editMode ? 'move' : 'pointer',
+                    cursor:
+                      interactionMode === 'place-device'
+                        ? 'pointer'
+                        : 'pointer',
                     zIndex: 1001,
+                    outline: isSelected ? '3px solid #2563eb' : 'none',
+                    borderRadius: '50%',
                   }}
-                  onMouseDown={(e) => handleDeviceMouseDown(e, device)}
-                  onClick={() => {
+                  onClick={(e) => {
+                    if (interactionMode === 'place-device') {
+                      e.stopPropagation()
+                      return
+                    }
                     if (!editMode) {
                       setSelectedRestroom({
                         ...device,
@@ -2594,7 +2984,7 @@ export default function SideMap() {
                       width: 32,
                       height: 32,
                       borderRadius: '50%',
-                      background: color,
+                      background: isSelected ? '#2563eb' : color,
                       border: '3px solid #fff',
                       boxShadow: '0 3px 12px rgba(15,23,42,0.35)',
                       display: 'flex',
@@ -3675,7 +4065,7 @@ export default function SideMap() {
             }}
           >
             {label}
-          </span>
+          </span> 
 
           <span
             style={{
@@ -3782,29 +4172,167 @@ export default function SideMap() {
 
   return (
     <div className="page">
-      {ghostPos && dragRef.current.target && (
+      {/* Restroom name modal */}
+      {showRestroomModal && (
         <div
           style={{
             position: 'fixed',
-            left: ghostPos.x - 16,
-            top: ghostPos.y - 16,
-            width: 32,
-            height: 32,
-            borderRadius: '50%',
-            background: getHeatColor(0),
-            border: '3px solid #fff',
-            boxShadow: '0 3px 12px rgba(15,23,42,0.35)',
-            pointerEvents: 'none',
-            zIndex: 9999,
+            inset: 0,
+            background: 'rgba(15,23,42,0.5)',
+            zIndex: 10000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowRestroomModal(false)
+              setPendingRestroomRect(null)
+              setInteractionMode('view')
+            }
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              padding: 24,
+              borderRadius: 16,
+              boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+              width: 360,
+              maxWidth: '90vw',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                margin: '0 0 8px',
+                fontSize: 16,
+                fontWeight: 800,
+                color: '#0f172a',
+              }}
+            >
+              Name This Restroom
+            </h3>
+            <p
+              style={{
+                margin: '0 0 16px',
+                fontSize: 11,
+                color: '#64748b',
+              }}
+            >
+              Enter a name for the restroom you just drew on the floor plan.
+            </p>
+            <input
+              autoFocus
+              value={newRestroomName}
+              onChange={(e) => setNewRestroomName(e.target.value)}
+              placeholder="e.g. Restroom 1"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateRestroom(newRestroomName)
+                  setNewRestroomName('')
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                fontSize: 13,
+                outline: 'none',
+                marginBottom: 12,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRestroomModal(false)
+                  setPendingRestroomRect(null)
+                  setInteractionMode('view')
+                  setNewRestroomName('')
+                }}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  color: '#475569',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleCreateRestroom(newRestroomName)
+                  setNewRestroomName('')
+                }}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #2563eb',
+                  background: '#2563eb',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Save Restroom
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interaction mode banner */}
+      {(interactionMode === 'draw-restroom' || interactionMode === 'place-device') && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: '#0f172a',
             color: '#fff',
-            fontSize: 9,
+            padding: '10px 20px',
+            borderRadius: 12,
+            boxShadow: '0 10px 40px rgba(15,23,42,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12,
             fontWeight: 700,
           }}
         >
-          {dragRef.current.target.badgeId?.slice(-2) || '??'}
+          <span>
+            {interactionMode === 'draw-restroom'
+              ? 'Click and drag on the floor plan to draw a restroom'
+              : selectedDeviceForPlacement
+                ? `Click on the floor plan to place ${selectedDeviceForPlacement.badgeId || selectedDeviceForPlacement.id}`
+                : 'Click on the floor plan to select a device location'}
+          </span>
+          <button
+            type="button"
+            onClick={cancelInteraction}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid rgba(255,255,255,0.3)',
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
 
@@ -3816,7 +4344,7 @@ export default function SideMap() {
           UNIFIED MAP TOOLBAR
       ================================================================= */}
 
-      <div
+      {/* <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -3934,7 +4462,7 @@ export default function SideMap() {
             ? `Plan: ${activeFloorPlan.name}`
             : 'No floor plan loaded'}
         </div>
-      </div>
+      </div> */}
 
       <input
         ref={fileInputRef}
@@ -4112,6 +4640,127 @@ export default function SideMap() {
         </div>
       </div>
 
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 18,
+          padding: 14,
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: 13,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>Floor</span>
+          <select
+            value={selectedFloorId}
+            onChange={(e) => setSelectedFloorId(e.target.value)}
+            style={{
+              minWidth: 170,
+              padding: '8px 12px',
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: 11,
+              outline: 'none',
+            }}
+          >
+            <option value="">All Floors</option>
+            {availableFloors.map((floor) => (
+              <option key={floor.id} value={floor.id}>
+                {floor.floorName}
+              </option>
+            ))}
+          </select>
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!selectedFloorId}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid #2563eb',
+                background: selectedFloorId ? '#2563eb' : '#94a3b8',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: selectedFloorId ? 'pointer' : 'not-allowed',
+                opacity: selectedFloorId ? 1 : 0.7,
+              }}
+            >
+              + Upload Floor Plan
+            </button>
+          )}
+
+          {uploadError && canEdit && (
+            <div
+              style={{
+                fontSize: 10,
+                color: '#ef4444',
+                background: '#fef2f2',
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: '1px solid #fecaca',
+              }}
+            >
+              {uploadError}
+            </div>
+          )}
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditMode((prev) => !prev)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: editMode ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                background: editMode ? '#fef2f2' : '#f8fafc',
+                color: editMode ? '#ef4444' : '#475569',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {editMode ? '✓ Done Editing' : '✎ Edit Layout'}
+            </button>
+          )}
+
+          {canEdit && activeFloorPlan && editMode && (
+            <button
+              type="button"
+              onClick={handleDeleteFloorPlan}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid #ef4444',
+                background: '#fff',
+                color: '#ef4444',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Delete Plan
+            </button>
+          )}
+        </div>
+
+        <div style={{ fontSize: 10, color: '#64748b' }}>
+          {activeFloorPlan
+            ? `Plan: ${activeFloorPlan.name}`
+            : 'No floor plan loaded'}
+        </div>
+      </div>
+
+
       {/* ================================================================
           SUMMARY CARDS
       ================================================================= */}
@@ -4200,7 +4849,7 @@ export default function SideMap() {
             'grid',
 
           gridTemplateColumns:
-            'minmax(0,1fr) 285px',
+            '200px 1fr 285px',
 
           gap: 18,
 
@@ -4208,6 +4857,381 @@ export default function SideMap() {
             'start',
         }}
       >
+
+        {/* ============================================================
+            TOOLS PANEL
+        ============================================================= */}
+
+        <div
+          style={{
+            background:
+              '#ffffff',
+
+            border:
+              '1px solid #e2e8f0',
+
+            borderRadius: 16,
+
+            padding: 14,
+
+            position:
+              'sticky',
+
+            top: 16,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+
+              fontWeight: 800,
+
+              color: '#0f172a',
+
+              marginBottom: 12,
+            }}
+          >
+            Tools
+          </div>
+
+          <div
+            style={{
+              display:
+                'flex',
+
+              flexDirection:
+                'column',
+
+              gap: 6,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (interactionMode === 'draw-restroom') {
+                  cancelInteraction()
+                } else {
+                  setInteractionMode('draw-restroom')
+                  setPlaceDeviceMode(false)
+                  setSelectedDeviceForPlacement(null)
+                  setShowDevicePicker(false)
+                }
+              }}
+              style={{
+                display: 'flex',
+
+                alignItems:
+                  'center',
+
+                gap: 8,
+
+                padding: '10px 12px',
+
+                borderRadius: 10,
+
+                border:
+                  interactionMode === 'draw-restroom'
+                    ? '1px solid #2563eb'
+                    : '1px solid #e2e8f0',
+
+                background:
+                  interactionMode === 'draw-restroom'
+                    ? '#eff6ff'
+                    : '#f8fafc',
+
+                color:
+                  interactionMode === 'draw-restroom'
+                    ? '#2563eb'
+                    : '#334155',
+
+                fontSize: 11,
+
+                fontWeight: 700,
+
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  background: interactionMode === 'draw-restroom' ? '#2563eb' : '#e2e8f0',
+                  color: interactionMode === 'draw-restroom' ? '#fff' : '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                +
+              </span>
+              Restroom
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (placeDeviceMode) {
+                  cancelInteraction()
+                } else {
+                  setPlaceDeviceMode(true)
+                  setInteractionMode('place-device')
+                  setSelectedDeviceForPlacement(null)
+                  setShowDevicePicker(false)
+                }
+              }}
+              style={{
+                display: 'flex',
+
+                alignItems:
+                  'center',
+
+                gap: 8,
+
+                padding: '10px 12px',
+
+                borderRadius: 10,
+
+                border:
+                  placeDeviceMode
+                    ? '1px solid #2563eb'
+                    : '1px solid #e2e8f0',
+
+                background:
+                  placeDeviceMode
+                    ? '#eff6ff'
+                    : '#f8fafc',
+
+                color:
+                  placeDeviceMode
+                    ? '#2563eb'
+                    : '#334155',
+
+                fontSize: 11,
+
+                fontWeight: 700,
+
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  background: placeDeviceMode ? '#2563eb' : '#e2e8f0',
+                  color: placeDeviceMode ? '#fff' : '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                ◆
+              </span>
+              Place Device
+            </button>
+          </div>
+
+          {/* Restroom list */}
+          <div
+            style={{
+              marginTop: 16,
+
+              paddingTop: 12,
+
+              borderTop:
+                '1px solid #e2e8f0',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+
+                fontWeight: 700,
+
+                color: '#64748b',
+
+                marginBottom: 8,
+              }}
+            >
+              Drawn Restrooms
+            </div>
+
+            {drawnRestrooms.length === 0 ? (
+              <div
+                style={{
+                  fontSize: 10,
+
+                  color: '#94a3b8',
+
+                  textAlign: 'center',
+
+                  padding: '8px 0',
+                }}
+              >
+                None yet
+              </div>
+            ) : (
+              <div
+                style={{
+                  display:
+                    'flex',
+
+                  flexDirection:
+                    'column',
+
+                  gap: 4,
+                }}
+              >
+                {drawnRestrooms.map((room) => (
+                  <div
+                    key={room.id}
+                    style={{
+                      display: 'flex',
+
+                      alignItems:
+                        'center',
+
+                      gap: 6,
+
+                      padding: '6px 8px',
+
+                      borderRadius: 6,
+
+                      background: '#f8fafc',
+
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 3,
+                        background: '#22c55e',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+
+                        fontWeight: 600,
+
+                        color: '#334155',
+
+                        flex: 1,
+
+                        overflow: 'hidden',
+
+                        textOverflow:
+                          'ellipsis',
+
+                        whiteSpace:
+                          'nowrap',
+                      }}
+                    >
+                      {room.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick legend */}
+          <div
+            style={{
+              marginTop: 12,
+
+              paddingTop: 10,
+
+              borderTop:
+                '1px solid #e2e8f0',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+
+                fontWeight: 700,
+
+                color: '#64748b',
+
+                marginBottom: 6,
+              }}
+            >
+              Legend
+            </div>
+            <div
+              style={{
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap: 4,
+              }}
+            >
+              <div
+                style={{
+                  display:
+                    'flex',
+
+                  alignItems:
+                    'center',
+
+                  gap: 6,
+
+                  fontSize: 9,
+
+                  color: '#475569',
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 3,
+                    background: 'rgba(34,197,94,0.3)',
+                    border: '1px solid #22c55e',
+                  }}
+                />
+                Restroom area
+              </div>
+              <div
+                style={{
+                  display:
+                    'flex',
+
+                  alignItems:
+                    'center',
+
+                  gap: 6,
+
+                  fontSize: 9,
+
+                  color: '#475569',
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: getHeatColor(0),
+                  }}
+                />
+                Device
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* ============================================================
             MAP
@@ -4659,32 +5683,93 @@ export default function SideMap() {
           >
             <div
               style={{
-                fontSize: 11,
+                display:
+                  'flex',
 
-                fontWeight: 700,
+                alignItems:
+                  'center',
 
-                color: '#334155',
+                justifyContent:
+                  'space-between',
 
                 marginBottom: 10,
               }}
             >
-              Devices
-              {selectedFloorId && (
-                <span
-                  style={{
-                    marginLeft: 6,
+              <div
+                style={{
+                  fontSize: 11,
 
+                  fontWeight: 700,
+
+                  color: '#334155',
+                }}
+              >
+                Devices
+                {selectedFloorId && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+
+                      fontSize: 9,
+
+                      color: '#94a3b8',
+
+                      fontWeight: 600,
+                    }}
+                  >
+                    {floorDevices.length} on this floor
+                  </span>
+                )}
+              </div>
+
+              {interactionMode === 'place-device' && (
+                <button
+                  type="button"
+                  onClick={cancelInteraction}
+                  style={{
                     fontSize: 9,
 
-                    color: '#94a3b8',
+                    color: '#ef4444',
 
-                    fontWeight: 600,
+                    fontWeight: 700,
+
+                    cursor: 'pointer',
+
+                    background: 'none',
+
+                    border: 'none',
                   }}
                 >
-                  {floorDevices.length} on this floor
-                </span>
+                  Cancel
+                </button>
               )}
             </div>
+
+            {interactionMode === 'place-device' && (
+              <div
+                style={{
+                  fontSize: 9,
+
+                  color: '#2563eb',
+
+                  fontWeight: 600,
+
+                  marginBottom: 8,
+
+                  padding: '6px 8px',
+
+                  background: '#eff6ff',
+
+                  borderRadius: 6,
+
+                  border: '1px solid #dbeafe',
+                }}
+              >
+                {selectedDeviceForPlacement
+                  ? `Selected: ${selectedDeviceForPlacement.badgeId || selectedDeviceForPlacement.id}. Click floor plan to place.`
+                  : 'Select a device below, then click floor plan to place it.'}
+              </div>
+            )}
 
             <div
               style={{
@@ -4732,13 +5817,17 @@ export default function SideMap() {
                   const hasPosition =
                     device.floorPlanPosX != null &&
                     device.floorPlanPosY != null
+                  const isSelected =
+                    selectedDeviceForPlacement?.id === device.id
 
                   return (
                     <div
                       key={device.id}
-                      onMouseDown={(e) =>
-                        handlePanelDeviceMouseDown(e, device)
-                      }
+                      onClick={() => {
+                        if (interactionMode === 'place-device') {
+                          handleDeviceSelectForPlacement(device)
+                        }
+                      }}
                       style={{
                         display: 'flex',
 
@@ -4750,19 +5839,23 @@ export default function SideMap() {
 
                         borderRadius: 8,
 
-                        border: hasPosition
-                          ? '1px solid #e2e8f0'
-                          : '1px dashed #cbd5e1',
+                        border: isSelected
+                          ? '1px solid #2563eb'
+                          : hasPosition
+                            ? '1px solid #e2e8f0'
+                            : '1px dashed #cbd5e1',
 
-                        background: hasPosition
-                          ? '#f8fafc'
-                          : '#fffbeb',
+                        background: isSelected
+                          ? '#eff6ff'
+                          : hasPosition
+                            ? '#f8fafc'
+                            : '#fffbeb',
 
-                        cursor: editMode
-                          ? 'grab'
-                          : 'default',
+                        cursor: interactionMode === 'place-device' ? 'pointer' : 'default',
 
                         userSelect: 'none',
+
+                        outline: isSelected ? 'none' : 'none',
                       }}
                     >
                       <span
@@ -4820,7 +5913,22 @@ export default function SideMap() {
                           {device.restroomName || '--'}
                         </div>
                       </div>
-                      {!hasPosition && editMode && (
+                      {!hasPosition && interactionMode === 'place-device' && (
+                        <span
+                          style={{
+                            fontSize: 8,
+
+                            color: '#2563eb',
+
+                            fontWeight: 700,
+
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Place
+                        </span>
+                      )}
+                      {!hasPosition && editMode && !interactionMode === 'place-device' && (
                         <span
                           style={{
                             fontSize: 8,
@@ -4841,7 +5949,7 @@ export default function SideMap() {
               )}
             </div>
 
-            {canEdit && selectedFloorId && floorDevices.length > 0 && !editMode && (
+            {canEdit && selectedFloorId && floorDevices.length > 0 && interactionMode !== 'place-device' && !editMode && (
               <div
                 style={{
                   marginTop: 8,
@@ -4853,7 +5961,7 @@ export default function SideMap() {
                   textAlign: 'center',
                 }}
               >
-                Enable Edit Layout to place devices
+                Use Place Device or Edit Layout to position devices
               </div>
             )}
           </div>
