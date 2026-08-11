@@ -783,7 +783,16 @@ export default function SideMap() {
   const [uploadError, setUploadError] =
     useState(null)
 
+  const [ghostPos, setGhostPos] =
+    useState(null)
+
   const fileInputRef =
+    useRef(null)
+
+  const mapContainerRef =
+    useRef(null)
+
+  const floorPlanRef =
     useRef(null)
 
   const dragRef =
@@ -1350,6 +1359,12 @@ export default function SideMap() {
         state.lastX = dx
         state.lastY = dy
         updateDevicePositionInData(state.target.id, newX, newY)
+      } else if (state.type === 'device-from-panel') {
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        state.lastX = dx
+        state.lastY = dy
+        setGhostPos({ x: e.clientX, y: e.clientY })
       }
     }
 
@@ -1363,6 +1378,19 @@ export default function SideMap() {
         const newX = state.startDeviceX + (state.lastX || 0)
         const newY = state.startDeviceY + (state.lastY || 0)
         saveDevicePosition(state.target.id, newX, newY)
+      } else if (state.type === 'device-from-panel') {
+        const floorPlanEl = floorPlanRef.current
+        if (floorPlanEl && state.target) {
+          const rect = floorPlanEl.getBoundingClientRect()
+          const finalX = (state.startX + (state.lastX || 0)) - rect.left
+          const finalY = (state.startY + (state.lastY || 0)) - rect.top
+          const relX = Math.round(Math.max(0, finalX))
+          const relY = Math.round(Math.max(0, finalY))
+          if (relX <= rect.width && relY <= rect.height) {
+            saveDevicePosition(state.target.id, relX, relY)
+            updateDevicePositionInData(state.target.id, relX, relY)
+          }
+        }
       }
 
       dragRef.current = {
@@ -1380,6 +1408,7 @@ export default function SideMap() {
         lastX: 0,
         lastY: 0,
       }
+      setGhostPos(null)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -1456,6 +1485,28 @@ export default function SideMap() {
       lastX: 0,
       lastY: 0,
     }
+  }
+
+  function handlePanelDeviceMouseDown(e, device) {
+    if (!editMode) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = {
+      active: true,
+      type: 'device-from-panel',
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: 0,
+      startTop: 0,
+      startWidth: 0,
+      startHeight: 0,
+      target: device,
+      startDeviceX: device.floorPlanPosX || 0,
+      startDeviceY: device.floorPlanPosY || 0,
+      lastX: 0,
+      lastY: 0,
+    }
+    setGhostPos({ x: e.clientX, y: e.clientY })
   }
 
   /*
@@ -2324,6 +2375,7 @@ export default function SideMap() {
           height: '100%',
           width: '100%',
         }}
+        ref={mapContainerRef}
       >
         <MapContainer
           center={DEFAULT_CENTER}
@@ -2446,6 +2498,7 @@ export default function SideMap() {
         {/* Floor plan overlay */}
         {activeFloorPlan && (
           <div
+            ref={floorPlanRef}
             style={{
               position: 'absolute',
               left: activeFloorPlan.posX,
@@ -3729,6 +3782,31 @@ export default function SideMap() {
 
   return (
     <div className="page">
+      {ghostPos && dragRef.current.target && (
+        <div
+          style={{
+            position: 'fixed',
+            left: ghostPos.x - 16,
+            top: ghostPos.y - 16,
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: getHeatColor(0),
+            border: '3px solid #fff',
+            boxShadow: '0 3px 12px rgba(15,23,42,0.35)',
+            pointerEvents: 'none',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: 9,
+            fontWeight: 700,
+          }}
+        >
+          {dragRef.current.target.badgeId?.slice(-2) || '??'}
+        </div>
+      )}
 
       {/* ================================================================
           HEADER
@@ -4565,6 +4643,219 @@ export default function SideMap() {
                 color="#ef4444"
               />
             </div>
+          </div>
+
+          {/* Device placement panel */}
+
+          <div
+            style={{
+              marginTop: 15,
+
+              paddingTop: 14,
+
+              borderTop:
+                '1px solid #e2e8f0',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+
+                fontWeight: 700,
+
+                color: '#334155',
+
+                marginBottom: 10,
+              }}
+            >
+              Devices
+              {selectedFloorId && (
+                <span
+                  style={{
+                    marginLeft: 6,
+
+                    fontSize: 9,
+
+                    color: '#94a3b8',
+
+                    fontWeight: 600,
+                  }}
+                >
+                  {floorDevices.length} on this floor
+                </span>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+
+                flexDirection: 'column',
+
+                gap: 6,
+
+                maxHeight: 220,
+
+                overflowY: 'auto',
+              }}
+            >
+              {!selectedFloorId ? (
+                <div
+                  style={{
+                    fontSize: 10,
+
+                    color: '#94a3b8',
+
+                    textAlign: 'center',
+
+                    padding: '8px 0',
+                  }}
+                >
+                  Select a floor to view devices
+                </div>
+              ) : floorDevices.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 10,
+
+                    color: '#94a3b8',
+
+                    textAlign: 'center',
+
+                    padding: '8px 0',
+                  }}
+                >
+                  No devices on this floor
+                </div>
+              ) : (
+                floorDevices.map((device) => {
+                  const hasPosition =
+                    device.floorPlanPosX != null &&
+                    device.floorPlanPosY != null
+
+                  return (
+                    <div
+                      key={device.id}
+                      onMouseDown={(e) =>
+                        handlePanelDeviceMouseDown(e, device)
+                      }
+                      style={{
+                        display: 'flex',
+
+                        alignItems: 'center',
+
+                        gap: 8,
+
+                        padding: '7px 9px',
+
+                        borderRadius: 8,
+
+                        border: hasPosition
+                          ? '1px solid #e2e8f0'
+                          : '1px dashed #cbd5e1',
+
+                        background: hasPosition
+                          ? '#f8fafc'
+                          : '#fffbeb',
+
+                        cursor: editMode
+                          ? 'grab'
+                          : 'default',
+
+                        userSelect: 'none',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+
+                          height: 8,
+
+                          borderRadius: '50%',
+
+                          background: hasPosition
+                            ? '#10b981'
+                            : '#f59e0b',
+
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div
+                        style={{
+                          flex: 1,
+
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 10,
+
+                            fontWeight: 700,
+
+                            color: '#0f172a',
+
+                            overflow: 'hidden',
+
+                            textOverflow: 'ellipsis',
+
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {device.badgeId || device.id}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 9,
+
+                            color: '#94a3b8',
+
+                            overflow: 'hidden',
+
+                            textOverflow: 'ellipsis',
+
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {device.restroomName || '--'}
+                        </div>
+                      </div>
+                      {!hasPosition && editMode && (
+                        <span
+                          style={{
+                            fontSize: 8,
+
+                            color: '#f59e0b',
+
+                            fontWeight: 700,
+
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Place
+                        </span>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {canEdit && selectedFloorId && floorDevices.length > 0 && !editMode && (
+              <div
+                style={{
+                  marginTop: 8,
+
+                  fontSize: 9,
+
+                  color: '#64748b',
+
+                  textAlign: 'center',
+                }}
+              >
+                Enable Edit Layout to place devices
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -368,6 +368,15 @@ async function getHeatMapData(req, res) {
         badgeId: room.devices?.[0]?.badgeId || null,
         battery: room.devices?.[0]?.batteryLevel || null,
         alerts: room.alerts.length,
+        devices: room.devices?.map((d) => ({
+          id: d.id,
+          badgeId: d.badgeId,
+          restroomId: d.restroomId,
+          batteryLevel: d.batteryLevel,
+          healthStatus: d.healthStatus,
+          floorPlanPosX: d.floorPlanPosX,
+          floorPlanPosY: d.floorPlanPosY,
+        })) || [],
       }
     })
 
