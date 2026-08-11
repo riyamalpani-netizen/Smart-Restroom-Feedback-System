@@ -36,7 +36,7 @@ export default function App() {
         <Route path="restrooms" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/restrooms"><RestroomManagement /></ProtectedRoute>} />
         <Route path="alerts" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/alerts"><AlertManagement /></ProtectedRoute>} />
         <Route path="disaster" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/disaster"><DisasterManagement /></ProtectedRoute>} />
-        <Route path="users" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/users"><UserManagement /></ProtectedRoute>} />
+        <Route path="users" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/users"><UserManagement /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/settings"><Settings /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute path="/profile"><Profile /></ProtectedRoute>} />
       </Route>

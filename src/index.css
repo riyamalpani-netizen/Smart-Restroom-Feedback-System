@@ -1113,9 +1113,11 @@ label {
 }
 
 .login-card__logo {
-  font-size: 48px;
+  width: 180px;
+  height: auto;
   display: block;
-  margin-bottom: 12px;
+  margin: 0 auto 16px;
+  object-fit: contain;
 }
 
 .login-card__header h1 {

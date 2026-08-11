@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { DEMO_USERS } from '../utils/constants'
+import atlasLogo from '../assets/Solutions_logos_AtlasIED_Logo_2C.jpg'
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth()
@@ -28,7 +29,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-card__header">
-          <span className="login-card__logo" aria-hidden="true">🚻</span>
+          <img src={atlasLogo} alt="AtlasIED Logo" className="login-card__logo" />
           <h1>AtlasIED Smart Restroom Feedback System</h1>
           <p>Sign in to access the portal</p>
         </div>
@@ -65,7 +66,7 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="login-card__demo">
+        {/* <div className="login-card__demo">
           <p>Demo accounts:</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
             {DEMO_USERS.map((user) => (
@@ -95,7 +96,7 @@ export default function Login() {
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   )
