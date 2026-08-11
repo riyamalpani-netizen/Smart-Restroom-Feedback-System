@@ -41,8 +41,6 @@ export default function DeviceManagement() {
   return (
     <div className="page">
       <PageHeader
-        title="Device Management"
-        subtitle="Monitor badge devices, battery, and connectivity"
         action={canEdit ? <button type="button" className="btn btn--primary">Map New Badge</button> : null}
       />
 

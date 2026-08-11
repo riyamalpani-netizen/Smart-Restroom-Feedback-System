@@ -56,8 +56,6 @@ export default function DisasterManagement() {
   return (
     <div className="page">
       <PageHeader
-        title="Disaster Management"
-        subtitle="Monitor system health and incident recovery"
         action={canEdit ? <button type="button" className="btn btn--danger">Manual Closure</button> : null}
       />
 

@@ -63,8 +63,6 @@ export default function Reports() {
   return (
     <div className="page">
       <PageHeader
-        title="Reports"
-        subtitle="Generate and export feedback and device reports"
         action={
           <div className="btn-group">
             <button type="button" className="btn btn--secondary">Export CSV</button>

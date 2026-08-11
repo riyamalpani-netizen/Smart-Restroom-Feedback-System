@@ -399,7 +399,6 @@
 //   )
 // }
 import { useEffect, useMemo, useCallback, useRef, useState } from 'react'
-import PageHeader from '../components/common/PageHeader'
 import { io } from 'socket.io-client'
 
 import {
@@ -3734,11 +3733,6 @@ export default function SideMap() {
       {/* ================================================================
           HEADER
       ================================================================= */}
-
-      <PageHeader
-        title="Floor Map"
-        subtitle="Interactive restroom monitoring, heatmap analytics and real-time site status"
-      />
 
       {/* ================================================================
           UNIFIED MAP TOOLBAR

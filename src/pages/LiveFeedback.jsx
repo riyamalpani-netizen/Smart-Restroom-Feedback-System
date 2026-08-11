@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import Pagination from '../components/common/Pagination'
 import api from '../services/api'
@@ -48,11 +47,6 @@ export default function LiveFeedback() {
 
   return (
     <div className="page">
-      <PageHeader
-        title="Live Feedback"
-        subtitle="Real-time feedback from restroom devices"
-      />
-
       <div className="toolbar">
         <SearchBar
           value={search}

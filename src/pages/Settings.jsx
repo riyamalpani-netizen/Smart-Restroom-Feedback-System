@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import PageHeader from '../components/common/PageHeader'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
@@ -78,11 +77,6 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <PageHeader
-        title="Settings"
-        subtitle="Configure office, alerts, and notification preferences"
-      />
-
       {loading ? (
         <div className="loader-wrap"><div className="loader" /></div>
       ) : canEdit ? (

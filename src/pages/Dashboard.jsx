@@ -5,7 +5,6 @@ import RestroomMap from '../components/RestroomMap'
 import AlertWidget from '../components/AlertWidget'
 import DeviceHealthCard from '../components/DeviceHealthCard'
 import BatterySummary from '../components/BatterySummary'
-import PageHeader from '../components/common/PageHeader'
 import { formatDateTime } from '../utils/formatters'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
@@ -47,11 +46,6 @@ export default function Dashboard() {
 
   return (
     <div className="page dashboard-page">
-      <PageHeader
-        title="Dashboard"
-        subtitle="Overview of restroom feedback and device health"
-      />
-
       <DashboardCards stats={dashboardData.stats} />
 
       <div className="dashboard-grid">

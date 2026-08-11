@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
@@ -57,11 +56,6 @@ export default function AlertManagement() {
 
   return (
     <div className="page">
-      <PageHeader
-        title="Alert Management"
-        subtitle="Track, acknowledge, and resolve restroom alerts"
-      />
-
       <div className="card">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>

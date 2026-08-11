@@ -65,8 +65,6 @@ export default function UserManagement() {
   return (
     <div className="page">
       <PageHeader
-        title="User Management"
-        subtitle="Manage users, roles, and access"
         action={
           canEdit ? (
             <button type="button" className="btn btn--primary" onClick={() => setShowForm(!showForm)}>

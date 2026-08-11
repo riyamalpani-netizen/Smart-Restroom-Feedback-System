@@ -76,8 +76,6 @@ export default function RestroomManagement() {
   return (
     <div className="page">
       <PageHeader
-        title="Restroom Management"
-        subtitle="Add, edit, and manage restroom locations"
         action={
           canEdit ? (
             <button type="button" className="btn btn--primary" onClick={() => { setEditingId(null); setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' }); setShowForm(!showForm) }}>
