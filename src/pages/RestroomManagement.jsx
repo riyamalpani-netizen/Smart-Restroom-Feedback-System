@@ -6,6 +6,7 @@ import api from '../services/api'
 export default function RestroomManagement() {
   const [rooms, setRooms] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' })
   const [loading, setLoading] = useState(true)
 
@@ -26,13 +27,35 @@ export default function RestroomManagement() {
     return () => { mounted = false }
   }, [])
 
-  async function handleAdd(e) {
+  function startEdit(room) {
+    setEditingId(room.id)
+    setForm({
+      name: room.name || '',
+      floorId: room.floorId || '',
+      organizationId: room.organizationId || '',
+      gender: room.gender || '',
+      status: room.status || 'good',
+    })
+    setShowForm(true)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' })
+    setShowForm(false)
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
     try {
-      const data = await api.post('/api/restrooms', form)
-      setRooms([...rooms, data.restroom])
-      setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' })
-      setShowForm(false)
+      if (editingId) {
+        const data = await api.put(`/api/restrooms/${editingId}`, form)
+        setRooms(rooms.map((r) => (r.id === editingId ? data.restroom : r)))
+      } else {
+        const data = await api.post('/api/restrooms', form)
+        setRooms([...rooms, data.restroom])
+      }
+      cancelEdit()
     } catch (err) {
       alert(err.message)
     }
@@ -41,7 +64,7 @@ export default function RestroomManagement() {
   async function handleDelete(id) {
     try {
       await api.delete(`/api/restrooms/${id}`)
-      setRooms(rooms.filter((r) => r.id !== id))
+      setRooms((prev) => prev.filter((r) => r.id !== id))
     } catch (err) {
       alert(err.message)
     }
@@ -53,14 +76,14 @@ export default function RestroomManagement() {
         title="Restroom Management"
         subtitle="Add, edit, and manage restroom locations"
         action={
-          <button type="button" className="btn btn--primary" onClick={() => setShowForm(!showForm)}>
+          <button type="button" className="btn btn--primary" onClick={() => { setEditingId(null); setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' }); setShowForm(!showForm) }}>
             {showForm ? 'Cancel' : 'Add Restroom'}
           </button>
         }
       />
 
       {showForm && (
-        <form className="card form-grid" onSubmit={handleAdd}>
+        <form className="card form-grid" onSubmit={handleSubmit}>
           <label>
             Name
             <input
@@ -101,7 +124,12 @@ export default function RestroomManagement() {
               <option value="unisex">Unisex</option>
             </select>
           </label>
-          <button type="submit" className="btn btn--primary">Save Restroom</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn btn--primary">{editingId ? 'Update Restroom' : 'Save Restroom'}</button>
+            {editingId && (
+              <button type="button" className="btn btn--ghost" onClick={cancelEdit}>Cancel</button>
+            )}
+          </div>
         </form>
       )}
 
@@ -127,16 +155,16 @@ export default function RestroomManagement() {
                     <td>{room.floor?.floorName || room.floorId}</td>
                     <td>{room.gender || '—'}</td>
                     <td><StatusBadge status={room.status || 'good'} variant="restroom" /></td>
-                    <td>
-                      <button type="button" className="btn btn--ghost btn--sm">Edit</button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm btn--danger"
-                        onClick={() => handleDelete(room.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
+                     <td>
+                       <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEdit(room)}>Edit</button>
+                       <button
+                         type="button"
+                         className="btn btn--ghost btn--sm btn--danger"
+                         onClick={() => handleDelete(room.id)}
+                       >
+                         Delete
+                       </button>
+                     </td>
                   </tr>
                 ))}
                 {rooms.length === 0 && (

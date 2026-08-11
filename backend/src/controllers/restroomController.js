@@ -89,7 +89,7 @@ async function createRestroom(req, res) {
 async function updateRestroom(req, res) {
   try {
     const { id } = req.params;
-    const { name, gender, status } = req.body;
+    const { name, gender, status, floorId, organizationId } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -103,7 +103,7 @@ async function updateRestroom(req, res) {
 
     const restroom = await prisma.restroom.update({
       where: { id },
-      data: { name, gender, status },
+      data: { name, gender, status, floorId, organizationId },
     });
 
     res.status(200).json({ message: "Restroom updated successfully", restroom });

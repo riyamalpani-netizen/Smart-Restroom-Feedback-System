@@ -357,6 +357,8 @@ async function getHeatMapData(req, res) {
         location: room.floor.location.city,
         x,
         y,
+        latitude: 28.6 + Math.random() * 0.05,
+        longitude: 77.2 + Math.random() * 0.05,
         score,
         total: totalFeedback,
         status: room.status,
@@ -366,19 +368,6 @@ async function getHeatMapData(req, res) {
         alerts: room.alerts.length,
       }
     })
-
-    const markers = heatMapData.map((room) => ({
-      _id: room.id,
-      restroomId: room.id,
-      x: room.x,
-      y: room.y,
-    }))
-
-    const data = heatMapData.map((room) => ({
-      restroom_id: room.id,
-      score: room.score,
-      total: room.total,
-    }))
 
     const maxScore = Math.max(...heatMapData.map((item) => item.score || 0), 1)
 
@@ -393,16 +382,15 @@ async function getHeatMapData(req, res) {
     const siteData = sites.map((site) => ({
       id: site.id,
       name: `${site.city} - ${site.officeName}`,
-      lat: 28.6 + Math.random() * 0.05,
-      lng: 77.2 + Math.random() * 0.05,
+      lat: site.floors.reduce((acc, floor) => acc + floor.restrooms.length, 0),
+      lng: 0,
       status: "operational",
       restrooms: site.floors.reduce((acc, floor) => acc + floor.restrooms.length, 0),
     }))
 
     res.status(200).json({
       message: "Heat map data fetched successfully",
-      data,
-      markers,
+      restrooms: heatMapData,
       maxScore,
       sites: siteData,
       period: period || "today",
