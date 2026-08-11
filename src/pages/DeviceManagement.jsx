@@ -4,12 +4,15 @@ import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
 
 export default function DeviceManagement() {
+  const { user } = useAuth()
   const [devices, setDevices] = useState([])
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -40,7 +43,7 @@ export default function DeviceManagement() {
       <PageHeader
         title="Device Management"
         subtitle="Monitor badge devices, battery, and connectivity"
-        action={<button type="button" className="btn btn--primary">Map New Badge</button>}
+        action={canEdit ? <button type="button" className="btn btn--primary">Map New Badge</button> : null}
       />
 
       <SearchBar
@@ -116,8 +119,12 @@ export default function DeviceManagement() {
               <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
             </dl>
             <div className="btn-group">
-              <button type="button" className="btn btn--secondary">Replace Badge</button>
-              <button type="button" className="btn btn--secondary">Remap</button>
+              {canEdit ? (
+                <>
+                  <button type="button" className="btn btn--secondary">Replace Badge</button>
+                  <button type="button" className="btn btn--secondary">Remap</button>
+                </>
+              ) : null}
             </div>
           </aside>
         )}

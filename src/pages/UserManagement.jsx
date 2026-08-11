@@ -3,12 +3,15 @@ import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import api from '../services/api'
 import { ROLE_LABELS } from '../utils/constants'
+import { useAuth } from '../hooks/useAuth'
 
 export default function UserManagement() {
+  const { user } = useAuth()
   const [users, setUsers] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'viewer', organizationId: '' })
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -65,13 +68,15 @@ export default function UserManagement() {
         title="User Management"
         subtitle="Manage users, roles, and access"
         action={
-          <button type="button" className="btn btn--primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : 'Add User'}
-          </button>
+          canEdit ? (
+            <button type="button" className="btn btn--primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? 'Cancel' : 'Add User'}
+            </button>
+          ) : null
         }
       />
 
-      {showForm && (
+      {canEdit && showForm && (
         <form className="card form-grid" onSubmit={handleAdd}>
           <label>
             Name
@@ -153,24 +158,28 @@ export default function UserManagement() {
                         {user.active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td>
-                      <button type="button" className="btn btn--ghost btn--sm">Edit</button>
-                      <button type="button" className="btn btn--ghost btn--sm">Reset Password</button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => toggleActive(user.id)}
-                      >
-                        {user.active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm btn--danger"
-                        onClick={() => handleDelete(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
+                     <td>
+                       {canEdit ? (
+                         <>
+                           <button type="button" className="btn btn--ghost btn--sm">Edit</button>
+                           <button type="button" className="btn btn--ghost btn--sm">Reset Password</button>
+                           <button
+                             type="button"
+                             className="btn btn--ghost btn--sm"
+                             onClick={() => toggleActive(user.id)}
+                           >
+                             {user.active ? 'Deactivate' : 'Activate'}
+                           </button>
+                           <button
+                             type="button"
+                             className="btn btn--ghost btn--sm btn--danger"
+                             onClick={() => handleDelete(user.id)}
+                           >
+                             Delete
+                           </button>
+                         </>
+                       ) : '—'}
+                     </td>
                   </tr>
                 ))}
                 {users.length === 0 && (

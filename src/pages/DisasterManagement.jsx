@@ -3,6 +3,7 @@ import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
 
 function SystemStatus({ label, status }) {
   return (
@@ -17,8 +18,10 @@ function SystemStatus({ label, status }) {
 }
 
 export default function DisasterManagement() {
+  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -55,7 +58,7 @@ export default function DisasterManagement() {
       <PageHeader
         title="Disaster Management"
         subtitle="Monitor system health and incident recovery"
-        action={<button type="button" className="btn btn--danger">Manual Closure</button>}
+        action={canEdit ? <button type="button" className="btn btn--danger">Manual Closure</button> : null}
       />
 
       {loading ? (

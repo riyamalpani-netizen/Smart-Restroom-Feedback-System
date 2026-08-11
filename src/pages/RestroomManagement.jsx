@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
 
 export default function RestroomManagement() {
+  const { user } = useAuth()
   const [rooms, setRooms] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' })
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -76,13 +79,15 @@ export default function RestroomManagement() {
         title="Restroom Management"
         subtitle="Add, edit, and manage restroom locations"
         action={
-          <button type="button" className="btn btn--primary" onClick={() => { setEditingId(null); setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' }); setShowForm(!showForm) }}>
-            {showForm ? 'Cancel' : 'Add Restroom'}
-          </button>
+          canEdit ? (
+            <button type="button" className="btn btn--primary" onClick={() => { setEditingId(null); setForm({ name: '', floorId: '', organizationId: '', gender: '', status: 'good' }); setShowForm(!showForm) }}>
+              {showForm ? 'Cancel' : 'Add Restroom'}
+            </button>
+          ) : null
         }
       />
 
-      {showForm && (
+      {canEdit && showForm && (
         <form className="card form-grid" onSubmit={handleSubmit}>
           <label>
             Name
@@ -156,14 +161,18 @@ export default function RestroomManagement() {
                     <td>{room.gender || '—'}</td>
                     <td><StatusBadge status={room.status || 'good'} variant="restroom" /></td>
                      <td>
-                       <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEdit(room)}>Edit</button>
-                       <button
-                         type="button"
-                         className="btn btn--ghost btn--sm btn--danger"
-                         onClick={() => handleDelete(room.id)}
-                       >
-                         Delete
-                       </button>
+                       {canEdit ? (
+                         <>
+                           <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEdit(room)}>Edit</button>
+                           <button
+                             type="button"
+                             className="btn btn--ghost btn--sm btn--danger"
+                             onClick={() => handleDelete(room.id)}
+                           >
+                             Delete
+                           </button>
+                         </>
+                       ) : '—'}
                      </td>
                   </tr>
                 ))}

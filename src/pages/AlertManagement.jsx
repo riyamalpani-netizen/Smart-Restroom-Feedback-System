@@ -3,10 +3,13 @@ import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
 
 export default function AlertManagement() {
+  const { user } = useAuth()
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -89,28 +92,30 @@ export default function AlertManagement() {
                     <td>{alert.assignedTo?.name || alert.assignedTo || '—'}</td>
                     <td>{alert.acknowledgedBy?.name || alert.acknowledgedBy || '—'}</td>
                     <td>{alert.resolvedAt ? formatDateTime(alert.resolvedAt) : '—'}</td>
-                    <td>
-                      <div className="btn-group btn-group--inline">
-                        {alert.status === 'open' && (
-                          <button
-                            type="button"
-                            className="btn btn--sm btn--secondary"
-                            onClick={() => acknowledge(alert.id)}
-                          >
-                            Acknowledge
-                          </button>
-                        )}
-                        {alert.status !== 'closed' && (
-                          <button
-                            type="button"
-                            className="btn btn--sm btn--primary"
-                            onClick={() => resolve(alert.id)}
-                          >
-                            Resolve
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                     <td>
+                       {canEdit ? (
+                         <div className="btn-group btn-group--inline">
+                           {alert.status === 'open' && (
+                             <button
+                               type="button"
+                               className="btn btn--sm btn--secondary"
+                               onClick={() => acknowledge(alert.id)}
+                             >
+                               Acknowledge
+                             </button>
+                           )}
+                           {alert.status !== 'closed' && (
+                             <button
+                               type="button"
+                               className="btn btn--sm btn--primary"
+                               onClick={() => resolve(alert.id)}
+                             >
+                               Resolve
+                             </button>
+                           )}
+                         </div>
+                       ) : '—'}
+                     </td>
                   </tr>
                 ))}
                 {alerts.length === 0 && (

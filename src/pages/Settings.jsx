@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import api from '../services/api'
+import { useAuth } from '../hooks/useAuth'
 
 export default function Settings() {
+  const { user } = useAuth()
   const [settings, setSettings] = useState({
     officeName: '',
     timeZone: 'UTC',
@@ -14,6 +16,7 @@ export default function Settings() {
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => {
     let mounted = true
@@ -82,7 +85,7 @@ export default function Settings() {
 
       {loading ? (
         <div className="loader-wrap"><div className="loader" /></div>
-      ) : (
+      ) : canEdit ? (
         <form className="settings-form card" onSubmit={handleSubmit}>
           <section className="settings-section">
             <h3>General</h3>
@@ -163,6 +166,10 @@ export default function Settings() {
             {saved && <span className="settings-form__saved">Settings saved!</span>}
           </div>
         </form>
+      ) : (
+        <div className="card" style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+          Viewers cannot edit settings.
+        </div>
       )}
     </div>
   )

@@ -412,6 +412,7 @@ import {
 } from 'react-leaflet'
 
 import L from 'leaflet'
+import { useAuth } from '../hooks/useAuth'
 import 'leaflet/dist/leaflet.css'
 
 /*
@@ -741,6 +742,9 @@ function GeoMapController({
 */
 
 export default function SideMap() {
+  const { user } = useAuth()
+  const canEdit = user?.role !== 'viewer'
+
   /*
   |--------------------------------------------------------------------------
   | State
@@ -3778,26 +3782,28 @@ export default function SideMap() {
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!selectedFloorId}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: '1px solid #2563eb',
-              background: selectedFloorId ? '#2563eb' : '#94a3b8',
-              color: '#fff',
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: selectedFloorId ? 'pointer' : 'not-allowed',
-              opacity: selectedFloorId ? 1 : 0.7,
-            }}
-          >
-            + Upload Floor Plan
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!selectedFloorId}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid #2563eb',
+                background: selectedFloorId ? '#2563eb' : '#94a3b8',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: selectedFloorId ? 'pointer' : 'not-allowed',
+                opacity: selectedFloorId ? 1 : 0.7,
+              }}
+            >
+              + Upload Floor Plan
+            </button>
+          )}
 
-          {uploadError && (
+          {uploadError && canEdit && (
             <div
               style={{
                 fontSize: 10,
@@ -3812,24 +3818,26 @@ export default function SideMap() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setEditMode((prev) => !prev)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: editMode ? '1px solid #ef4444' : '1px solid #cbd5e1',
-              background: editMode ? '#fef2f2' : '#f8fafc',
-              color: editMode ? '#ef4444' : '#475569',
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {editMode ? '✓ Done Editing' : '✎ Edit Layout'}
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditMode((prev) => !prev)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: editMode ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                background: editMode ? '#fef2f2' : '#f8fafc',
+                color: editMode ? '#ef4444' : '#475569',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {editMode ? '✓ Done Editing' : '✎ Edit Layout'}
+            </button>
+          )}
 
-          {activeFloorPlan && editMode && (
+          {canEdit && activeFloorPlan && editMode && (
             <button
               type="button"
               onClick={handleDeleteFloorPlan}
