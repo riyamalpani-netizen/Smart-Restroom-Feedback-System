@@ -1097,6 +1097,34 @@ label {
   color: var(--text);
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab--active {
+  color: var(--text-h);
+  border-bottom-color: #3b82f6;
+}
+
+.tab:hover {
+  color: var(--text-h);
+}
+
 .audit-log {
   list-style: none;
   padding: 0;

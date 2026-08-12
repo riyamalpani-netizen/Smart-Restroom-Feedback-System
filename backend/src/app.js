@@ -457,6 +457,28 @@ const swaggerOptions = {
           responses: { "200": { description: "Recovery status" } },
         },
       },
+      "/api/gateway/incidents/{alertId}/close": {
+        post: {
+          tags: ["Disaster / Gateway"],
+          summary: "Manually close incident",
+          parameters: [{ name: "alertId", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Incident closed" } },
+        },
+      },
+      "/api/gateway/audit-log": {
+        get: {
+          tags: ["Disaster / Gateway"],
+          summary: "Get audit log",
+          responses: { "200": { description: "Audit log" } },
+        },
+      },
+      "/api/gateway/server-status": {
+        get: {
+          tags: ["Disaster / Gateway"],
+          summary: "Get server status",
+          responses: { "200": { description: "Server status" } },
+        },
+      },
       "/health": {
         get: {
           tags: ["Health"],
