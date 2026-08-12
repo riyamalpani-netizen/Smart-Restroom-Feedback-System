@@ -719,6 +719,18 @@ code {
   color: var(--badge-color);
 }
 
+.status-badge--pending {
+  --badge-color: #94a3b8;
+}
+
+.status-badge--sent {
+  --badge-color: #22c55e;
+}
+
+.status-badge--failed {
+  --badge-color: #ef4444;
+}
+
 /* Tables */
 .table-wrapper {
   overflow-x: auto;
@@ -1076,7 +1088,7 @@ label {
 
 .disaster-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
 }

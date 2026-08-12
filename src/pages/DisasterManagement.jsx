@@ -8,12 +8,15 @@ import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 function SystemStatus({ label, status }) {
+  const isOperational = status === 'online' || status === 'operational'
+  const isDegraded = status === 'degraded'
+  
   return (
-    <div className={`system-status system-status--${status}`}>
+    <div className={`system-status system-status--${isOperational ? 'online' : isDegraded ? 'degraded' : 'offline'}`}>
       <span className="system-status__indicator" />
       <div>
         <strong>{label}</strong>
-        <span>{status === 'online' || status === 'operational' ? 'Operational' : 'Down'}</span>
+        <span>{isOperational ? 'Operational' : isDegraded ? 'Degraded' : 'Down'}</span>
       </div>
     </div>
   )
@@ -139,7 +142,7 @@ export default function DisasterManagement() {
   }, [search, incidents])
 
   const gatewayOnline = data?.gateways?.some((g) => g.status === 'online')
-  const networkOnline = data?.network?.gateways?.online > 0
+  const networkDegraded = data?.network?.gateways?.degraded > 0
   const serverStatus = data?.server?.status || 'operational'
 
   return (
@@ -147,7 +150,7 @@ export default function DisasterManagement() {
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--danger" onClick={() => alert('Manual Closure: select an incident to close from the Incident Log tab')}>
+            <button type="button" className="btn btn--danger" onClick={() => setActiveTab('incidents')}>
               Manual Closure
             </button>
           ) : null
@@ -175,7 +178,7 @@ export default function DisasterManagement() {
             <>
               <div className="disaster-status-grid">
                 <SystemStatus label="Gateway" status={gatewayOnline ? 'online' : 'offline'} />
-                <SystemStatus label="Network" status={networkOnline ? 'online' : 'offline'} />
+                <SystemStatus label="Network" status={networkDegraded ? 'degraded' : gatewayOnline ? 'online' : 'offline'} />
                 <SystemStatus label="Server" status={serverStatus} />
               </div>
 
@@ -192,15 +195,15 @@ export default function DisasterManagement() {
                 </div>
                 <div className="card disaster-metric">
                   <span className="disaster-metric__value">
-                    {data?.recovery?.alerts?.total || 0}
+                    {data?.recovery?.communicationFailures || 0}
                   </span>
-                  <span className="disaster-metric__label">Active Alerts</span>
+                  <span className="disaster-metric__label">Communication Failures</span>
                 </div>
                 <div className="card disaster-metric">
                   <span className="disaster-metric__value">
-                    {data?.recovery?.devices?.critical || 0}
+                    {data?.recovery?.alerts?.total || 0}
                   </span>
-                  <span className="disaster-metric__label">Critical Devices</span>
+                  <span className="disaster-metric__label">Active Alerts</span>
                 </div>
               </div>
 
@@ -233,6 +236,24 @@ export default function DisasterManagement() {
                   </div>
                 </div>
               </div>
+
+              <div className="card" style={{ marginTop: 16 }}>
+                <h3 className="card__title">Server Status</h3>
+                <div className="disaster-metrics">
+                  <div className="disaster-metric">
+                    <span className="disaster-metric__value">{serverStatus === 'operational' ? 'Operational' : 'Down'}</span>
+                    <span className="disaster-metric__label">Status</span>
+                  </div>
+                  <div className="disaster-metric">
+                    <span className="disaster-metric__value">{data?.server?.uptime ? Math.floor(data.server.uptime / 60) : 0} min</span>
+                    <span className="disaster-metric__label">Uptime</span>
+                  </div>
+                  <div className="disaster-metric">
+                    <span className="disaster-metric__value">{data?.server?.memory ? Math.round((data.server.memory.heapUsed / 1024 / 1024)) : 0} MB</span>
+                    <span className="disaster-metric__label">Memory Used</span>
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
@@ -258,6 +279,7 @@ export default function DisasterManagement() {
                       <th>Assigned To</th>
                       <th>Acknowledged By</th>
                       <th>Resolved Time</th>
+                      <th>Teams Notification</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -273,6 +295,17 @@ export default function DisasterManagement() {
                         <td>{incident.acknowledgedBy?.name || incident.acknowledgedBy || '—'}</td>
                         <td>{incident.resolvedAt ? formatDateTime(incident.resolvedAt) : '—'}</td>
                         <td>
+                          {incident.notifications?.length > 0 ? (
+                            incident.notifications.map((n) => (
+                              <span key={n.id} className={`status-badge status-badge--${n.status}`}>
+                                {n.status}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="status-badge status-badge--pending">none</span>
+                          )}
+                        </td>
+                        <td>
                           {canEdit && incident.status !== 'closed' && (
                             <button
                               type="button"
@@ -287,7 +320,7 @@ export default function DisasterManagement() {
                     ))}
                     {filteredIncidents.length === 0 && (
                       <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan="10" style={{ textAlign: 'center', color: '#64748b' }}>
                           No incidents found
                         </td>
                       </tr>

@@ -1,5 +1,4 @@
 const prisma = require("../config/database");
-const { sendTeamsWebhook } = require("../services/teamsWebhookService");
 
 async function getGatewayStatus(req, res) {
   try {
@@ -11,15 +10,20 @@ async function getGatewayStatus(req, res) {
       const orgLocations = await prisma.location.findMany({ where: { organizationId: orgId }, select: { id: true } });
       const orgFloors = await prisma.floor.findMany({ where: { locationId: { in: orgLocations.map((l) => l.id) } }, select: { id: true } });
       const orgRestrooms = await prisma.restroom.findMany({ where: { floorId: { in: orgFloors.map((f) => f.id) } }, select: { id: true } });
-      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } }, select: { deviceEui: true } });
-      const orgDeviceEuis = orgDevices.map((d) => d.deviceEui);
+      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } } });
+      
+      const gatewayNames = new Set();
+      orgDevices.forEach((d) => {
+        if (d.deviceEui) gatewayNames.add(d.deviceEui);
+      });
 
-      where = {
-        OR: [
-          { gatewayName: { contains: orgId } },
-          { gatewayName: { in: orgDeviceEuis } },
-        ],
-      };
+      if (gatewayNames.size > 0) {
+        where = {
+          OR: Array.from(gatewayNames).map((name) => ({ gatewayName: name })),
+        };
+      } else {
+        where = { id: { in: [] } };
+      }
     }
 
     const gateways = await prisma.gatewayStatus.findMany({
@@ -74,8 +78,8 @@ async function getNetworkStatus(req, res) {
       const orgLocations = await prisma.location.findMany({ where: { organizationId: orgId }, select: { id: true } });
       const orgFloors = await prisma.floor.findMany({ where: { locationId: { in: orgLocations.map((l) => l.id) } }, select: { id: true } });
       const orgRestrooms = await prisma.restroom.findMany({ where: { floorId: { in: orgFloors.map((f) => f.id) } }, select: { id: true } });
-      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } }, select: { deviceEui: true } });
-      const orgDeviceEuis = orgDevices.map((d) => d.deviceEui);
+      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } } });
+      const orgDeviceEuis = orgDevices.map((d) => d.deviceEui).filter(Boolean);
 
       deviceWhere = {
         OR: [
@@ -83,12 +87,16 @@ async function getNetworkStatus(req, res) {
           { restroomId: null },
         ],
       };
-      gatewayWhere = {
-        OR: [
-          { gatewayName: { contains: orgId } },
-          { gatewayName: { in: orgDeviceEuis } },
-        ],
-      };
+
+      if (orgDeviceEuis.length > 0) {
+        gatewayWhere = {
+          OR: [
+            { gatewayName: { in: orgDeviceEuis } },
+          ],
+        };
+      } else {
+        gatewayWhere = { id: { in: [] } };
+      }
     }
 
     const onlineGateways = await prisma.gatewayStatus.count({ where: { ...gatewayWhere, status: "online" } });
@@ -211,8 +219,8 @@ async function getRecoveryStatus(req, res) {
       const orgLocations = await prisma.location.findMany({ where: { organizationId: orgId }, select: { id: true } });
       const orgFloors = await prisma.floor.findMany({ where: { locationId: { in: orgLocations.map((l) => l.id) } }, select: { id: true } });
       const orgRestrooms = await prisma.restroom.findMany({ where: { floorId: { in: orgFloors.map((f) => f.id) } }, select: { id: true } });
-      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } }, select: { deviceEui: true } });
-      const orgDeviceEuis = orgDevices.map((d) => d.deviceEui);
+      const orgDevices = await prisma.device.findMany({ where: { restroomId: { in: orgRestrooms.map((r) => r.id) } } });
+      const orgDeviceEuis = orgDevices.map((d) => d.deviceEui).filter(Boolean);
 
       deviceWhere = {
         OR: [
@@ -220,12 +228,16 @@ async function getRecoveryStatus(req, res) {
           { restroomId: null },
         ],
       };
-      gatewayWhere = {
-        OR: [
-          { gatewayName: { contains: orgId } },
-          { gatewayName: { in: orgDeviceEuis } },
-        ],
-      };
+
+      if (orgDeviceEuis.length > 0) {
+        gatewayWhere = {
+          OR: [
+            { gatewayName: { in: orgDeviceEuis } },
+          ],
+        };
+      } else {
+        gatewayWhere = { id: { in: [] } };
+      }
     }
 
     const totalDevices = await prisma.device.count({ where: deviceWhere });
@@ -235,6 +247,17 @@ async function getRecoveryStatus(req, res) {
 
     const totalGateways = await prisma.gatewayStatus.count({ where: gatewayWhere });
     const onlineGateways = await prisma.gatewayStatus.count({ where: { ...gatewayWhere, status: "online" } });
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const communicationFailures = await prisma.device.count({
+      where: {
+        ...deviceWhere,
+        OR: [
+          { lastSeen: { lt: fiveMinutesAgo } },
+          { healthStatus: { not: "healthy" } },
+        ],
+      },
+    });
 
     const totalAlerts = await prisma.alert.count({
       where: {
@@ -248,6 +271,7 @@ async function getRecoveryStatus(req, res) {
       devices: { total: totalDevices, healthy: healthyDevices, recovering: recoveringDevices, critical: criticalDevices },
       gateways: { total: totalGateways, online: onlineGateways, offline: totalGateways - onlineGateways },
       alerts: { total: totalAlerts },
+      communicationFailures,
     });
   } catch (error) {
     console.error("Get recovery status error:", error);
@@ -376,6 +400,33 @@ async function getServerStatus(req, res) {
   }
 }
 
+async function createAuditLog(req, res) {
+  try {
+    const { userId, module, action, description } = req.body;
+
+    if (!module || !action) {
+      return res.status(400).json({ message: "Module and action are required" });
+    }
+
+    const log = await prisma.auditLog.create({
+      data: {
+        userId: userId || null,
+        module,
+        action,
+        description: description || null,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+
+    res.status(201).json({ message: "Audit log created successfully", log });
+  } catch (error) {
+    console.error("Create audit log error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   getGatewayStatus,
   updateGatewayStatus,
@@ -386,4 +437,5 @@ module.exports = {
   manualCloseIncident,
   getAuditLog,
   getServerStatus,
+  createAuditLog,
 };

@@ -471,6 +471,11 @@ const swaggerOptions = {
           summary: "Get audit log",
           responses: { "200": { description: "Audit log" } },
         },
+        post: {
+          tags: ["Disaster / Gateway"],
+          summary: "Create audit log entry",
+          responses: { "201": { description: "Audit log created" } },
+        },
       },
       "/api/gateway/server-status": {
         get: {
