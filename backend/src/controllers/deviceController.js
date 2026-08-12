@@ -9,19 +9,35 @@ function getOrgFilter(req) {
 
 async function getDevices(req, res) {
   try {
-    const { restroomId, healthStatus, floorId, zoneId } = req.query;
+    const { restroomId, healthStatus, floorId, zoneId, status } = req.query;
     const role = req.user?.role;
     const orgId = req.user?.organizationId;
     const where = {};
 
     if (role !== "super_admin") {
-      where.restroom = { organizationId: orgId };
+      where.OR = [
+        { restroom: { organizationId: orgId } },
+        { restroomId: null },
+      ];
     }
 
     if (restroomId) where.restroomId = restroomId;
     if (healthStatus) where.healthStatus = healthStatus;
     if (floorId) where.floorId = floorId;
     if (zoneId) where.zoneId = zoneId;
+
+    if (status === "online") {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      where.healthStatus = "healthy";
+      where.lastSeen = { gt: fiveMinutesAgo };
+    } else if (status === "offline") {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      where.OR = [
+        ...(where.OR || []),
+        { lastSeen: { lte: fiveMinutesAgo } },
+        { healthStatus: { not: "healthy" } },
+      ];
+    }
 
     const devices = await prisma.device.findMany({
       where,
@@ -75,7 +91,10 @@ async function getDeviceById(req, res) {
 
     const whereClause = { id };
     if (role !== "super_admin") {
-      whereClause.restroom = { organizationId: orgId };
+      whereClause.OR = [
+        { restroom: { organizationId: orgId } },
+        { restroomId: null },
+      ];
     }
 
     const device = await prisma.device.findFirst({
@@ -256,10 +275,19 @@ async function updateDevice(req, res) {
 async function getDeviceHealth(req, res) {
   try {
     const { deviceId } = req.params;
-    const orgFilter = getOrgFilter(req);
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+
+    const whereClause = { id: deviceId };
+    if (role !== "super_admin") {
+      whereClause.OR = [
+        { restroom: { organizationId: orgId } },
+        { restroomId: null },
+      ];
+    }
 
     const device = await prisma.device.findFirst({
-      where: { id: deviceId, ...orgFilter },
+      where: whereClause,
       include: {
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 50 },
       },
@@ -290,26 +318,57 @@ async function getOfflineDevices(req, res) {
   try {
     const fiveMinutesAgo = new Date();
     fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
-    const orgFilter = getOrgFilter(req);
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+
+    const where = {
+      OR: [
+        { lastSeen: { lt: fiveMinutesAgo } },
+        { healthStatus: { not: "healthy" } },
+      ],
+    };
+
+    if (role !== "super_admin") {
+      where.OR = [
+        { restroom: { organizationId: orgId } },
+        { restroomId: null },
+      ];
+    }
 
     const offlineDevices = await prisma.device.findMany({
-      where: {
-        ...orgFilter,
-        OR: [
-          { lastSeen: { lt: fiveMinutesAgo } },
-          { healthStatus: { not: "healthy" } },
-        ],
-      },
+      where,
       include: {
         restroom: { include: { floor: { include: { location: true } } } },
       },
       orderBy: { lastSeen: "asc" },
     });
 
+    const mapped = offlineDevices.map((device) => {
+      const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
+      const isOnline = lastSeen && lastSeen > fiveMinutesAgo && device.healthStatus === "healthy";
+
+      return {
+        id: device.id,
+        badgeId: device.badgeId,
+        deviceEui: device.deviceEui,
+        restroomId: device.restroomId,
+        restroomName: device.restroom?.name || "Unassigned",
+        floorName: device.restroom?.floor?.floorName || null,
+        locationName: device.restroom?.floor?.location?.officeName || null,
+        battery: device.batteryLevel ?? null,
+        status: isOnline ? "online" : "offline",
+        health: device.healthStatus || "healthy",
+        lastCommunication: device.lastSeen,
+        deviceType: device.deviceType,
+        zoneId: device.zoneId,
+        zoneName: device.zone?.name || null,
+      };
+    });
+
     res.status(200).json({
       message: "Offline devices fetched successfully",
-      devices: offlineDevices,
-      count: offlineDevices.length,
+      devices: mapped,
+      count: mapped.length,
     });
   } catch (error) {
     console.error("Get offline devices error:", error);
