@@ -1,0 +1,26 @@
+/* Floor-plan setup canvas: mirrors the light work area in the supplied reference. */
+.planner-stage--empty {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: #f4f1ed;
+  color: #303344;
+}
+
+.planner-stage--empty::before {
+  content: '⌖\A\A▧';
+  white-space: pre;
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  padding: 12px 15px;
+  border-radius: 7px;
+  background: #202338;
+  color: #f2f3f8;
+  font-size: 20px;
+  line-height: 1.8;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .3);
+}
+
+.planner-stage--empty strong { color: #202338; }
+.planner-stage--empty p { color: #646a7a; }

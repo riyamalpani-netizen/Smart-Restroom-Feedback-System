@@ -9,16 +9,20 @@ function getOrgFilter(req) {
 
 async function getDevices(req, res) {
   try {
-    const { restroomId, healthStatus } = req.query;
+    const { restroomId, healthStatus, floorId, zoneId } = req.query;
     const orgFilter = getOrgFilter(req);
     const where = { ...orgFilter };
     if (restroomId) where.restroomId = restroomId;
     if (healthStatus) where.healthStatus = healthStatus;
+    if (floorId) where.floorId = floorId;
+    if (zoneId) where.zoneId = zoneId;
 
     const devices = await prisma.device.findMany({
       where,
       include: {
         restroom: { include: { floor: { include: { location: true } } } },
+        floor: { include: { location: true } },
+        zone: true,
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
@@ -43,6 +47,8 @@ async function getDeviceById(req, res) {
       where: { id, ...orgFilter },
       include: {
         restroom: { include: { floor: { include: { location: true } } } },
+        floor: { include: { location: true } },
+        zone: true,
         feedback: { orderBy: { timestamp: "desc" }, take: 20 },
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 10 },
       },
@@ -61,7 +67,7 @@ async function getDeviceById(req, res) {
 
 async function createDevice(req, res) {
   try {
-    const { deviceEui, badgeId, restroomId, batteryLevel } = req.body;
+    const { deviceEui, badgeId, restroomId, batteryLevel, floorId, zoneId, deviceType, floorPlanPosX, floorPlanPosY } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -83,12 +89,31 @@ async function createDevice(req, res) {
       organizationId = restroom.organizationId;
     }
 
+    if (zoneId) {
+      const zone = await prisma.zone.findFirst({
+        where: { id: zoneId },
+        include: { floor: { include: { location: true } } },
+      });
+      if (!zone) {
+        return res.status(404).json({ message: "Zone not found" });
+      }
+      if (userRole === "vendor_admin" && zone.floor.location.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "You can only create devices for zones in your organization" });
+      }
+      organizationId = organizationId || zone.floor.location.organizationId;
+    }
+
     const device = await prisma.device.create({
       data: {
         deviceEui,
         badgeId,
         restroomId: finalRestroomId || null,
+        floorId: floorId || null,
+        zoneId: zoneId || null,
+        deviceType: deviceType || "sensor",
         batteryLevel: batteryLevel ?? 100,
+        floorPlanPosX: floorPlanPosX ?? null,
+        floorPlanPosY: floorPlanPosY ?? null,
         healthStatus: "healthy",
       },
     });
@@ -106,13 +131,21 @@ async function createDevice(req, res) {
 async function updateDevice(req, res) {
   try {
     const { id } = req.params;
-    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY } = req.body;
+    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
+    const whereClause = { id }
+    if (userRole !== "super_admin") {
+      whereClause.OR = [
+        { restroom: { organizationId: userOrgId } },
+        { restroomId: null }
+      ]
+    }
+
     const existing = await prisma.device.findFirst({
-      where: { id, ...(userRole !== "super_admin" ? { restroom: { organizationId: userOrgId } } : {}) },
-      include: { restroom: true },
+      where: whereClause,
+      include: { restroom: true, floor: { include: { location: true } }, zone: { include: { floor: { include: { location: true } } } } },
     });
 
     if (!existing) {
@@ -126,16 +159,30 @@ async function updateDevice(req, res) {
       }
     }
 
+    if (userRole === "vendor_admin" && zoneId) {
+      const newZone = await prisma.zone.findFirst({
+        where: { id: zoneId },
+        include: { floor: { include: { location: true } } },
+      });
+      if (!newZone || newZone.floor.location.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "You can only assign devices to zones in your organization" });
+      }
+    }
+
+    const updateData = {}
+    if (badgeId !== undefined) updateData.badgeId = badgeId
+    if (restroomId !== undefined) updateData.restroomId = restroomId
+    if (batteryLevel !== undefined) updateData.batteryLevel = batteryLevel
+    if (healthStatus !== undefined) updateData.healthStatus = healthStatus
+    if (floorPlanPosX !== undefined) updateData.floorPlanPosX = floorPlanPosX
+    if (floorPlanPosY !== undefined) updateData.floorPlanPosY = floorPlanPosY
+    if (floorId !== undefined) updateData.floorId = floorId
+    if (zoneId !== undefined) updateData.zoneId = zoneId || null
+    if (deviceType !== undefined) updateData.deviceType = deviceType
+
     const device = await prisma.device.update({
       where: { id },
-      data: {
-        badgeId,
-        restroomId,
-        batteryLevel,
-        healthStatus,
-        floorPlanPosX,
-        floorPlanPosY,
-      },
+      data: updateData,
     });
 
     res.status(200).json({ message: "Device updated successfully", device });

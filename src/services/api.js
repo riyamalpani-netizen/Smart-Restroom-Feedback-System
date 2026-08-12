@@ -65,9 +65,43 @@ export const floorPlanAPI = {
   create: (data) => request('/api/floor-plans', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/api/floor-plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  updateDevicePosition: (id, x, y, restroomId) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ floorPlanPosX: x, floorPlanPosY: y, restroomId: restroomId || null }) }),
+  updateDevicePosition: (id, x, y, restroomId, floorId) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ floorPlanPosX: x, floorPlanPosY: y, restroomId: restroomId || null, floorId: floorId || null }) }),
   createRestroom: (data) => request('/api/restrooms', { method: 'POST', body: JSON.stringify(data) }),
   updateRestroom: (id, data) => request(`/api/restrooms/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getDevicesByFloor: (floorId) => request(`/api/devices?floorId=${encodeURIComponent(floorId)}`),
+}
+
+export const locationAPI = {
+  getAll: (organizationId) => request(`/api/locations${organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : ''}`),
+  getById: (id) => request(`/api/locations/${encodeURIComponent(id)}`),
+  create: (data) => request('/api/locations', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/locations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
+export const floorAPI = {
+  getByLocation: (locationId) => request(`/api/floors?locationId=${encodeURIComponent(locationId)}`),
+  getById: (id) => request(`/api/floors/${encodeURIComponent(id)}`),
+  create: (data) => request('/api/floors', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/floors/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/floors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
+export const zoneAPI = {
+  getByFloor: (floorId) => request(`/api/zones?floorId=${encodeURIComponent(floorId)}`),
+  getById: (id) => request(`/api/zones/${encodeURIComponent(id)}`),
+  create: (data) => request('/api/zones', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/zones/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/zones/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  importGeoJson: (data) => request('/api/zones/import', { method: 'POST', body: JSON.stringify(data) }),
+}
+
+export const deviceAPI = {
+  getByFloor: (floorId) => request(`/api/devices?floorId=${encodeURIComponent(floorId)}`),
+  getByZone: (zoneId) => request(`/api/zones/${encodeURIComponent(zoneId)}/devices`),
+  create: (data) => request('/api/devices', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 export default api

@@ -63,7 +63,7 @@ async function getFloorById(req, res) {
 
 async function createFloor(req, res) {
   try {
-    const { locationId, floorName } = req.body;
+    const { locationId, floorName, floorNumber } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -81,7 +81,7 @@ async function createFloor(req, res) {
     }
 
     const floor = await prisma.floor.create({
-      data: { locationId, floorName },
+      data: { locationId, floorName, floorNumber: floorNumber ?? null },
     });
 
     res.status(201).json({ message: "Floor created successfully", floor });
@@ -94,7 +94,7 @@ async function createFloor(req, res) {
 async function updateFloor(req, res) {
   try {
     const { id } = req.params;
-    const { floorName } = req.body;
+    const { floorName, floorNumber } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -109,7 +109,7 @@ async function updateFloor(req, res) {
 
     const floor = await prisma.floor.update({
       where: { id },
-      data: { floorName },
+      data: { floorName, ...(floorNumber !== undefined ? { floorNumber } : {}) },
     });
 
     res.status(200).json({ message: "Floor updated successfully", floor });

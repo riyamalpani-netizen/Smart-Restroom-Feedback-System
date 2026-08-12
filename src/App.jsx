@@ -13,6 +13,7 @@ import DisasterManagement from './pages/DisasterManagement'
 import UserManagement from './pages/UserManagement'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
+import SiteConfiguration from './pages/SiteConfiguration'
 import NotFound from './pages/NotFound'
 import { ROLES } from './utils/constants'
 
@@ -39,8 +40,10 @@ export default function App() {
         <Route path="users" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/users"><UserManagement /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]} path="/settings"><Settings /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute path="/profile"><Profile /></ProtectedRoute>} />
+        <Route path="site-config" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]} path="/site-config"><SiteConfiguration /></ProtectedRoute>} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }
+ 

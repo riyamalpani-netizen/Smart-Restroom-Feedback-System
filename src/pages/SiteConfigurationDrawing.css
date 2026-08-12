@@ -1,0 +1,13 @@
+/* The floor-plan tracing layer fades whenever the zone drawing control is active. */
+.planner-map:has(.planner-toolbox input) .leaflet-image-layer {
+  opacity: .28 !important;
+}
+
+/* Solid blue live geometry, matching the rectangle treatment in the reference. */
+.planner-map:has(.planner-toolbox input) .leaflet-overlay-pane path {
+  stroke: #3b82f6 !important;
+  stroke-width: 4 !important;
+  stroke-dasharray: none !important;
+  fill: #3b82f6 !important;
+  fill-opacity: .2 !important;
+}

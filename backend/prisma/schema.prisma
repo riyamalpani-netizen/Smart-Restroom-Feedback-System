@@ -103,6 +103,8 @@ model Location {
   city           String
   officeName     String
   address        String?
+  latitude       Float?
+  longitude      Float?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -116,11 +118,14 @@ model Floor {
   locationId String
   location   Location  @relation(fields: [locationId], references: [id])
   floorName  String
+  floorNumber Int?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  restrooms Restroom[]
+  restrooms  Restroom[]
   floorPlans FloorPlan[]
+  zones      Zone[]
+  devices    Device[]
 
   @@map("floors")
 }
@@ -136,10 +141,28 @@ model FloorPlan {
   posX        Int      @default(0)
   posY        Int      @default(0)
   rotation    Int      @default(0)
+  geoBounds   Json?
+  geoJsonData Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("floor_plans")
+}
+
+model Zone {
+  id          String     @id @default(cuid())
+  floorId     String
+  floor       Floor      @relation(fields: [floorId], references: [id])
+  name        String
+  type        String     @default("other")
+  coordinates Json?
+  restroomId  String?
+  restroom    Restroom?  @relation(fields: [restroomId], references: [id])
+  devices     Device[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("zones")
 }
 
 model Restroom {
@@ -151,10 +174,15 @@ model Restroom {
   name       String
   gender     String?
   status     String    @default("good")
+  posX       Float?
+  posY       Float?
+  width      Float?
+  height     Float?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   devices    Device[]
+  zones      Zone[]
   feedback   Feedback[]
   alerts     Alert[]
 
@@ -167,6 +195,11 @@ model Device {
   badgeId         String       @unique
   restroomId      String?
   restroom        Restroom?    @relation(fields: [restroomId], references: [id])
+  floorId         String?
+  floor           Floor?       @relation(fields: [floorId], references: [id])
+  zoneId          String?
+  zone            Zone?        @relation(fields: [zoneId], references: [id])
+  deviceType      String?      @default("sensor")
   batteryLevel    Int
   lastSeen        DateTime?
   healthStatus    DeviceHealth @default(healthy)

@@ -63,12 +63,16 @@ async function getRestroomById(req, res) {
 
 async function createRestroom(req, res) {
   try {
-    const { floorId, organizationId, name, gender, status } = req.body;
+    const { floorId, organizationId, name, gender, status, posX, posY, width, height } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
-    if (!floorId || !organizationId || !name) {
-      return res.status(400).json({ message: "Floor ID, organization ID, and name are required" });
+    if (!floorId || !name) {
+      return res.status(400).json({ message: "Floor ID and name are required" });
+    }
+
+    if (userRole !== "super_admin" && !organizationId) {
+      return res.status(400).json({ message: "Organization ID is required" });
     }
 
     if (userRole === "vendor_admin" && organizationId !== userOrgId) {
@@ -76,7 +80,7 @@ async function createRestroom(req, res) {
     }
 
     const restroom = await prisma.restroom.create({
-      data: { floorId, organizationId, name, gender, status: status || "good" },
+      data: { floorId, organizationId: organizationId || userOrgId, name, gender, status: status || "good", posX, posY, width, height },
     });
 
     res.status(201).json({ message: "Restroom created successfully", restroom });
@@ -89,7 +93,7 @@ async function createRestroom(req, res) {
 async function updateRestroom(req, res) {
   try {
     const { id } = req.params;
-    const { name, gender, status, floorId, organizationId } = req.body;
+    const { name, gender, status, floorId, organizationId, posX, posY, width, height } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -103,7 +107,7 @@ async function updateRestroom(req, res) {
 
     const restroom = await prisma.restroom.update({
       where: { id },
-      data: { name, gender, status, floorId, organizationId },
+      data: { name, gender, status, floorId, organizationId, posX, posY, width, height },
     });
 
     res.status(200).json({ message: "Restroom updated successfully", restroom });

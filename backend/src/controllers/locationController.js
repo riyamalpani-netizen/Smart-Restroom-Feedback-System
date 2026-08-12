@@ -58,7 +58,7 @@ async function getLocationById(req, res) {
 
 async function createLocation(req, res) {
   try {
-    const { organizationId, city, officeName, address } = req.body;
+    const { organizationId, city, officeName, address, latitude, longitude } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -71,7 +71,7 @@ async function createLocation(req, res) {
     }
 
     const location = await prisma.location.create({
-      data: { organizationId, city, officeName, address },
+      data: { organizationId, city, officeName, address, latitude, longitude },
     });
 
     res.status(201).json({ message: "Location created successfully", location });
@@ -84,7 +84,7 @@ async function createLocation(req, res) {
 async function updateLocation(req, res) {
   try {
     const { id } = req.params;
-    const { city, officeName, address } = req.body;
+    const { city, officeName, address, latitude, longitude } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -98,7 +98,7 @@ async function updateLocation(req, res) {
 
     const location = await prisma.location.update({
       where: { id },
-      data: { city, officeName, address },
+      data: { city, officeName, address, latitude, longitude },
     });
 
     res.status(200).json({ message: "Location updated successfully", location });

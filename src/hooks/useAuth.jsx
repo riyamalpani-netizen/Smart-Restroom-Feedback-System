@@ -30,6 +30,7 @@ export function AuthProvider({ children }) {
         email: data.user.email,
         name: data.user.name,
         role: data.user.role,
+        organizationId: data.user.organizationId,
       }
 
       localStorage.setItem('srfs_user', JSON.stringify(session))

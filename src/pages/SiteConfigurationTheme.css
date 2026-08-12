@@ -1,0 +1,35 @@
+/* Site Configuration uses the shared application palette; no global page styles are changed. */
+.site-planner { background:var(--bg); color:var(--text); }
+.site-planner h1, .site-planner h2, .site-planner strong, .site-planner label { color:var(--text-h); }
+.site-planner__header span, .site-planner__header p, .planner-coordinates>p, .planner-coordinates label, .planner-review>p { color:var(--text); }
+.planner-button { background:var(--primary); border-color:var(--primary); color:#fff; }
+.planner-button:hover { background:var(--primary-hover); border-color:var(--primary-hover); }
+.planner-button--ghost { background:var(--surface); border-color:var(--border); color:var(--text-h); }
+.planner-button--ghost:hover { background:#f8fafc; }
+.planner-button--dark { background:var(--surface); border-color:var(--border); color:var(--text-h); }
+.planner-stepper { background:var(--surface); border-color:var(--border); }
+.planner-step { background:var(--surface); border-color:var(--border); color:var(--text); }
+.planner-step.is-active { background:#eff6ff; color:var(--primary); }
+.planner-step.is-done { color:var(--text-h); }
+.planner-step__number { background:#e2e8f0; color:var(--text); }
+.planner-step.is-active .planner-step__number { background:var(--primary); color:#fff; }
+.planner-step.is-done .planner-step__number { background:#dcfce7; color:#15803d; }
+.planner-form-card, .planner-review, .planner-modal { background:var(--surface); border-color:var(--border); box-shadow:var(--shadow); }
+.planner-form-card footer, .planner-floor-map__footer { background:#f8fafc; border-color:var(--border); }
+.site-planner input, .site-planner select, .site-planner textarea { background:var(--surface); color:var(--text-h); border-color:var(--border); }
+.planner-notice { background:#eff6ff; color:#1e3a8a; border-color:#bfdbfe; }
+.planner-map-shell, .planner-mapbar { background:var(--surface); border-color:var(--border); }
+.planner-mapbar > div:first-child::before { color:var(--text-h); }
+.planner-floor-map__sidebar, .planner-floor-plan-map .planner-floor-map__sidebar { background:var(--surface); border-color:var(--border); }
+.planner-floor, .planner-empty { color:var(--text-h); border-color:var(--border); background:var(--surface); }
+.planner-floor.is-selected { border-color:var(--primary); background:#eff6ff; }
+.planner-floor span, .planner-empty { color:var(--text); }
+.planner-floor-map__tools, .planner-floor-plan-map__align, .planner-align, .planner-toolbox, .planner-placement { background:var(--surface); color:var(--text-h); border-color:var(--border); box-shadow:var(--shadow); }
+.planner-align small, .planner-toolbox small, .planner-toolbox p, .planner-placement p, .planner-floor-plan-map__align small { color:var(--text); }
+.planner-align__controls button, .planner-floor-plan-map__align button { background:#f1f5f9; color:var(--text-h); border:1px solid var(--border); }
+.planner-map::after { background:var(--surface); color:var(--text-h); border:1px solid var(--border); box-shadow:var(--shadow); }
+.planner-review__tree { background:#f8fafc; border-color:var(--border); }
+.planner-review__tree div, .planner-review__tree span { color:var(--text); }
+.planner-modal-backdrop { background:rgba(15,23,42,.45); }
+.planner-location-results { background:var(--surface); border-color:var(--border); box-shadow:var(--shadow); }
+.planner-location-results button { color:var(--text-h); border-color:var(--border); }

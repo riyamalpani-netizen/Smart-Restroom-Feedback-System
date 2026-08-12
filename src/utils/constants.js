@@ -34,8 +34,9 @@ export const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/live-feedback', label: 'Live Feedback', icon: '💬' },
   { path: '/sidemap', label: 'Sidemap', icon: '🗺️' },
-  { path: '/reports', label: 'Reports', icon: '📈' },
-  { path: '/devices', label: 'Device Management', icon: '📱' },
+   { path: '/reports', label: 'Reports', icon: '📈' },
+   { path: '/site-config', label: 'Site Configuration', icon: '🗺️' },
+   { path: '/devices', label: 'Device Management', icon: '📱' },
   { path: '/restrooms', label: 'Restroom Management', icon: '🚻' },
   { path: '/alerts', label: 'Alert Management', icon: '🔔' },
   { path: '/disaster', label: 'Disaster Management', icon: '⚠️' },
@@ -44,9 +45,9 @@ export const NAV_ITEMS = [
 ]
 
 export const ROLE_ROUTE_ACCESS = {
-  [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
-  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
-  [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
+  [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
+  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
+  [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
   [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
 }
 

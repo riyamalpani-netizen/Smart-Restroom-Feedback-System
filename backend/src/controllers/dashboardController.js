@@ -350,6 +350,9 @@ async function getHeatMapData(req, res) {
       const x = startX + col * (cellWidth + gapX) + cellWidth / 2
       const y = startY + row * (cellHeight + gapY) + cellHeight / 2
 
+      const latitude = room.floor.location.latitude || null
+      const longitude = room.floor.location.longitude || null
+
       return {
         id: room.id,
         name: room.name,
@@ -359,8 +362,8 @@ async function getHeatMapData(req, res) {
         site: `${room.floor.location.city} - ${room.floor.location.officeName}`,
         x,
         y,
-        latitude: 28.6 + Math.random() * 0.05,
-        longitude: 77.2 + Math.random() * 0.05,
+        latitude,
+        longitude,
         score,
         total: totalFeedback,
         status: room.status,
@@ -393,8 +396,8 @@ async function getHeatMapData(req, res) {
     const siteData = sites.map((site) => ({
       id: site.id,
       name: `${site.city} - ${site.officeName}`,
-      lat: site.floors.reduce((acc, floor) => acc + floor.restrooms.length, 0),
-      lng: 0,
+      lat: site.latitude || 18.5204,
+      lng: site.longitude || 73.8567,
       status: "operational",
       restrooms: site.floors.reduce((acc, floor) => acc + floor.restrooms.length, 0),
     }))
