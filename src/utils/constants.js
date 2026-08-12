@@ -22,6 +22,9 @@ export const DEVICE_STATUS = {
   online: { label: 'Online', color: '#22c55e' },
   offline: { label: 'Offline', color: '#94a3b8' },
   low_battery: { label: 'Low Battery', color: '#f97316' },
+  healthy: { label: 'Healthy', color: '#22c55e' },
+  warning: { label: 'Warning', color: '#f97316' },
+  critical: { label: 'Critical', color: '#ef4444' },
 }
 
 export const ALERT_STATUS = {

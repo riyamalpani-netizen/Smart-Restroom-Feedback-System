@@ -1,61 +1,232 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { io } from 'socket.io-client'
 import SearchBar from '../components/common/SearchBar'
 import Pagination from '../components/common/Pagination'
+import StatusBadge from '../components/common/StatusBadge'
 import api from '../services/api'
 import { formatDateTime } from '../utils/formatters'
 
-const PAGE_SIZE = 5
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const PAGE_SIZE = 10
 
 export default function LiveFeedback() {
   const [feedback, setFeedback] = useState([])
+  const [liveEntries, setLiveEntries] = useState([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [connectionStatus, setConnectionStatus] = useState('connecting')
+  const [totalPages, setTotalPages] = useState(1)
+  const socketRef = useRef(null)
+  const pollTimerRef = useRef(null)
+
+  const loadFeedback = useCallback(async (pageNum = 1, filterType = 'all') => {
+    try {
+      const params = { page: pageNum, limit: PAGE_SIZE }
+      if (filterType !== 'all') params.feedbackType = filterType
+
+      const data = await api.get(`/api/feedback?${new URLSearchParams(params).toString()}`)
+      const entries = data.feedback || []
+      const pagination = data.pagination || {}
+
+      setFeedback(entries)
+      setTotalPages(pagination.pages || 1)
+      setPage(pageNum)
+    } catch (e) {
+      console.error('LiveFeedback load error:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
-    async function load() {
-      setLoading(true)
+    const token = localStorage.getItem('srfs_token')
+
+    function connectSocket() {
+      if (!token) return
+
       try {
-        const data = await api.get('/api/feedback')
-        if (mounted) setFeedback(data.feedback || [])
+        const socket = io(API_URL, {
+          auth: { token },
+          transports: ['websocket'],
+        })
+
+        socketRef.current = socket
+
+        socket.on('connect', () => {
+          if (mounted) {
+            setConnectionStatus('connected')
+            if (pollTimerRef.current) {
+              clearInterval(pollTimerRef.current)
+              pollTimerRef.current = null
+            }
+          }
+        })
+
+        socket.on('disconnect', () => {
+          if (mounted) {
+            setConnectionStatus('disconnected')
+            startPolling()
+          }
+        })
+
+        socket.on('connect_error', () => {
+          if (mounted) {
+            setConnectionStatus('error')
+            startPolling()
+          }
+        })
+
+        socket.on('new-feedback', (entry) => {
+          if (mounted) {
+            setLiveEntries((prev) => {
+              const exists = prev.some((item) => item.id === entry.id)
+              if (exists) return prev
+              const normalized = {
+                ...entry,
+                device: entry.device || { badgeId: entry.badgeId, healthStatus: entry.deviceStatus || 'unknown' },
+                restroom: entry.restroom || { name: entry.restroomName || 'Unknown' },
+              }
+              return [normalized, ...prev]
+            })
+          }
+        })
+
+        return socket
       } catch (e) {
-        console.error('LiveFeedback load error:', e)
-      } finally {
-        if (mounted) setLoading(false)
+        console.error('Socket connection failed:', e)
+        startPolling()
+        return null
       }
     }
-    load()
-    return () => { mounted = false }
+
+    function startPolling() {
+      if (pollTimerRef.current) return
+      if (!mounted) return
+
+      pollTimerRef.current = setInterval(() => {
+        if (mounted) {
+          loadFeedback(1, filter)
+        }
+      }, 10000)
+    }
+
+    async function init() {
+      setLoading(true)
+      setPage(1)
+      setLiveEntries([])
+      const socket = connectSocket()
+      await loadFeedback(1, filter)
+
+      if (!socket) {
+        setConnectionStatus('polling')
+      }
+    }
+
+    init()
+
+    return () => {
+      mounted = false
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+    }
+  }, [filter, loadFeedback])
+
+  const handleSearch = useCallback((value) => {
+    setSearch(value)
+    setPage(1)
   }, [])
 
-  const filtered = useMemo(() => {
-    return feedback.filter((entry) => {
-      const matchesFilter = filter === 'all' || entry.feedbackType === filter
-      const searchLower = search.toLowerCase()
-      const matchesSearch =
-        !search ||
-        (entry.restroom?.name || '').toLowerCase().includes(searchLower) ||
-        (entry.device?.badgeId || '').toLowerCase().includes(searchLower)
-      return matchesFilter && matchesSearch
-    })
-  }, [search, filter, feedback])
+  const handleFilterChange = useCallback((e) => {
+    setFilter(e.target.value)
+  }, [])
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const handlePageChange = useCallback((newPage) => {
+    setLiveEntries([])
+    loadFeedback(newPage, filter)
+  }, [filter, loadFeedback])
+
+  const loadOlder = useCallback(() => {
+    if (page < totalPages) {
+      loadFeedback(page + 1, filter)
+    }
+  }, [page, totalPages, filter, loadFeedback])
+
+  const displayed = useMemo(() => {
+    const combined = [...liveEntries, ...feedback]
+    if (!search) return combined
+    const searchLower = search.toLowerCase()
+    return combined.filter((entry) => {
+      const restroomName = entry.restroom?.name || entry.restroomName || ''
+      const badgeId = entry.device?.badgeId || entry.badgeId || ''
+      const feedbackType = entry.feedbackType || ''
+      return (
+        restroomName.toLowerCase().includes(searchLower) ||
+        badgeId.toLowerCase().includes(searchLower) ||
+        feedbackType.toLowerCase().includes(searchLower)
+      )
+    })
+  }, [search, liveEntries, feedback])
+
+  const getDeviceStatus = (entry) => {
+    if (entry.deviceStatus) return entry.deviceStatus
+    if (entry.device?.healthStatus) return entry.device.healthStatus
+    return 'unknown'
+  }
+
+  const getBattery = (entry) => {
+    if (entry.battery != null) return entry.battery
+    if (entry.device?.batteryLevel != null) return entry.device.batteryLevel
+    return null
+  }
+
+  const getBadgeId = (entry) => {
+    if (entry.badgeId) return entry.badgeId
+    if (entry.device?.badgeId) return entry.device.badgeId
+    return '—'
+  }
+
+  const getRestroomName = (entry) => {
+    if (entry.restroomName) return entry.restroomName
+    if (entry.restroom?.name) return entry.restroom.name
+    return 'Unknown'
+  }
+
+  const connectionLabel = {
+    connected: 'Live',
+    polling: 'Polling',
+    connecting: 'Connecting...',
+    disconnected: 'Disconnected',
+    error: 'Connection Error',
+  }[connectionStatus] || 'Unknown'
+
+  const connectionColor = {
+    connected: '#22c55e',
+    polling: '#eab308',
+    connecting: '#94a3b8',
+    disconnected: '#ef4444',
+    error: '#ef4444',
+  }[connectionStatus] || '#94a3b8'
 
   return (
     <div className="page">
       <div className="toolbar">
         <SearchBar
           value={search}
-          onChange={(v) => { setSearch(v); setPage(1) }}
-          placeholder="Search by restroom or badge..."
+          onChange={handleSearch}
+          placeholder="Search by restroom, badge, or feedback type..."
         />
         <select
           value={filter}
-          onChange={(e) => { setFilter(e.target.value); setPage(1) }}
+          onChange={handleFilterChange}
           className="select"
           aria-label="Filter by feedback type"
         >
@@ -65,6 +236,28 @@ export default function LiveFeedback() {
           <option value="needs_cleaning">Needs Cleaning</option>
           <option value="emergency">Emergency</option>
         </select>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 12,
+            color: connectionColor,
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: connectionColor,
+              display: 'inline-block',
+            }}
+          />
+          {connectionLabel}
+        </span>
       </div>
 
       <div className="card">
@@ -78,24 +271,28 @@ export default function LiveFeedback() {
                   <tr>
                     <th>Time</th>
                     <th>Restroom</th>
-                    <th>Badge</th>
                     <th>Feedback</th>
+                    <th>Badge ID</th>
                     <th>Battery</th>
-                    <th>Signal</th>
+                    <th>Device Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map((entry) => (
+                  {displayed.map((entry) => (
                     <tr key={entry.id}>
                       <td>{formatDateTime(entry.timestamp)}</td>
-                      <td>{entry.restroom?.name || 'Unknown'}</td>
-                      <td><code>{entry.device?.badgeId || '—'}</code></td>
-                      <td>{entry.feedbackType?.replace(/_/g, ' ')}</td>
-                      <td>{entry.battery ?? '—'}%</td>
-                      <td>{entry.signalStrength ?? '—'} dBm</td>
+                      <td>{getRestroomName(entry)}</td>
+                      <td><StatusBadge status={entry.feedbackType} variant="feedback" /></td>
+                      <td><code>{getBadgeId(entry)}</code></td>
+                      <td>
+                        <span className={`battery battery--${(getBattery(entry) ?? 0) >= 30 ? 'ok' : 'low'}`}>
+                          {getBattery(entry) != null ? `${getBattery(entry)}%` : '—'}
+                        </span>
+                      </td>
+                      <td><StatusBadge status={getDeviceStatus(entry)} variant="device" /></td>
                     </tr>
                   ))}
-                  {paginated.length === 0 && (
+                  {displayed.length === 0 && (
                     <tr>
                       <td colSpan="6" style={{ textAlign: 'center', color: '#64748b' }}>
                         No feedback found
@@ -105,7 +302,19 @@ export default function LiveFeedback() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+              <Pagination page={page} totalPages={totalPages} onPageChange={handlePageChange} />
+              {page < totalPages && (
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={loadOlder}
+                >
+                  Load older feedback
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>

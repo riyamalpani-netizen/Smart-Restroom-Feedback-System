@@ -146,6 +146,7 @@ async function processFeedback(payload) {
         signalStrength: feedback.signalStrength,
         restroomName: feedback.restroom.name,
         badgeId: device.badgeId,
+        deviceStatus: device.healthStatus,
       },
       alert: alert ? {
         id: alert.id,

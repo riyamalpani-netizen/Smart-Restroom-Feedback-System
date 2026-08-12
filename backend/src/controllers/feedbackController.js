@@ -10,8 +10,14 @@ function getOrgFilter(req) {
 async function getFeedback(req, res) {
   try {
     const { restroomId, deviceId, feedbackType, startDate, endDate, page = 1, limit = 20 } = req.query;
-    const orgFilter = getOrgFilter(req);
-    const where = { ...orgFilter };
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+    const where = {};
+
+    if (role !== "super_admin") {
+      where.restroom = { organizationId: orgId };
+    }
+
     if (restroomId) where.restroomId = restroomId;
     if (deviceId) where.deviceId = deviceId;
     if (feedbackType) where.feedbackType = feedbackType;
@@ -52,10 +58,16 @@ async function getFeedback(req, res) {
 async function getFeedbackById(req, res) {
   try {
     const { id } = req.params;
-    const orgFilter = getOrgFilter(req);
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+
+    const where = { id };
+    if (role !== "super_admin") {
+      where.restroom = { organizationId: orgId };
+    }
 
     const feedback = await prisma.feedback.findFirst({
-      where: { id, restroom: { ...orgFilter } },
+      where,
       include: {
         device: true,
         restroom: { include: { floor: { include: { location: true } } } },
