@@ -10,8 +10,14 @@ function getOrgFilter(req) {
 async function getDevices(req, res) {
   try {
     const { restroomId, healthStatus, floorId, zoneId } = req.query;
-    const orgFilter = getOrgFilter(req);
-    const where = { ...orgFilter };
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+    const where = {};
+
+    if (role !== "super_admin") {
+      where.restroom = { organizationId: orgId };
+    }
+
     if (restroomId) where.restroomId = restroomId;
     if (healthStatus) where.healthStatus = healthStatus;
     if (floorId) where.floorId = floorId;
@@ -28,9 +34,32 @@ async function getDevices(req, res) {
       orderBy: { createdAt: "desc" },
     });
 
+    const mapped = devices.map((device) => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
+      const isOnline = lastSeen && lastSeen > fiveMinutesAgo && device.healthStatus === "healthy";
+
+      return {
+        id: device.id,
+        badgeId: device.badgeId,
+        deviceEui: device.deviceEui,
+        restroomId: device.restroomId,
+        restroomName: device.restroom?.name || "Unassigned",
+        floorName: device.floor?.floorName || device.restroom?.floor?.floorName || null,
+        locationName: device.floor?.location?.officeName || device.restroom?.floor?.location?.officeName || null,
+        battery: device.batteryLevel ?? null,
+        status: isOnline ? "online" : "offline",
+        health: device.healthStatus || "healthy",
+        lastCommunication: device.lastSeen,
+        deviceType: device.deviceType,
+        zoneId: device.zoneId,
+        zoneName: device.zone?.name || null,
+      };
+    });
+
     res.status(200).json({
       message: "Devices fetched successfully",
-      devices,
+      devices: mapped,
     });
   } catch (error) {
     console.error("Get devices error:", error);
@@ -41,10 +70,16 @@ async function getDevices(req, res) {
 async function getDeviceById(req, res) {
   try {
     const { id } = req.params;
-    const orgFilter = getOrgFilter(req);
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+
+    const whereClause = { id };
+    if (role !== "super_admin") {
+      whereClause.restroom = { organizationId: orgId };
+    }
 
     const device = await prisma.device.findFirst({
-      where: { id, ...orgFilter },
+      where: whereClause,
       include: {
         restroom: { include: { floor: { include: { location: true } } } },
         floor: { include: { location: true } },
@@ -58,7 +93,30 @@ async function getDeviceById(req, res) {
       return res.status(404).json({ message: "Device not found" });
     }
 
-    res.status(200).json({ message: "Device fetched successfully", device });
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
+    const isOnline = lastSeen && lastSeen > fiveMinutesAgo && device.healthStatus === "healthy";
+
+    const mapped = {
+      id: device.id,
+      badgeId: device.badgeId,
+      deviceEui: device.deviceEui,
+      restroomId: device.restroomId,
+      restroomName: device.restroom?.name || "Unassigned",
+      floorName: device.floor?.floorName || device.restroom?.floor?.floorName || null,
+      locationName: device.floor?.location?.officeName || device.restroom?.floor?.location?.officeName || null,
+      battery: device.batteryLevel ?? null,
+      status: isOnline ? "online" : "offline",
+      health: device.healthStatus || "healthy",
+      lastCommunication: device.lastSeen,
+      deviceType: device.deviceType,
+      zoneId: device.zoneId,
+      zoneName: device.zone?.name || null,
+      feedback: device.feedback,
+      healthRecords: device.deviceHealth,
+    };
+
+    res.status(200).json({ message: "Device fetched successfully", device: mapped });
   } catch (error) {
     console.error("Get device error:", error);
     res.status(500).json({ message: "Internal server error" });
