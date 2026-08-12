@@ -8,6 +8,18 @@ async function getNotifications(req, res) {
     if (type) where.type = type;
     if (status) where.status = status;
 
+    if (req.user?.role !== "super_admin") {
+      where.alert = {
+        restroom: {
+          floor: {
+            location: {
+              organizationId: req.user.organizationId,
+            },
+          },
+        },
+      };
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [notifications, total] = await Promise.all([

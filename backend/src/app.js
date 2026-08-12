@@ -285,6 +285,13 @@ const swaggerOptions = {
           responses: { "201": { description: "Created" } },
         },
       },
+      "/api/alerts/stats": {
+        get: {
+          tags: ["Alerts"],
+          summary: "Get alert statistics",
+          responses: { "200": { description: "Alert stats" } },
+        },
+      },
       "/api/alerts/{id}": {
         get: {
           tags: ["Alerts"],

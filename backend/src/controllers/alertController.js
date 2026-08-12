@@ -38,7 +38,6 @@ async function getAlerts(req, res) {
           restroom: { include: { floor: { include: { location: true } } } },
           assignedTo: { select: { id: true, name: true, email: true } },
           acknowledgedBy: { select: { id: true, name: true, email: true } },
-          notifications: true,
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -54,6 +53,47 @@ async function getAlerts(req, res) {
     });
   } catch (error) {
     console.error("Get alerts error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function getAlertStats(req, res) {
+  try {
+    const orgFilter = await getAlertOrgFilter(req);
+    const where = { ...orgFilter };
+
+    const [
+      total,
+      open,
+      assigned,
+      inProgress,
+      closed,
+      low,
+      medium,
+      high,
+      critical,
+    ] = await Promise.all([
+      prisma.alert.count({ where }),
+      prisma.alert.count({ where: { ...where, status: "open" } }),
+      prisma.alert.count({ where: { ...where, status: "assigned" } }),
+      prisma.alert.count({ where: { ...where, status: "in_progress" } }),
+      prisma.alert.count({ where: { ...where, status: "closed" } }),
+      prisma.alert.count({ where: { ...where, priority: "low" } }),
+      prisma.alert.count({ where: { ...where, priority: "medium" } }),
+      prisma.alert.count({ where: { ...where, priority: "high" } }),
+      prisma.alert.count({ where: { ...where, priority: "critical" } }),
+    ]);
+
+    res.status(200).json({
+      message: "Alert stats fetched successfully",
+      stats: {
+        total,
+        byStatus: { open, assigned, in_progress: inProgress, closed },
+        byPriority: { low, medium, high, critical },
+      },
+    });
+  } catch (error) {
+    console.error("Get alert stats error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -228,6 +268,7 @@ async function resolveAlert(req, res) {
 
 module.exports = {
   getAlerts,
+  getAlertStats,
   getAlertById,
   createAlert,
   updateAlert,
