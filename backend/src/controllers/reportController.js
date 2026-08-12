@@ -81,7 +81,7 @@ async function getReports(req, res) {
     let data = [];
     let summary = {};
 
-    if (reportType === "feedback" || reportType === "alerts") {
+    if (reportType === "feedback") {
       const feedback = await prisma.feedback.findMany({
         where,
         include: {
@@ -114,6 +114,49 @@ async function getReports(req, res) {
         feedbackType: f.feedbackType,
         battery: f.battery,
         signal: f.signalStrength,
+      }));
+    } else if (reportType === "alerts") {
+      const alerts = await prisma.alert.findMany({
+        where: {
+          ...(Object.keys(restroomWhere).length > 0 ? { restroom: restroomWhere } : {}),
+        },
+        include: {
+          restroom: { include: { floor: { include: { location: true } } } },
+          feedback: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      summary = {
+        total: alerts.length,
+        byStatus: {
+          open: alerts.filter((a) => a.status === "open").length,
+          assigned: alerts.filter((a) => a.status === "assigned").length,
+          in_progress: alerts.filter((a) => a.status === "in_progress").length,
+          closed: alerts.filter((a) => a.status === "closed").length,
+        },
+        byPriority: {
+          low: alerts.filter((a) => a.priority === "low").length,
+          medium: alerts.filter((a) => a.priority === "medium").length,
+          high: alerts.filter((a) => a.priority === "high").length,
+          critical: alerts.filter((a) => a.priority === "critical").length,
+        },
+        period: type,
+        dateRange: { startDate, endDate },
+      };
+
+      data = alerts.map((a) => ({
+        id: a.id,
+        restroom: a.restroom?.name || "",
+        location: a.restroom?.floor?.location?.officeName || "",
+        floor: a.restroom?.floor?.floorName || "",
+        feedbackType: a.feedback?.feedbackType || "",
+        status: a.status,
+        priority: a.priority,
+        assignedTo: a.assignedTo || "Unassigned",
+        acknowledgedBy: a.acknowledgedBy || "",
+        resolvedAt: a.resolvedAt,
+        createdAt: a.createdAt,
       }));
     } else if (reportType === "device") {
       const devices = await prisma.device.findMany({
