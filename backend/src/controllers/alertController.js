@@ -7,10 +7,22 @@ function getOrgFilter(req) {
   return { organizationId: orgId };
 }
 
+async function getAlertOrgFilter(req) {
+  const role = req.user?.role;
+  const orgId = req.user?.organizationId;
+  if (role === "super_admin") return {};
+
+  const orgLocations = await prisma.location.findMany({ where: { organizationId: orgId }, select: { id: true } });
+  const orgFloors = await prisma.floor.findMany({ where: { locationId: { in: orgLocations.map((l) => l.id) } }, select: { id: true } });
+  const orgRestrooms = await prisma.restroom.findMany({ where: { floorId: { in: orgFloors.map((f) => f.id) } }, select: { id: true } });
+  
+  return { restroomId: { in: orgRestrooms.map((r) => r.id) } };
+}
+
 async function getAlerts(req, res) {
   try {
     const { status, priority, restroomId, page = 1, limit = 20 } = req.query;
-    const orgFilter = getOrgFilter(req);
+    const orgFilter = await getAlertOrgFilter(req);
     const where = { ...orgFilter };
     if (status) where.status = status;
     if (priority) where.priority = priority;
@@ -49,10 +61,10 @@ async function getAlerts(req, res) {
 async function getAlertById(req, res) {
   try {
     const { id } = req.params;
-    const orgFilter = getOrgFilter(req);
+    const orgFilter = await getAlertOrgFilter(req);
 
     const alert = await prisma.alert.findFirst({
-      where: { id, restroom: { ...orgFilter } },
+      where: { id, ...orgFilter },
       include: {
         feedback: true,
         restroom: { include: { floor: { include: { location: true } } } },
@@ -111,13 +123,18 @@ async function updateAlert(req, res) {
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
+    const orgFilter = await getAlertOrgFilter(req);
     const existing = await prisma.alert.findFirst({
-      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+      where: { id, ...orgFilter },
       include: { restroom: true },
     });
 
     if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
+    }
+
+    if (userRole === "vendor_admin" && existing.restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only update alerts in your organization" });
     }
 
     const updateData = {};
@@ -149,12 +166,18 @@ async function acknowledgeAlert(req, res) {
       return res.status(401).json({ message: "Authentication required" });
     }
 
+    const orgFilter = await getAlertOrgFilter(req);
     const existing = await prisma.alert.findFirst({
-      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+      where: { id, ...orgFilter },
+      include: { restroom: true },
     });
 
     if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
+    }
+
+    if (userRole === "vendor_admin" && existing.restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only acknowledge alerts in your organization" });
     }
 
     const updated = await prisma.alert.update({
@@ -176,18 +199,24 @@ async function resolveAlert(req, res) {
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
+    const orgFilter = await getAlertOrgFilter(req);
     const existing = await prisma.alert.findFirst({
-      where: { id, restroom: { ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}) } },
+      where: { id, ...orgFilter },
+      include: { restroom: true },
     });
 
     if (!existing) {
       return res.status(404).json({ message: "Alert not found" });
     }
 
+    if (userRole === "vendor_admin" && existing.restroom.organizationId !== userOrgId) {
+      return res.status(403).json({ message: "You can only resolve alerts in your organization" });
+    }
+
     const updated = await prisma.alert.update({
       where: { id },
       data: { status: "closed", resolvedAt: new Date() },
-      include: { feedback: true, restroom: true },
+      include: { feedback: true, restroom: true, acknowledgedBy: { select: { id: true, name: true } } },
     });
 
     res.status(200).json({ message: "Alert resolved successfully", alert: updated });
