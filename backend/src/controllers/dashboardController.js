@@ -20,6 +20,24 @@ async function getDashboard(req, res) {
 
     const orgFilter = getOrgFilter(req);
 
+    const isSuperAdmin = req.user?.role === "super_admin";
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true },
+    });
+    const locationIds = locations.map((l) => l.id);
+
+    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floors = await prisma.floor.findMany({
+      where: floorWhere,
+      select: { id: true },
+    });
+    const floorIds = floors.map((f) => f.id);
+
+    const restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+
     const [
       totalRestrooms,
       totalDevices,
@@ -32,34 +50,34 @@ async function getDashboard(req, res) {
       alerts,
       feedbackEntries,
     ] = await Promise.all([
-      prisma.restroom.count({ where: orgFilter }),
+      prisma.restroom.count({ where: restroomWhere }),
       prisma.device.count({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.alert.count({
         where: {
           status: { not: "closed" },
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.feedback.count({
         where: {
           timestamp: { gte: startOfToday },
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.device.count({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
           healthStatus: "healthy",
           lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
         },
       }),
       prisma.device.count({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
           OR: [
             { healthStatus: { not: "healthy" } },
             { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
@@ -67,7 +85,7 @@ async function getDashboard(req, res) {
         },
       }),
       prisma.restroom.findMany({
-        where: orgFilter,
+        where: restroomWhere,
         orderBy: [{ floor: { createdAt: "asc" } }, { name: "asc" }],
         include: {
           devices: true,
@@ -77,7 +95,7 @@ async function getDashboard(req, res) {
       }),
       prisma.device.findMany({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
         orderBy: { batteryLevel: "desc" },
         include: { restroom: { include: { floor: { include: { location: true } } } } },
@@ -85,7 +103,7 @@ async function getDashboard(req, res) {
       prisma.alert.findMany({
         where: {
           status: { not: "closed" },
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
         orderBy: { createdAt: "desc" },
         take: 8,
@@ -93,7 +111,7 @@ async function getDashboard(req, res) {
       }),
       prisma.feedback.findMany({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
         orderBy: { timestamp: "desc" },
         take: 30,
@@ -123,9 +141,8 @@ async function getDashboard(req, res) {
       return {
         day: formatDayLabel(date),
         happy: entriesOnDay.filter((entry) => entry.feedbackType === "happy").length,
-        average: entriesOnDay.filter((entry) => entry.feedbackType === "average").length,
-        needs_cleaning: entriesOnDay.filter((entry) => entry.feedbackType === "needs_cleaning").length,
-        emergency: entriesOnDay.filter((entry) => entry.feedbackType === "emergency").length,
+        neutral: entriesOnDay.filter((entry) => entry.feedbackType === "average").length,
+        unhappy: entriesOnDay.filter((entry) => entry.feedbackType === "needs_cleaning" || entry.feedbackType === "emergency").length,
       };
     });
 
@@ -185,6 +202,23 @@ async function getDashboardSummary(req, res) {
     startOfToday.setHours(0, 0, 0, 0);
 
     const orgFilter = getOrgFilter(req);
+    const isSuperAdmin = req.user?.role === "super_admin";
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true },
+    });
+    const locationIds = locations.map((l) => l.id);
+
+    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floors = await prisma.floor.findMany({
+      where: floorWhere,
+      select: { id: true },
+    });
+    const floorIds = floors.map((f) => f.id);
+
+    const restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
 
     const [
       totalRestrooms,
@@ -194,34 +228,34 @@ async function getDashboardSummary(req, res) {
       onlineDevices,
       batterySummary,
     ] = await Promise.all([
-      prisma.restroom.count({ where: orgFilter }),
+      prisma.restroom.count({ where: restroomWhere }),
       prisma.device.count({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.alert.count({
         where: {
           status: { not: "closed" },
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.feedback.count({
         where: {
           timestamp: { gte: startOfToday },
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
       }),
       prisma.device.count({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
           healthStatus: "healthy",
           lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
         },
       }),
       prisma.device.aggregate({
         where: {
-          restroom: { ...orgFilter },
+          restroom: restroomWhere,
         },
         _avg: { batteryLevel: true },
         _min: { batteryLevel: true },
@@ -258,10 +292,27 @@ async function getDashboardCharts(req, res) {
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     const orgFilter = getOrgFilter(req);
+    const isSuperAdmin = req.user?.role === "super_admin";
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true },
+    });
+    const locationIds = locations.map((l) => l.id);
+
+    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floors = await prisma.floor.findMany({
+      where: floorWhere,
+      select: { id: true },
+    });
+    const floorIds = floors.map((f) => f.id);
+
+    const restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
 
     const feedback = await prisma.feedback.findMany({
       where: {
-        restroom: { ...orgFilter },
+        restroom: restroomWhere,
         timestamp: { gte: sevenDaysAgo },
       },
       orderBy: { timestamp: "asc" },
@@ -289,9 +340,8 @@ async function getDashboardCharts(req, res) {
       return {
         label,
         happy: dayFeedback.filter((f) => f.feedbackType === "happy").length,
-        average: dayFeedback.filter((f) => f.feedbackType === "average").length,
-        needs_cleaning: dayFeedback.filter((f) => f.feedbackType === "needs_cleaning").length,
-        emergency: dayFeedback.filter((f) => f.feedbackType === "emergency").length,
+        neutral: dayFeedback.filter((f) => f.feedbackType === "average").length,
+        unhappy: dayFeedback.filter((f) => f.feedbackType === "needs_cleaning" || f.feedbackType === "emergency").length,
       };
     });
 
@@ -308,10 +358,70 @@ async function getDashboardCharts(req, res) {
 async function getDashboardLive(req, res) {
   try {
     const io = getIO();
+    const orgFilter = getOrgFilter(req);
+    const isSuperAdmin = req.user?.role === "super_admin";
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true },
+    });
+    const locationIds = locations.map((l) => l.id);
+
+    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floors = await prisma.floor.findMany({
+      where: floorWhere,
+      select: { id: true },
+    });
+    const floorIds = floors.map((f) => f.id);
+
+    const restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+
+    const [
+      onlineDevices,
+      offlineDevices,
+      activeAlerts,
+      todayFeedback,
+    ] = await Promise.all([
+      prisma.device.count({
+        where: {
+          restroom: restroomWhere,
+          healthStatus: "healthy",
+          lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+      }),
+      prisma.device.count({
+        where: {
+          restroom: restroomWhere,
+          OR: [
+            { healthStatus: { not: "healthy" } },
+            { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+          ],
+        },
+      }),
+      prisma.alert.count({
+        where: {
+          status: { not: "closed" },
+          restroom: restroomWhere,
+        },
+      }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          restroom: restroomWhere,
+        },
+      }),
+    ]);
 
     return res.status(200).json({
       message: "Live dashboard endpoint",
       connectedClients: io ? io.engine.clientsCount : 0,
+      liveStats: {
+        onlineDevices,
+        offlineDevices,
+        activeAlerts,
+        todayFeedback,
+      },
     });
   } catch (error) {
     console.error("Dashboard live error:", error);
@@ -324,6 +434,21 @@ async function getHeatMapData(req, res) {
     const { period, floorId, locationId } = req.query;
     const now = new Date();
     const orgFilter = getOrgFilter(req);
+    const isSuperAdmin = req.user?.role === "super_admin";
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true },
+    });
+    const locationIds = locations.map((l) => l.id);
+
+    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floors = await prisma.floor.findMany({
+      where: floorWhere,
+      select: { id: true },
+    });
+    const floorIds = floors.map((f) => f.id);
 
     let dateFilter = {};
     if (period === "today") {
@@ -340,11 +465,11 @@ async function getHeatMapData(req, res) {
       dateFilter = { timestamp: { gte: monthAgo } };
     }
 
-    const whereRestroom = { ...orgFilter };
-    if (floorId) whereRestroom.floorId = floorId;
+    const whereRestroom = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+    if (floorId) whereRestroom.id = floorId;
     if (locationId) {
-      const floors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
-      whereRestroom.floorId = { in: floors.map((f) => f.id) };
+      const locFloors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
+      whereRestroom.floorId = { in: locFloors.map((f) => f.id) };
     }
 
     const restrooms = await prisma.restroom.findMany({

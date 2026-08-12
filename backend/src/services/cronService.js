@@ -3,39 +3,40 @@ const prisma = require("../config/database");
 const { sendTeamsWebhook } = require("./teamsWebhookService");
 const logger = require("../middleware/logger");
 
-let cronJob = null;
+let cronJobs = [];
 
 function startCronJobs() {
-  if (cronJob) {
+  if (cronJobs.length > 0) {
     logger.info("Cron jobs already running");
     return;
   }
 
-  cronJob = cron.schedule("0 8 * * *", async () => {
+  const daily = cron.schedule("0 8 * * *", async () => {
     await generateDailyReport();
   }, {
     timezone: "UTC",
   });
 
-  cronJob = cron.schedule("0 8 * * 1", async () => {
+  const weekly = cron.schedule("0 8 * * 1", async () => {
     await generateWeeklyReport();
   }, {
     timezone: "UTC",
   });
 
-  cronJob = cron.schedule("0 8 1 * *", async () => {
+  const monthly = cron.schedule("0 8 1 * *", async () => {
     await generateMonthlyReport();
   }, {
     timezone: "UTC",
   });
 
+  cronJobs = [daily, weekly, monthly];
   logger.info("Cron jobs started");
 }
 
 function stopCronJobs() {
-  if (cronJob) {
-    cronJob.stop();
-    cronJob = null;
+  if (cronJobs.length > 0) {
+    cronJobs.forEach((job) => job.stop());
+    cronJobs = [];
     logger.info("Cron jobs stopped");
   }
 }

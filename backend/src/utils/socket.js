@@ -1,4 +1,6 @@
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
+const { JWT_SECRET } = require("../config/env");
 const logger = require("../middleware/logger");
 
 let io = null;
@@ -11,15 +13,30 @@ function initializeSocket(server) {
     },
   });
 
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(" ")[1];
+    if (!token) {
+      return next(new Error("Authentication required"));
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      socket.user = decoded;
+      next();
+    } catch (error) {
+      next(new Error("Invalid or expired token"));
+    }
+  });
+
   io.on("connection", (socket) => {
-    logger.info(`Client connected: ${socket.id}`);
+    logger.info(`Client connected: ${socket.id}`, { userId: socket.user?.sub, role: socket.user?.role });
 
     socket.on("disconnect", () => {
       logger.info(`Client disconnected: ${socket.id}`);
     });
   });
 
-  logger.info("Socket.IO initialized");
+  logger.info("Socket.IO initialized with auth");
   return io;
 }
 
