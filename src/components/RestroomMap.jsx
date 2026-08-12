@@ -1,7 +1,10 @@
 import StatusBadge from './common/StatusBadge'
 
 export default function RestroomMap({ restrooms }) {
-  const floors = [...new Set(restrooms.map((r) => r.floor))].sort()
+  const floors = [...new Set(restrooms.map((r) => r.floor?.floorNumber ?? r.floor?.floorName ?? 'Unknown'))].sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    return String(a).localeCompare(String(b))
+  })
 
   return (
     <div className="restroom-map card">
@@ -12,7 +15,7 @@ export default function RestroomMap({ restrooms }) {
             <h4>Floor {floor}</h4>
             <div className="restroom-map__rooms">
               {restrooms
-                .filter((r) => r.floor === floor)
+                .filter((r) => (r.floor?.floorNumber ?? r.floor?.floorName ?? 'Unknown') === floor)
                 .map((room) => (
                   <div
                     key={room.id}

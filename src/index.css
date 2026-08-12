@@ -369,7 +369,7 @@ code {
 /* Dashboard */
 .dashboard-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -697,6 +697,15 @@ code {
 .recent-activity__item time {
   font-size: 12px;
   color: var(--text);
+}
+
+/* Geo map */
+.restroom-geo-map {
+  margin-top: 16px;
+}
+
+.restroom-geo-map .leaflet-container {
+  background: #e2e8f0;
 }
 
 /* Status badge */

@@ -25,6 +25,8 @@ async function getDashboard(req, res) {
       totalDevices,
       activeAlerts,
       todayFeedback,
+      onlineDevices,
+      offlineDevices,
       restrooms,
       devices,
       alerts,
@@ -48,10 +50,30 @@ async function getDashboard(req, res) {
           restroom: { ...orgFilter },
         },
       }),
+      prisma.device.count({
+        where: {
+          restroom: { ...orgFilter },
+          healthStatus: "healthy",
+          lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+      }),
+      prisma.device.count({
+        where: {
+          restroom: { ...orgFilter },
+          OR: [
+            { healthStatus: { not: "healthy" } },
+            { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+          ],
+        },
+      }),
       prisma.restroom.findMany({
         where: orgFilter,
         orderBy: [{ floor: { createdAt: "asc" } }, { name: "asc" }],
-        include: { devices: true, _count: { select: { feedback: true, alerts: true } } },
+        include: {
+          devices: true,
+          floor: { include: { location: true } },
+          _count: { select: { feedback: true, alerts: true } },
+        },
       }),
       prisma.device.findMany({
         where: {
@@ -84,6 +106,8 @@ async function getDashboard(req, res) {
       totalDevices,
       activeAlerts,
       todayFeedback,
+      onlineDevices,
+      offlineDevices,
     };
 
     const feedbackTrend = Array.from({ length: 7 }, (_, index) => {
@@ -117,6 +141,9 @@ async function getDashboard(req, res) {
       restrooms: restrooms.map((room) => ({
         ...room,
         status: room.status || "good",
+        latitude: room.floor?.location?.latitude ?? null,
+        longitude: room.floor?.location?.longitude ?? null,
+        locationName: room.floor?.location ? `${room.floor.location.city} - ${room.floor.location.officeName}` : null,
       })),
       devices: devices.map((device) => ({
         id: device.id,

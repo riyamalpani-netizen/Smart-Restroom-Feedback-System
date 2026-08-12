@@ -4,6 +4,8 @@ export default function DashboardCards({ stats }) {
     { label: 'Total Devices', value: stats.totalDevices, icon: '📱', color: '#8b5cf6' },
     { label: "Today's Feedback", value: stats.todayFeedback, icon: '💬', color: '#22c55e' },
     { label: 'Active Alerts', value: stats.activeAlerts, icon: '🔔', color: '#ef4444' },
+    { label: 'Online Devices', value: stats.onlineDevices, icon: '🟢', color: '#22c55e' },
+    { label: 'Offline Devices', value: stats.offlineDevices, icon: '🔴', color: '#ef4444' },
   ]
 
   return (
