@@ -214,7 +214,7 @@ export default function SiteConfiguration() {
     try {
       const coordinates = { type: 'Polygon', coordinates: [[...points, points[0]].map(([lat, lng]) => [lng, lat])] }
       const data = await zoneAPI.create({ floorId: floor.id, name: zoneForm.name.trim() || `${zoneForm.type} zone`, type: zoneForm.type, coordinates })
-      setZones((all) => [...all, data.zone]); setPoints([]); setDrawing(false); setNotice('Zone saved. You can now place badges.')
+      setZones((all) => [...all, data.zone]); setPoints([]); setZoneForm({ name: '', type: zoneForm.type }); setNotice('Zone saved. Draw another zone or continue.')
     } catch (error) { setNotice(error.message || 'Unable to create zone.') }
   }
 
