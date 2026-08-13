@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ImageOverlay, MapContainer, Marker, Polygon, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -100,6 +101,7 @@ function CenterPicker({ initial, onCancel, onSave }) {
 
 export default function SiteConfiguration() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const fileRef = useRef(null)
   const geoJsonRef = useRef(null)
   const [step, setStep] = useState(1)
@@ -283,7 +285,7 @@ export default function SiteConfiguration() {
       </div>
     </section>}
 
-    {step === 8 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId}</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => setStep(1)}>Finish</button></section>}
+    {step === 8 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId}</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => navigate('/dashboard')}>Finish</button></section>}
     {pickerOpen && <CenterPicker initial={siteForm.latitude ? [Number(siteForm.latitude), Number(siteForm.longitude)] : null} onCancel={() => setPickerOpen(false)} onSave={setCoords} />}
     {addFloorOpen && <div className="planner-modal-backdrop"><div className="planner-modal planner-modal--small"><button className="planner-modal__close" onClick={() => setAddFloorOpen(false)}>×</button><h2>Add Floor</h2><label>Floor Name <b>*</b><input autoFocus value={floorForm.name} placeholder="e.g. Ground Floor" onChange={(e) => setFloorForm({ ...floorForm, name: e.target.value })} /></label><label>Floor Number <b>*</b><input type="number" value={floorForm.number} placeholder="0 for ground, 1 for first floor" onChange={(e) => setFloorForm({ ...floorForm, number: e.target.value })} /></label><div className="planner-modal__actions"><button className="planner-button planner-button--ghost" onClick={() => setAddFloorOpen(false)}>Cancel</button><button className="planner-button" disabled={busy} onClick={addFloor}>Add Floor</button></div></div></div>}
   </div>
