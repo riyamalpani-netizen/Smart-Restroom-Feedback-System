@@ -1,3 +1,8 @@
+/* Hide the geo map tiles while drawing zones so only the floor plan and zones are visible. */
+.planner-map:has(.planner-toolbox input) .leaflet-tile-pane {
+  display: none !important;
+}
+
 /* The floor-plan tracing layer fades whenever the zone drawing control is active. */
 .planner-map:has(.planner-toolbox input) .leaflet-image-layer {
   opacity: .28 !important;
