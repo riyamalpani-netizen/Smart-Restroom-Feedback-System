@@ -52,7 +52,7 @@ function MapFocus({ center, zoom = 16 }) {
 
 function SitePin({ location }) {
   if (!Number.isFinite(location?.latitude) || !Number.isFinite(location?.longitude)) return null
-  return <Marker position={[location.latitude, location.longitude]} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [26, 34], iconAnchor: [13, 34], html: '<span>⌖</span>' })} />
+  return <Marker position={[location.latitude, location.longitude]} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [40, 48], iconAnchor: [20, 48], html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="40" height="48"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>' }) } />
 }
 
 function Stepper({ currentStep, setCurrentStep, ready }) {
@@ -91,7 +91,7 @@ function CenterPicker({ initial, onCancel, onSave }) {
           <MapFocus center={focus} zoom={15} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
           <MapClick onClick={(point) => setSelected([point.lat, point.lng])} />
-          {selected && <Marker position={selected} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [26, 34], iconAnchor: [13, 34], html: '<span>⌖</span>' })} />}
+          {selected && <Marker position={selected} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [40, 48], iconAnchor: [20, 48], html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="40" height="48"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>' }) } />}
         </MapContainer>
       </div>
       <div className="planner-modal__footer"><span>{selected ? `${selected[0].toFixed(7)}, ${selected[1].toFixed(7)}` : 'No point selected yet'}</span><div><button className="planner-button planner-button--ghost" onClick={onCancel}>Cancel</button><button className="planner-button" disabled={!selected} onClick={() => onSave(selected)}>Save</button></div></div>
