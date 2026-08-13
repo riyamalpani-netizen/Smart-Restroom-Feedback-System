@@ -159,7 +159,7 @@ async function createAlert(req, res) {
 async function updateAlert(req, res) {
   try {
     const { id } = req.params;
-    const { status, priority, assignedToId } = req.body;
+    const { status, priority, assignedToId, notes } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -181,11 +181,12 @@ async function updateAlert(req, res) {
     if (status) updateData.status = status;
     if (priority) updateData.priority = priority;
     if (assignedToId !== undefined) updateData.assignedToId = assignedToId;
+    if (notes !== undefined) updateData.notes = notes;
 
     const alert = await prisma.alert.update({
       where: { id },
       data: updateData,
-      include: { feedback: true, restroom: true, assignedTo: true },
+      include: { feedback: true, restroom: true, assignedTo: true, acknowledgedBy: true },
     });
 
     res.status(200).json({ message: "Alert updated successfully", alert });

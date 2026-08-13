@@ -191,6 +191,7 @@ model Restroom {
 
 model Device {
   id              String       @id @default(cuid())
+  name            String?
   deviceEui       String       @unique
   badgeId         String       @unique
   restroomId      String?
@@ -205,6 +206,10 @@ model Device {
   healthStatus    DeviceHealth @default(healthy)
   floorPlanPosX   Float?
   floorPlanPosY   Float?
+  joinEui         String?
+  appKey          String?
+  lorawanVersion  String?
+  lorawanPhyVersion String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -244,6 +249,7 @@ model Alert {
   acknowledgedById String?
   acknowledgedBy  User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
   resolvedAt      DateTime?
+  notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

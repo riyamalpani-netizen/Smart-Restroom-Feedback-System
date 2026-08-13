@@ -19,24 +19,37 @@ async function getDashboard(req, res) {
     startOfToday.setHours(0, 0, 0, 0);
 
     const orgFilter = getOrgFilter(req);
-
     const isSuperAdmin = req.user?.role === "super_admin";
+
+    const { locationId, floorId, restroomId } = req.query;
 
     const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
     const locations = await prisma.location.findMany({
       where: locationWhere,
       select: { id: true },
     });
-    const locationIds = locations.map((l) => l.id);
+    let locationIds = locations.map((l) => l.id);
+
+    if (locationId) {
+      locationIds = locationId ? [locationId] : locationIds;
+    }
 
     const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
     const floors = await prisma.floor.findMany({
       where: floorWhere,
       select: { id: true },
     });
-    const floorIds = floors.map((f) => f.id);
+    let floorIds = floors.map((f) => f.id);
 
-    const restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+    if (floorId) {
+      floorIds = floorId ? [floorId] : floorIds;
+    }
+
+    let restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+
+    if (restroomId) {
+      restroomWhere = { id: restroomId };
+    }
 
     const [
       totalRestrooms,
@@ -45,6 +58,9 @@ async function getDashboard(req, res) {
       todayFeedback,
       onlineDevices,
       offlineDevices,
+      happyFeedback,
+      okayFeedback,
+      unhappyFeedback,
       restrooms,
       devices,
       alerts,
@@ -84,6 +100,30 @@ async function getDashboard(req, res) {
           ],
         },
       }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: startOfToday },
+          restroom: restroomWhere,
+          feedbackType: "happy",
+        },
+      }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: startOfToday },
+          restroom: restroomWhere,
+          feedbackType: "average",
+        },
+      }),
+      prisma.feedback.count({
+        where: {
+          timestamp: { gte: startOfToday },
+          restroom: restroomWhere,
+          OR: [
+            { feedbackType: "needs_cleaning" },
+            { feedbackType: "emergency" },
+          ],
+        },
+      }),
       prisma.restroom.findMany({
         where: restroomWhere,
         orderBy: [{ floor: { createdAt: "asc" } }, { name: "asc" }],
@@ -107,7 +147,11 @@ async function getDashboard(req, res) {
         },
         orderBy: { createdAt: "desc" },
         take: 8,
-        include: { restroom: { include: { floor: { include: { location: true } } } } },
+        include: {
+          feedback: true,
+          assignedTo: { select: { name: true } },
+          restroom: { include: { floor: { include: { location: true } } } },
+        },
       }),
       prisma.feedback.findMany({
         where: {
@@ -126,6 +170,9 @@ async function getDashboard(req, res) {
       todayFeedback,
       onlineDevices,
       offlineDevices,
+      happyFeedback,
+      okayFeedback,
+      unhappyFeedback,
     };
 
     const feedbackTrend = Array.from({ length: 7 }, (_, index) => {
@@ -180,9 +227,13 @@ async function getDashboard(req, res) {
         type: alert.feedback?.feedbackType || "unknown",
         status: alert.status,
         priority: alert.priority,
-        assignedTo: alert.assignedToId || "Unassigned",
+        assignedTo: alert.assignedTo?.name || "Unassigned",
         acknowledgedBy: alert.acknowledgedById || null,
         resolvedTime: alert.resolvedAt ? new Date(alert.resolvedAt).getTime() : null,
+        notes: alert.notes || null,
+        locationName: alert.restroom?.floor?.location
+          ? `${alert.restroom.floor.location.city} - ${alert.restroom.floor.location.officeName}`
+          : null,
       })),
       feedbackTrend,
       recentActivity,
@@ -466,7 +517,7 @@ async function getHeatMapData(req, res) {
     }
 
     const whereRestroom = isSuperAdmin ? {} : { floorId: { in: floorIds } };
-    if (floorId) whereRestroom.id = floorId;
+    if (floorId) whereRestroom.floorId = floorId;
     if (locationId) {
       const locFloors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
       whereRestroom.floorId = { in: locFloors.map((f) => f.id) };
@@ -477,17 +528,21 @@ async function getHeatMapData(req, res) {
       include: {
         floor: { include: { location: true } },
         devices: true,
-        feedback: { where: dateFilter },
+        feedback: { where: dateFilter, orderBy: { timestamp: "desc" } },
         alerts: { where: { status: { not: "closed" } } },
       },
     });
 
     const heatMapData = restrooms.map((room, index) => {
       const totalFeedback = room.feedback.length;
+      const happyFeedback = room.feedback.filter((f) => f.feedbackType === "happy").length;
+      const neutralFeedback = room.feedback.filter((f) => f.feedbackType === "average").length;
       const negativeFeedback = room.feedback.filter(
         (f) => f.feedbackType === "needs_cleaning" || f.feedbackType === "emergency"
       ).length;
       const score = totalFeedback > 0 ? Math.round((negativeFeedback / totalFeedback) * 100) : 0;
+
+      const lastFeedback = room.feedback.length > 0 ? room.feedback[0].timestamp : null
 
       const cols = 3
       const cellWidth = 220
@@ -518,7 +573,11 @@ async function getHeatMapData(req, res) {
         longitude,
         score,
         total: totalFeedback,
-        status: room.status,
+        happy: happyFeedback,
+        okay: neutralFeedback,
+        unhappy: negativeFeedback,
+        lastFeedback,
+        status: negativeFeedback > 0 ? "alert" : room.status,
         deviceId: room.devices?.[0]?.id || null,
         badgeId: room.devices?.[0]?.badgeId || null,
         battery: room.devices?.[0]?.batteryLevel || null,

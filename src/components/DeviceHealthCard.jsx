@@ -1,6 +1,5 @@
 import StatusBadge from './common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import { getRestroomName } from '../services/mockData'
 
 export default function DeviceHealthCard({ devices }) {
   const summary = {
@@ -31,12 +30,12 @@ export default function DeviceHealthCard({ devices }) {
           <li key={device.id}>
             <div>
               <strong>{device.badgeId}</strong>
-              <span>{getRestroomName(device.restroomId)}</span>
+              <span>{device.restroomName || '—'}</span>
             </div>
             <div className="device-health__meta">
               <StatusBadge status={device.health} variant="health" />
               <span className="device-health__time">
-                {formatDateTime(device.lastCommunication)}
+                {device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}
               </span>
             </div>
           </li>

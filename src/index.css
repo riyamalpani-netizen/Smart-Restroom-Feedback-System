@@ -410,6 +410,56 @@ code {
   margin-bottom: 16px;
 }
 
+.dashboard-map {
+  margin-bottom: 16px;
+}
+
+.dashboard-map .card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dashboard-top {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.unhappy-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.unhappy-panel__item {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: background 0.15s;
+}
+
+.unhappy-panel__item:hover {
+  background: #fef2f2;
+}
+
+.unhappy-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 /* Feedback chart */
 .feedback-chart__bars {
   display: flex;
@@ -895,6 +945,16 @@ label {
 }
 
 /* Reports chart */
+.reports-chart {
+  padding: 16px;
+}
+
+.reports-chart__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .reports-chart__row {
   display: flex;
   align-items: center;
@@ -953,6 +1013,13 @@ label {
 .device-detail dd {
   margin: 0;
   color: var(--text-h);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.device-detail dd code {
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .device-detail .btn-group {

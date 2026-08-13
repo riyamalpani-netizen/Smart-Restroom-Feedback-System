@@ -17,6 +17,9 @@ export default function AlertManagement() {
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [editingNotesId, setEditingNotesId] = useState(null)
+  const [notesDraft, setNotesDraft] = useState('')
+  const [users, setUsers] = useState([])
   const canEdit = user?.role !== 'viewer'
 
   const loadAlerts = useCallback(async (pageNum = 1) => {
@@ -50,6 +53,18 @@ export default function AlertManagement() {
     return () => clearInterval(timer)
   }, [loadAlerts, page])
 
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        const data = await api.get('/api/users')
+        setUsers(data.users || [])
+      } catch (e) {
+        console.error('Load users error:', e)
+      }
+    }
+    loadUsers()
+  }, [])
+
   const handleSearch = useCallback((value) => {
     setSearch(value)
   }, [])
@@ -74,11 +89,13 @@ export default function AlertManagement() {
       const feedbackType = alert.feedback?.feedbackType || alert.type || ''
       const assignedTo = alert.assignedTo?.name || alert.assignedTo || ''
       const acknowledgedBy = alert.acknowledgedBy?.name || alert.acknowledgedBy || ''
+      const notes = alert.notes || ''
       return (
         restroomName.toLowerCase().includes(searchLower) ||
         feedbackType.toLowerCase().includes(searchLower) ||
         assignedTo.toLowerCase().includes(searchLower) ||
-        acknowledgedBy.toLowerCase().includes(searchLower)
+        acknowledgedBy.toLowerCase().includes(searchLower) ||
+        notes.toLowerCase().includes(searchLower)
       )
     })
   }, [search, alerts])
@@ -101,13 +118,38 @@ export default function AlertManagement() {
     }
   }
 
+  async function assign(id, userId) {
+    try {
+      const updated = await api.put(`/api/alerts/${id}`, { assignedToId: userId })
+      setAlerts((prev) => prev.map((a) => (a.id === id ? updated.alert : a)))
+    } catch (e) {
+      alert(e.message)
+    }
+  }
+
+  function startEditNotes(alert) {
+    setEditingNotesId(alert.id)
+    setNotesDraft(alert.notes || '')
+  }
+
+  async function saveNotes(id) {
+    try {
+      const updated = await api.put(`/api/alerts/${id}`, { notes: notesDraft })
+      setAlerts((prev) => prev.map((a) => (a.id === id ? updated.alert : a)))
+      setEditingNotesId(null)
+      setNotesDraft('')
+    } catch (e) {
+      alert(e.message)
+    }
+  }
+
   return (
     <div className="page">
       <div className="toolbar">
         <SearchBar
           value={search}
           onChange={handleSearch}
-          placeholder="Search alerts by restroom, type, or person..."
+          placeholder="Search alerts by restroom, type, person, or notes..."
         />
         <select
           value={statusFilter}
@@ -152,6 +194,7 @@ export default function AlertManagement() {
                     <th>Assigned To</th>
                     <th>Acknowledged By</th>
                     <th>Resolved Time</th>
+                    <th>Notes</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -161,11 +204,50 @@ export default function AlertManagement() {
                       <td>{formatDateTime(alert.createdAt || alert.time)}</td>
                       <td>{alert.restroom?.name || alert.restroomName || 'Unknown'}</td>
                       <td>{alert.feedback?.feedbackType?.replace(/_/g, ' ') || alert.type || '—'}</td>
-                      <td>{alert.priority || '—'}</td>
+                      <td><StatusBadge status={alert.priority} variant="alert" /></td>
                       <td><StatusBadge status={alert.status} variant="alert" /></td>
-                      <td>{alert.assignedTo?.name || alert.assignedTo || '—'}</td>
+                      <td>
+                        {canEdit ? (
+                          <select
+                            value={alert.assignedTo?.id || ''}
+                            onChange={(e) => assign(alert.id, e.target.value)}
+                            className="select"
+                            style={{ minWidth: 120 }}
+                          >
+                            <option value="">Unassigned</option>
+                            {users.map((u) => (
+                              <option key={u.id} value={u.id}>{u.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          alert.assignedTo?.name || '—'
+                        )}
+                      </td>
                       <td>{alert.acknowledgedBy?.name || alert.acknowledgedBy || '—'}</td>
                       <td>{alert.resolvedAt ? formatDateTime(alert.resolvedAt) : '—'}</td>
+                      <td>
+                        {editingNotesId === alert.id ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <input
+                              value={notesDraft}
+                              onChange={(e) => setNotesDraft(e.target.value)}
+                              placeholder="Add note..."
+                              style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #cbd5e1', minWidth: 140 }}
+                            />
+                            <button type="button" className="btn btn--sm btn--primary" onClick={() => saveNotes(alert.id)}>Save</button>
+                            <button type="button" className="btn btn--sm btn--ghost" onClick={() => setEditingNotesId(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <span style={{ color: alert.notes ? '#334155' : '#94a3b8', fontSize: 12 }}>
+                              {alert.notes || 'No notes'}
+                            </span>
+                            {canEdit && (
+                              <button type="button" className="btn btn--sm btn--ghost" onClick={() => startEditNotes(alert)}>Edit</button>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td>
                         {canEdit ? (
                           <div className="btn-group btn-group--inline">
@@ -194,7 +276,7 @@ export default function AlertManagement() {
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan="9" style={{ textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="10" style={{ textAlign: 'center', color: '#64748b' }}>
                         No alerts found
                       </td>
                     </tr>

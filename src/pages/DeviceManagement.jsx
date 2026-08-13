@@ -15,9 +15,14 @@ export default function DeviceManagement() {
   const [loading, setLoading] = useState(true)
   const [replaceOpen, setReplaceOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
+  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '' })
   const canEdit = user?.role !== 'viewer'
+
+  const [locations, setLocations] = useState([])
+  const [floors, setFloors] = useState([])
 
   const loadDevices = useCallback(async () => {
     try {
@@ -30,8 +35,14 @@ export default function DeviceManagement() {
 
   const loadRestrooms = useCallback(async () => {
     try {
-      const data = await api.get('/api/restrooms')
-      setRestrooms(data.restrooms || [])
+      const [locData, floorData, restData] = await Promise.all([
+        api.get('/api/locations'),
+        api.get('/api/floors'),
+        api.get('/api/restrooms'),
+      ])
+      setLocations(locData.locations || [])
+      setFloors(floorData.floors || [])
+      setRestrooms(restData.restrooms || [])
     } catch (e) {
       console.error('Load restrooms error:', e)
     }
@@ -111,13 +122,35 @@ export default function DeviceManagement() {
     }
   }
 
+  const handleCreateDevice = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.post('/api/devices', {
+        name: newDevice.name,
+        deviceType: newDevice.deviceType,
+        restroomId: newDevice.restroomId || null,
+        floorId: newDevice.floorId || null,
+        lorawanVersion: newDevice.lorawanVersion || undefined,
+        lorawanPhyVersion: newDevice.lorawanPhyVersion || undefined,
+      })
+      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '' })
+      setAddOpen(false)
+      await loadDevices()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--primary" onClick={() => setMapOpen(true)}>
-              Map New Badge
+            <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>
+              Add Device
             </button>
           ) : null
         }
@@ -136,43 +169,47 @@ export default function DeviceManagement() {
           ) : (
             <div className="table-wrapper">
               <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Badge ID</th>
-                    <th>Restroom</th>
-                    <th>Battery</th>
-                    <th>Status</th>
-                    <th>Health</th>
-                    <th>Last Communication</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((device) => (
-                    <tr
-                      key={device.id}
-                      className={selected?.id === device.id ? 'data-table__row--selected' : ''}
-                      onClick={() => setSelected(device)}
-                    >
-                      <td><code>{device.badgeId}</code></td>
-                      <td>{device.restroomName}</td>
-                      <td>
-                        <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
-                          {device.battery ?? '—'}%
-                        </span>
-                      </td>
-                      <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
-                      <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
-                      <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', color: '#64748b' }}>
-                        No devices found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
+                 <thead>
+                   <tr>
+                     <th>Name</th>
+                     <th>Type</th>
+                     <th>Badge ID</th>
+                     <th>Restroom</th>
+                     <th>Battery</th>
+                     <th>Status</th>
+                     <th>Health</th>
+                     <th>Last Communication</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {filtered.map((device) => (
+                     <tr
+                       key={device.id}
+                       className={selected?.id === device.id ? 'data-table__row--selected' : ''}
+                       onClick={() => setSelected(device)}
+                     >
+                       <td>{device.name || '—'}</td>
+                       <td>{device.deviceType || 'sensor'}</td>
+                       <td><code>{device.badgeId}</code></td>
+                       <td>{device.restroomName}</td>
+                       <td>
+                         <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
+                           {device.battery ?? '—'}%
+                         </span>
+                       </td>
+                       <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
+                       <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
+                       <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                     </tr>
+                   ))}
+                   {filtered.length === 0 && (
+                     <tr>
+                       <td colSpan="8" style={{ textAlign: 'center', color: '#64748b' }}>
+                         No devices found
+                       </td>
+                     </tr>
+                   )}
+                 </tbody>
               </table>
             </div>
           )}
@@ -181,36 +218,48 @@ export default function DeviceManagement() {
         {selected && (
           <aside className="card device-detail">
             <h3>Device Details</h3>
-            <dl>
-              <dt>Badge ID</dt>
-              <dd><code>{selected.badgeId}</code></dd>
-              <dt>Device EUI</dt>
-              <dd><code>{selected.deviceEui || '—'}</code></dd>
-              <dt>Restroom</dt>
-              <dd>{selected.restroomName}</dd>
-              <dt>Floor</dt>
-              <dd>{selected.floorName || '—'}</dd>
-              <dt>Location</dt>
-              <dd>{selected.locationName || '—'}</dd>
-              <dt>Battery</dt>
-              <dd>{selected.battery ?? '—'}%</dd>
-              <dt>Status</dt>
-              <dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
-              <dt>Health</dt>
-              <dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
-              <dt>Last Communication</dt>
-              <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
-            </dl>
-            {canEdit && (
-              <div className="btn-group">
-                <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
-                  Replace Badge
-                </button>
-                <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
-                  Map Badge
-                </button>
-              </div>
-            )}
+             <dl>
+               <dt>Name</dt>
+               <dd>{selected.name || '—'}</dd>
+               <dt>Type</dt>
+               <dd>{selected.deviceType || 'sensor'}</dd>
+               <dt>Badge ID</dt>
+               <dd><code>{selected.badgeId}</code></dd>
+               <dt>Device EUI</dt>
+               <dd><code>{selected.deviceEui || '—'}</code></dd>
+               <dt>Join EUI</dt>
+               <dd><code>{selected.joinEui || '—'}</code></dd>
+               <dt>App Key</dt>
+               <dd><code>{selected.appKey || '—'}</code></dd>
+               <dt>LoRaWAN Version</dt>
+               <dd>{selected.lorawanVersion || '—'}</dd>
+               <dt>PHY Version</dt>
+               <dd>{selected.lorawanPhyVersion || '—'}</dd>
+               <dt>Restroom</dt>
+               <dd>{selected.restroomName}</dd>
+               <dt>Floor</dt>
+               <dd>{selected.floorName || '—'}</dd>
+               <dt>Location</dt>
+               <dd>{selected.locationName || '—'}</dd>
+               <dt>Battery</dt>
+               <dd>{selected.battery ?? '—'}%</dd>
+               <dt>Status</dt>
+               <dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
+               <dt>Health</dt>
+               <dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
+               <dt>Last Communication</dt>
+               <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
+             </dl>
+             {canEdit && (
+               <div className="btn-group">
+                 <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
+                   Replace Badge
+                 </button>
+                 <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
+                   Map Badge
+                 </button>
+               </div>
+             )}
           </aside>
         )}
       </div>
@@ -243,6 +292,66 @@ export default function DeviceManagement() {
                 <button type="submit" className="btn btn--primary" disabled={saving}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {addOpen && (
+        <div className="modal-overlay" onClick={() => setAddOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Device</h3>
+            <p style={{ color: '#64748b', fontSize: 13, marginTop: -8 }}>
+              The device will be automatically registered in TTN with generated credentials.
+            </p>
+            <form onSubmit={handleCreateDevice}>
+              <label>
+                Device Name *
+                <input type="text" value={newDevice.name} onChange={(e) => setNewDevice((d) => ({ ...d, name: e.target.value }))} placeholder="e.g. Men's Room Sensor 1" required />
+              </label>
+              <label>
+                Device Type *
+                <select value={newDevice.deviceType} onChange={(e) => setNewDevice((d) => ({ ...d, deviceType: e.target.value }))}>
+                  <option value="sensor">Sensor</option>
+                  <option value="gateway">Gateway</option>
+                  <option value="badge">Badge</option>
+                </select>
+              </label>
+              <label>
+                Site *
+                <select value={newDevice.locationId} onChange={(e) => setNewDevice((d) => ({ ...d, locationId: e.target.value, floorId: '', restroomId: '' }))}>
+                  <option value="">Select site</option>
+                  {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}
+                </select>
+              </label>
+              <label>
+                Floor *
+                <select value={newDevice.floorId} onChange={(e) => setNewDevice((d) => ({ ...d, floorId: e.target.value, restroomId: '' }))} disabled={!newDevice.locationId}>
+                  <option value="">Select floor</option>
+                  {floors.filter((f) => !newDevice.locationId || f.locationId === newDevice.locationId).map((floor) => (
+                    <option key={floor.id} value={floor.id}>{floor.floorName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Restroom *
+                <select value={newDevice.restroomId} onChange={(e) => setNewDevice((d) => ({ ...d, restroomId: e.target.value }))} disabled={!newDevice.floorId}>
+                  <option value="">Select restroom</option>
+                  {restrooms.filter((r) => !newDevice.floorId || r.floorId === newDevice.floorId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </label>
+              <label>
+                LoRaWAN Version
+                <input type="text" value={newDevice.lorawanVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanVersion: e.target.value }))} placeholder="MAC_V1_0_3" />
+              </label>
+              <label>
+                PHY Version <span style={{ color: '#64748b' }}>(optional)</span>
+                <input type="text" value={newDevice.lorawanPhyVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanPhyVersion: e.target.value }))} placeholder="e.g. PHY_V1_0_3" />
+              </label>
+              <div className="btn-group">
+                <button type="button" className="btn btn--secondary" onClick={() => setAddOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering in TTN...' : 'Add Device'}</button>
               </div>
             </form>
           </div>

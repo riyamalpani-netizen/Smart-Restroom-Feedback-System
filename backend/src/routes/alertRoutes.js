@@ -8,7 +8,7 @@ router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility
 router.get("/stats", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getAlertStats);
 router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getAlertById);
 router.post("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), createAlert);
-router.put("/:id", authenticate, authorize("super_admin", "vendor_admin"), updateAlert);
+router.put("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), updateAlert);
 router.post("/:id/acknowledge", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), acknowledgeAlert);
 router.post("/:id/resolve", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), resolveAlert);
 

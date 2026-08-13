@@ -26,12 +26,13 @@ export default function Settings() {
         if (mounted && data.settings) {
           setSettings({
             officeName: '',
-            timeZone: data.settings.timezone || 'UTC',
-            alertThreshold: data.settings.alertThreshold || 3,
+            timeZone: 'UTC',
+            alertThreshold: 3,
             teamsWebhook: data.settings.teamsWebhook || '',
             reportFrequency: data.settings.reportFrequency || 'daily',
             autoEmailReports: false,
-            sessionTimeout: data.settings.sessionTimeout || 30,
+            sessionTimeout: data.settings.sessionTimeout || 28800,
+            passwordPolicy: data.settings.passwordPolicy || 'min 8 chars, 1 uppercase, 1 number',
           })
         }
       } catch (e) {

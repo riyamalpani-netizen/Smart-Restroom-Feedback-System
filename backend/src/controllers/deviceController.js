@@ -1,4 +1,6 @@
 const prisma = require("../config/database");
+const { registerOtaaDevice } = require("../services/ttnDeviceRegistryService");
+const crypto = require("crypto");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -57,6 +59,7 @@ async function getDevices(req, res) {
 
       return {
         id: device.id,
+        name: device.name,
         badgeId: device.badgeId,
         deviceEui: device.deviceEui,
         restroomId: device.restroomId,
@@ -70,6 +73,10 @@ async function getDevices(req, res) {
         deviceType: device.deviceType,
         zoneId: device.zoneId,
         zoneName: device.zone?.name || null,
+        joinEui: device.joinEui || null,
+        appKey: device.appKey || null,
+        lorawanVersion: device.lorawanVersion || null,
+        lorawanPhyVersion: device.lorawanPhyVersion || null,
       };
     });
 
@@ -118,6 +125,7 @@ async function getDeviceById(req, res) {
 
     const mapped = {
       id: device.id,
+      name: device.name,
       badgeId: device.badgeId,
       deviceEui: device.deviceEui,
       restroomId: device.restroomId,
@@ -131,6 +139,10 @@ async function getDeviceById(req, res) {
       deviceType: device.deviceType,
       zoneId: device.zoneId,
       zoneName: device.zone?.name || null,
+      joinEui: device.joinEui || null,
+      appKey: device.appKey || null,
+      lorawanVersion: device.lorawanVersion || null,
+      lorawanPhyVersion: device.lorawanPhyVersion || null,
       feedback: device.feedback,
       healthRecords: device.deviceHealth,
     };
@@ -144,13 +156,22 @@ async function getDeviceById(req, res) {
 
 async function createDevice(req, res) {
   try {
-    const { deviceEui, badgeId, restroomId, batteryLevel, floorId, zoneId, deviceType, floorPlanPosX, floorPlanPosY } = req.body;
+    let { name, deviceType, restroomId, batteryLevel, floorId, zoneId, floorPlanPosX, floorPlanPosY, ttnDeviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, isLayoutAsset = false } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
-    if (!deviceEui || !badgeId) {
-      return res.status(400).json({ message: "Device EUI and badge ID are required" });
-    }
+    const generatedDeviceEui = crypto.randomBytes(8).toString("hex").toUpperCase();
+    const generatedBadgeId = name ? `BADGE-${name.replace(/[^A-Z0-9]/gi, '').slice(0, 8).toUpperCase()}` : `BADGE-${generatedDeviceEui.slice(0, 8)}`;
+    const resolvedDeviceEui = generatedDeviceEui;
+    const resolvedBadgeId = generatedBadgeId;
+    const resolvedJoinEui = joinEui || "0000000000000000";
+    const resolvedAppKey = appKey || crypto.randomBytes(16).toString("hex");
+    const resolvedLorawanVersion = lorawanVersion || "MAC_V1_0_3";
+
+    const existingDevice = await prisma.device.findFirst({
+      where: { OR: [{ deviceEui: resolvedDeviceEui }, { badgeId: resolvedBadgeId }] },
+      select: { id: true },
+    });
 
     let finalRestroomId = restroomId;
     let organizationId = null;
@@ -180,22 +201,73 @@ async function createDevice(req, res) {
       organizationId = organizationId || zone.floor.location.organizationId;
     }
 
-    const device = await prisma.device.create({
-      data: {
-        deviceEui,
-        badgeId,
-        restroomId: finalRestroomId || null,
-        floorId: floorId || null,
-        zoneId: zoneId || null,
-        deviceType: deviceType || "sensor",
-        batteryLevel: batteryLevel ?? 100,
-        floorPlanPosX: floorPlanPosX ?? null,
-        floorPlanPosY: floorPlanPosY ?? null,
-        healthStatus: "healthy",
-      },
-    });
+    let ttnRegistration = null;
+    if (!isLayoutAsset) {
+      try {
+        const resolvedTtnDeviceId = `device-${resolvedDeviceEui.toLowerCase()}`;
+        const ttnPayload = {
+          deviceEui: resolvedDeviceEui,
+          deviceId: resolvedTtnDeviceId,
+          joinEui: resolvedJoinEui,
+          appKey: resolvedAppKey,
+          lorawanVersion: resolvedLorawanVersion,
+        };
 
-    res.status(201).json({ message: "Device created successfully", device });
+        if (lorawanPhyVersion) {
+          ttnPayload.lorawanPhyVersion = lorawanPhyVersion;
+        }
+
+        ttnRegistration = await registerOtaaDevice(ttnPayload);
+
+        joinEui = resolvedJoinEui;
+        appKey = resolvedAppKey;
+        ttnDeviceId = resolvedTtnDeviceId;
+        lorawanVersion = resolvedLorawanVersion;
+        lorawanPhyVersion = lorawanPhyVersion || null;
+      } catch (error) {
+        return res.status(502).json({ message: error.message });
+      }
+    }
+
+    const deviceData = {
+      name: name || null,
+      deviceEui: resolvedDeviceEui,
+      badgeId: resolvedBadgeId,
+      restroomId: finalRestroomId || null,
+      floorId: floorId || null,
+      zoneId: zoneId || null,
+      deviceType: deviceType || "sensor",
+      batteryLevel: batteryLevel ?? 100,
+      floorPlanPosX: floorPlanPosX ?? null,
+      floorPlanPosY: floorPlanPosY ?? null,
+      joinEui: resolvedJoinEui,
+      appKey: resolvedAppKey,
+      lorawanVersion: lorawanVersion || null,
+      lorawanPhyVersion: lorawanPhyVersion || null,
+      healthStatus: "healthy",
+    };
+
+    let device;
+    if (existingDevice) {
+      device = await prisma.device.update({
+        where: { id: existingDevice.id },
+        data: deviceData,
+      });
+    } else {
+      device = await prisma.device.create({
+        data: deviceData,
+      });
+    }
+
+    res.status(existingDevice ? 200 : 201).json({
+      message: existingDevice
+        ? "Device identity already existed; inventory record updated"
+        : isLayoutAsset
+        ? "Layout device placed successfully"
+        : "Device registered in TTN and added to inventory successfully",
+      device,
+      ttnRegistration,
+    });
   } catch (error) {
     console.error("Create device error:", error);
     if (error.code === "P2002") {
@@ -208,7 +280,7 @@ async function createDevice(req, res) {
 async function updateDevice(req, res) {
   try {
     const { id } = req.params;
-    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType } = req.body;
+    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType, joinEui, appKey } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -256,6 +328,8 @@ async function updateDevice(req, res) {
     if (floorId !== undefined) updateData.floorId = floorId
     if (zoneId !== undefined) updateData.zoneId = zoneId || null
     if (deviceType !== undefined) updateData.deviceType = deviceType
+    if (joinEui !== undefined) updateData.joinEui = joinEui || null
+    if (appKey !== undefined) updateData.appKey = appKey || null
 
     const device = await prisma.device.update({
       where: { id },
@@ -376,6 +450,65 @@ async function getOfflineDevices(req, res) {
   }
 }
 
+async function registerDeviceInTTN(req, res) {
+  try {
+    const { id } = req.params;
+    const { ttnDeviceId, joinEui, appKey } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+
+    const whereClause = { id };
+    if (userRole !== "super_admin") {
+      whereClause.OR = [
+        { restroom: { organizationId: userOrgId } },
+        { restroomId: null }
+      ];
+    }
+
+    const existing = await prisma.device.findFirst({
+      where: whereClause,
+      include: { restroom: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: "Device not found" });
+    }
+
+    if (!appKey) {
+      return res.status(400).json({ message: "App Key is required" });
+    }
+
+    let ttnRegistration = null;
+    try {
+      ttnRegistration = await registerOtaaDevice({
+        deviceEui: existing.deviceEui,
+        deviceId: ttnDeviceId || existing.deviceEui,
+        joinEui: joinEui || "0000000000000000",
+        appKey,
+      });
+    } catch (error) {
+      return res.status(502).json({ message: `TTN registration failed: ${error.message}` });
+    }
+
+    const device = await prisma.device.update({
+      where: { id },
+      data: {
+        joinEui: joinEui || existing.joinEui || "0000000000000000",
+        appKey,
+      },
+    });
+
+    res.status(200).json({
+      message: "Device registered in TTN successfully",
+      device,
+      ttnRegistration,
+    });
+  } catch (error) {
+    console.error("Register device in TTN error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   getDevices,
   getDeviceById,
@@ -383,4 +516,5 @@ module.exports = {
   updateDevice,
   getDeviceHealth,
   getOfflineDevices,
+  registerDeviceInTTN,
 };
