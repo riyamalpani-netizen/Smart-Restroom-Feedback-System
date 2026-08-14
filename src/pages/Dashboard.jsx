@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import DashboardCards from '../components/DashboardCards'
 import FeedbackChart from '../components/FeedbackChart'
 import RestroomMap from '../components/RestroomMap'
@@ -141,8 +142,8 @@ export default function Dashboard() {
 
   return (
     <div className="page dashboard-page">
-      <div className="filters card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div className="filters card dashboard-filters">
+        <div className="dashboard-filters__title">
           <span style={{ fontWeight: 600, color: '#334155', fontSize: 13 }}>Filters</span>
           {hasActiveFilters && (
             <button type="button" className="btn btn--ghost" style={{ padding: '2px 8px', fontSize: 12 }} onClick={clearFilters}>
@@ -191,7 +192,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="dashboard-grid">
+      <div className="dashboard-grid dashboard-grid--overview">
         <FeedbackChart data={dashboardData.feedbackTrend} />
         <BatterySummary devices={dashboardData.devices} />
       </div>
@@ -205,9 +206,12 @@ export default function Dashboard() {
         <DeviceHealthCard devices={dashboardData.devices} />
 
         <div className="card recent-activity">
-          <h3 className="card__title">Recent Activity</h3>
+          <div className="card__header">
+            <h3 className="card__title">Recent Activity</h3>
+            <Link to="/reports" className="card__link">View all</Link>
+          </div>
           <ul className="recent-activity__list">
-            {dashboardData.recentActivity.map((item) => (
+            {dashboardData.recentActivity.slice(0, 3).map((item) => (
               <li key={item.id} className={`recent-activity__item recent-activity__item--${item.type}`}>
                 <p>{item.message}</p>
                 <time>{formatDateTime(item.time)}</time>

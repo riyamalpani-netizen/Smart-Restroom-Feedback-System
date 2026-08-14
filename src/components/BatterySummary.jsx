@@ -1,14 +1,19 @@
-export default function BatterySummary({ devices }) {
+import { Link } from 'react-router-dom'
+
+export default function BatterySummary({ devices = [], limit = 4 }) {
   const online = devices.filter((d) => d.status === 'online').length
   const offline = devices.filter((d) => d.status === 'offline').length
   const lowBattery = devices.filter((d) => d.battery < 30).length
   const avgBattery = Math.round(
-    devices.reduce((sum, d) => sum + d.battery, 0) / devices.length,
+    devices.length ? devices.reduce((sum, d) => sum + d.battery, 0) / devices.length : 0,
   )
 
   return (
     <div className="battery-summary card">
-      <h3 className="card__title">Battery & Connectivity</h3>
+      <div className="card__header">
+        <h3 className="card__title">Battery & Connectivity</h3>
+        <Link to="/devices" className="card__link">View all</Link>
+      </div>
       <div className="battery-summary__stats">
         <div className="battery-summary__stat">
           <span className="battery-summary__value">{online}</span>
@@ -28,7 +33,7 @@ export default function BatterySummary({ devices }) {
         </div>
       </div>
       <div className="battery-summary__bars">
-        {devices.map((device) => (
+        {devices.slice(0, limit).map((device) => (
           <div key={device.id} className="battery-summary__row">
             <span className="battery-summary__badge">{device.badgeId}</span>
             <div className="battery-summary__track">

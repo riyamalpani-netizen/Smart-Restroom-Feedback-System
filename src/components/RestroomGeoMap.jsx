@@ -60,7 +60,7 @@ export default function RestroomGeoMap({ restrooms = [] }) {
       <h3 className="card__title">Interactive Restroom Map</h3>
       <div
         style={{
-          height: 420,
+          height: 300,
           borderRadius: 8,
           overflow: 'hidden',
           border: '1px solid var(--border)',

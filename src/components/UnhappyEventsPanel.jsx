@@ -2,8 +2,9 @@ import { Link } from 'react-router-dom'
 import StatusBadge from './common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
 
-export default function UnhappyEventsPanel({ alerts = [], onViewOnMap }) {
+export default function UnhappyEventsPanel({ alerts = [], onViewOnMap, limit = 3 }) {
   const unhappyAlerts = alerts.filter((alert) => ['needs_cleaning', 'emergency'].includes(alert.type))
+  const visibleAlerts = unhappyAlerts.slice(0, limit)
 
   return (
     <div className="card unhappy-panel">
@@ -16,7 +17,7 @@ export default function UnhappyEventsPanel({ alerts = [], onViewOnMap }) {
         <p style={{ color: '#64748b', fontSize: 13 }}>No unresolved unhappy events reported.</p>
       ) : (
         <div className="unhappy-panel__list">
-          {unhappyAlerts.map((alert) => (
+          {visibleAlerts.map((alert) => (
             <div key={alert.id} className="unhappy-panel__item" onClick={() => onViewOnMap?.(alert.restroomId)} style={{ cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div>
@@ -35,8 +36,8 @@ export default function UnhappyEventsPanel({ alerts = [], onViewOnMap }) {
           ))}
         </div>
       )}
-      <Link to="/alerts" className="card__link" style={{ display: 'inline-block', marginTop: 12 }}>
-        Assign, add notes, or resolve alerts
+      <Link to="/alerts" className="card__link unhappy-panel__link">
+        {unhappyAlerts.length > limit ? `View all ${unhappyAlerts.length} events` : 'Manage alerts'}
       </Link>
     </div>
   )
