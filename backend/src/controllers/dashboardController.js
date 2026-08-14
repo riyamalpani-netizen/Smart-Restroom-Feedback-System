@@ -92,7 +92,10 @@ async function getDashboard(req, res) {
       prisma.restroom.count({ where: restroomWhere }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
         },
       }),
       prisma.alert.count({
@@ -109,17 +112,29 @@ async function getDashboard(req, res) {
       }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
           healthStatus: "healthy",
           lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
         },
       }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
-          OR: [
-            { healthStatus: { not: "healthy" } },
-            { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+          AND: [
+            {
+              OR: [
+                { floorId: { in: floorIds } },
+                { restroom: restroomWhere },
+              ],
+            },
+            {
+              OR: [
+                { healthStatus: { not: "healthy" } },
+                { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+              ],
+            },
           ],
         },
       }),
@@ -158,10 +173,17 @@ async function getDashboard(req, res) {
       }),
       prisma.device.findMany({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
         },
         orderBy: { batteryLevel: "desc" },
-        include: { restroom: { include: { floor: { include: { location: true } } } } },
+        include: {
+          restroom: { include: { floor: { include: { location: true } } } },
+          floor: { include: { location: true } },
+          zone: true,
+        },
       }),
       prisma.alert.findMany({
         where: {
@@ -236,11 +258,15 @@ async function getDashboard(req, res) {
         id: device.id,
         badgeId: device.badgeId,
         restroomId: device.restroomId,
+        floorId: device.floorId,
+        zoneId: device.zoneId,
         battery: device.batteryLevel,
         status: device.healthStatus,
         lastCommunication: device.lastSeen ? new Date(device.lastSeen).getTime() : null,
         health: device.healthStatus,
-        restroomName: device.restroom?.name || "Unknown restroom",
+        restroomName: device.restroom?.name || device.floor?.floorName || "Unknown location",
+        floorName: device.floor?.floorName || null,
+        zoneName: device.zone?.name || null,
       })),
       alerts: alerts.map((alert) => ({
         id: alert.id,
@@ -305,7 +331,10 @@ async function getDashboardSummary(req, res) {
       prisma.restroom.count({ where: restroomWhere }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
         },
       }),
       prisma.alert.count({
@@ -322,14 +351,20 @@ async function getDashboardSummary(req, res) {
       }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
           healthStatus: "healthy",
           lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
         },
       }),
       prisma.device.aggregate({
         where: {
-          restroom: restroomWhere,
+          OR: [
+            { floorId: { in: floorIds } },
+            { restroom: restroomWhere },
+          ],
         },
         _avg: { batteryLevel: true },
         _min: { batteryLevel: true },
@@ -459,17 +494,35 @@ async function getDashboardLive(req, res) {
     ] = await Promise.all([
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
-          healthStatus: "healthy",
-          lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+          AND: [
+            {
+              OR: [
+                { floorId: { in: floorIds } },
+                { restroom: restroomWhere },
+              ],
+            },
+            {
+              healthStatus: "healthy",
+              lastSeen: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+            },
+          ],
         },
       }),
       prisma.device.count({
         where: {
-          restroom: restroomWhere,
-          OR: [
-            { healthStatus: { not: "healthy" } },
-            { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+          AND: [
+            {
+              OR: [
+                { floorId: { in: floorIds } },
+                { restroom: restroomWhere },
+              ],
+            },
+            {
+              OR: [
+                { healthStatus: { not: "healthy" } },
+                { lastSeen: { lte: new Date(Date.now() - 5 * 60 * 1000) } },
+              ],
+            },
           ],
         },
       }),
