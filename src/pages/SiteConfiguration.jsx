@@ -25,7 +25,6 @@ const steps = [
   ['Floor Plans', 'Setup floor images'],
   ['Position Floor Plan', 'Place image on map'],
   ['Draw Zones', 'Polygon zone mapping'],
-  ['Place Badges', 'Pin badges on map'],
   ['Place Devices', 'Pin devices on map'],
   ['Place Gateways', 'Pin gateways on map'],
   ['Review', 'Review & finalize'],
@@ -207,7 +206,7 @@ export default function SiteConfiguration() {
       })
       return
     }
-    const typeForStep = step === 5 ? 'badge' : step === 6 ? 'device' : step === 7 ? 'gateway' : null
+    const typeForStep = step === 5 ? 'device' : step === 6 ? 'gateway' : null
     if (typeForStep) placeItem(point, typeForStep)
   }
 
@@ -278,14 +277,14 @@ export default function SiteConfiguration() {
           <button className="planner-button planner-button--ghost" onClick={() => setStep(3)}>Back</button>
           <button className="planner-button" onClick={() => setStep(5)}>Save & Continue →</button>
         </div></div>}
-        {[5, 6, 7].includes(step) && <div className="planner-placement"><strong>{TYPE_META[step === 5 ? 'badge' : step === 6 ? 'device' : 'gateway'].label} placement</strong><p>Click inside a zone to place an item. Its floor and zone association are saved automatically.</p><div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        {[5, 6].includes(step) && <div className="planner-placement"><strong>{TYPE_META[step === 5 ? 'device' : 'gateway'].label} placement</strong><p>Click inside a zone to place an item. Its floor and zone association are saved automatically.</p><div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button className="planner-button planner-button--ghost" onClick={() => setStep(4)}>Back</button>
-          <button className="planner-button" onClick={() => step < 7 ? setStep(step + 1) : setStep(8)}>Save & Continue →</button>
+          <button className="planner-button" onClick={() => step < 6 ? setStep(step + 1) : setStep(7)}>Save & Continue →</button>
         </div></div>}
       </div>
     </section>}
 
-    {step === 8 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId}</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => navigate('/dashboard')}>Finish</button></section>}
+    {step === 7 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId}</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => navigate('/dashboard')}>Finish</button></section>}
     {pickerOpen && <CenterPicker initial={siteForm.latitude ? [Number(siteForm.latitude), Number(siteForm.longitude)] : null} onCancel={() => setPickerOpen(false)} onSave={setCoords} />}
     {addFloorOpen && <div className="planner-modal-backdrop"><div className="planner-modal planner-modal--small"><button className="planner-modal__close" onClick={() => setAddFloorOpen(false)}>×</button><h2>Add Floor</h2><label>Floor Name <b>*</b><input autoFocus value={floorForm.name} placeholder="e.g. Ground Floor" onChange={(e) => setFloorForm({ ...floorForm, name: e.target.value })} /></label><label>Floor Number <b>*</b><input type="number" value={floorForm.number} placeholder="0 for ground, 1 for first floor" onChange={(e) => setFloorForm({ ...floorForm, number: e.target.value })} /></label><div className="planner-modal__actions"><button className="planner-button planner-button--ghost" onClick={() => setAddFloorOpen(false)}>Cancel</button><button className="planner-button" disabled={busy} onClick={addFloor}>Add Floor</button></div></div></div>}
   </div>

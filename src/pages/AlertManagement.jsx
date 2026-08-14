@@ -100,23 +100,6 @@ export default function AlertManagement() {
     })
   }, [search, alerts])
 
-  async function acknowledge(id) {
-    try {
-      const updated = await api.post(`/api/alerts/${id}/acknowledge`)
-      setAlerts((prev) => prev.map((a) => (a.id === id ? updated.alert : a)))
-    } catch (e) {
-      alert(e.message)
-    }
-  }
-
-  async function resolve(id) {
-    try {
-      const updated = await api.post(`/api/alerts/${id}/resolve`)
-      setAlerts((prev) => prev.map((a) => (a.id === id ? updated.alert : a)))
-    } catch (e) {
-      alert(e.message)
-    }
-  }
 
   async function assign(id, userId) {
     try {
@@ -248,30 +231,7 @@ export default function AlertManagement() {
                           </div>
                         )}
                       </td>
-                      <td>
-                        {canEdit ? (
-                          <div className="btn-group btn-group--inline">
-                            {alert.status === 'open' && (
-                              <button
-                                type="button"
-                                className="btn btn--sm btn--secondary"
-                                onClick={() => acknowledge(alert.id)}
-                              >
-                                Acknowledge
-                              </button>
-                            )}
-                            {alert.status !== 'closed' && (
-                              <button
-                                type="button"
-                                className="btn btn--sm btn--primary"
-                                onClick={() => resolve(alert.id)}
-                              >
-                                Resolve
-                              </button>
-                            )}
-                          </div>
-                        ) : '—'}
-                      </td>
+                      <td>Use dashboard to acknowledge or resolve</td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (

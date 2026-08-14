@@ -12,6 +12,29 @@ function getOrgFilter(req) {
   return { organizationId: orgId };
 }
 
+function deviceGeoFromPlan(device, plan) {
+  if (
+    !plan?.geoBounds ||
+    device.floorPlanPosX == null ||
+    device.floorPlanPosY == null ||
+    !plan.width ||
+    !plan.height
+  ) {
+    return null;
+  }
+
+  const b = plan.geoBounds;
+  const lat =
+    b.northLat -
+    (device.floorPlanPosY / plan.height) * (b.northLat - b.southLat);
+  const lng =
+    b.westLng +
+    (device.floorPlanPosX / plan.width) * (b.eastLng - b.westLng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { latitude: lat, longitude: lng };
+}
+
 async function getDashboard(req, res) {
   try {
     const now = new Date();
@@ -613,11 +636,136 @@ async function getHeatMapData(req, res) {
       restrooms: site.floors.reduce((acc, floor) => acc + floor.restrooms.length, 0),
     }))
 
+    let targetFloorIds = floorIds;
+    if (locationId) {
+      const locFloors = await prisma.floor.findMany({
+        where: { locationId },
+        select: { id: true },
+      });
+      targetFloorIds = locFloors.map((f) => f.id);
+    }
+
+    const locationWhereForMap = isSuperAdmin
+      ? locationId
+        ? { id: locationId }
+        : {}
+      : locationId
+        ? { id: locationId, organizationId: orgFilter.organizationId }
+        : { organizationId: orgFilter.organizationId };
+
+    const [mapLocations, mapFloors, mapFloorPlans, mapZones, mapDevices] =
+      await Promise.all([
+        prisma.location.findMany({
+          where: locationWhereForMap,
+          select: {
+            id: true,
+            officeName: true,
+            city: true,
+            latitude: true,
+            longitude: true,
+          },
+        }),
+        prisma.floor.findMany({
+          where: { id: { in: targetFloorIds } },
+          select: {
+            id: true,
+            locationId: true,
+            floorName: true,
+            floorNumber: true,
+          },
+          orderBy: { floorNumber: "asc" },
+        }),
+        prisma.floorPlan.findMany({
+          where: { floorId: { in: targetFloorIds } },
+          select: {
+            id: true,
+            floorId: true,
+            name: true,
+            geoBounds: true,
+            width: true,
+            height: true,
+            ...(locationId ? { imageData: true } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.zone.findMany({
+          where: { floorId: { in: targetFloorIds } },
+          select: {
+            id: true,
+            floorId: true,
+            name: true,
+            type: true,
+            coordinates: true,
+            restroomId: true,
+          },
+        }),
+        prisma.device.findMany({
+          where: {
+            floorId: { in: targetFloorIds },
+            floorPlanPosX: { not: null },
+            floorPlanPosY: { not: null },
+          },
+          include: { zone: true },
+        }),
+      ]);
+
+    const planByFloorId = new Map();
+    for (const plan of mapFloorPlans) {
+      if (!planByFloorId.has(plan.floorId)) {
+        planByFloorId.set(plan.floorId, plan);
+      }
+    }
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const devicesWithGeo = mapDevices
+      .map((device) => {
+        const plan = planByFloorId.get(device.floorId);
+        const geo = deviceGeoFromPlan(device, plan);
+        if (!geo) return null;
+
+        const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
+        const isOnline =
+          lastSeen &&
+          lastSeen > fiveMinutesAgo &&
+          device.healthStatus === "healthy";
+
+        return {
+          id: device.id,
+          floorId: device.floorId,
+          zoneId: device.zoneId,
+          zoneName: device.zone?.name || null,
+          deviceType: device.deviceType || "device",
+          badgeId: device.badgeId,
+          battery: device.batteryLevel,
+          status: isOnline ? "online" : "offline",
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+        };
+      })
+      .filter(Boolean);
+
+    const mapConfig = {
+      locations: mapLocations,
+      floors: mapFloors,
+      floorPlans: mapFloorPlans.map((plan) => ({
+        id: plan.id,
+        floorId: plan.floorId,
+        name: plan.name,
+        geoBounds: plan.geoBounds,
+        width: plan.width,
+        height: plan.height,
+        imageData: plan.imageData || null,
+      })),
+      zones: mapZones,
+      devices: devicesWithGeo,
+    };
+
     res.status(200).json({
       message: "Heat map data fetched successfully",
       restrooms: heatMapData,
       maxScore,
       sites: siteData,
+      mapConfig,
       period: period || "today",
     })
   } catch (error) {

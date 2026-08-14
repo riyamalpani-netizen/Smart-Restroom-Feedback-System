@@ -25,21 +25,14 @@ export default function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [locations, setLocations] = useState([])
-  const [floors, setFloors] = useState([])
-  const [restrooms, setRestrooms] = useState([])
-  const [filters, setFilters] = useState({ locationId: '', floorId: '', restroomId: '' })
+  const [filters, setFilters] = useState({ locationId: '' })
   const [allRestroomsForMap, setAllRestroomsForMap] = useState([])
+  const [mapConfig, setMapConfig] = useState(null)
 
   const loadFilters = useCallback(async () => {
     try {
-      const [locRes, floorRes, restRes] = await Promise.all([
-        api.get('/api/locations'),
-        api.get('/api/floors'),
-        api.get('/api/restrooms'),
-      ])
+      const locRes = await api.get('/api/locations')
       setLocations(locRes.locations || [])
-      setFloors(floorRes.floors || [])
-      setRestrooms(restRes.restrooms || [])
     } catch (e) {
       console.error('Dashboard filters load error:', e)
     }
@@ -51,7 +44,6 @@ export default function Dashboard() {
       const params = new URLSearchParams()
       params.set('period', 'today')
       if (filters.locationId) params.set('locationId', filters.locationId)
-      if (filters.floorId) params.set('floorId', filters.floorId)
 
       const response = await fetch(`${API_URL}/api/dashboard/heatmap?${params.toString()}`, {
         headers: {
@@ -64,25 +56,18 @@ export default function Dashboard() {
       }
 
       const data = await response.json()
-      let restrooms = data.restrooms || []
-
-      if (filters.restroomId) {
-        restrooms = restrooms.filter((room) => room.id === filters.restroomId)
-      }
-
-      setAllRestroomsForMap(restrooms)
+      setAllRestroomsForMap(data.restrooms || [])
+      setMapConfig(data.mapConfig || null)
     } catch (error) {
       console.error('Dashboard map error:', error)
     }
-  }, [filters.locationId, filters.floorId, filters.restroomId])
+  }, [filters.locationId])
 
   const loadDashboard = useCallback(async () => {
     try {
       const token = localStorage.getItem('srfs_token')
       const params = new URLSearchParams()
       if (filters.locationId) params.set('locationId', filters.locationId)
-      if (filters.floorId) params.set('floorId', filters.floorId)
-      if (filters.restroomId) params.set('restroomId', filters.restroomId)
 
       const response = await fetch(`${API_URL}/api/dashboard?${params.toString()}`, {
         headers: {
@@ -101,7 +86,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters.locationId])
 
   useEffect(() => {
     loadFilters()
@@ -122,13 +107,18 @@ export default function Dashboard() {
   }, [])
 
   const clearFilters = useCallback(() => {
-    setFilters({ locationId: '', floorId: '', restroomId: '' })
+    setFilters({ locationId: '' })
   }, [])
 
-  const hasActiveFilters = filters.locationId || filters.floorId || filters.restroomId
+  const handleAcknowledge = useCallback(() => {
+    loadDashboard()
+  }, [loadDashboard])
 
-  const filteredFloors = floors.filter((f) => !filters.locationId || f.locationId === filters.locationId)
-  const filteredRestrooms = restrooms.filter((r) => !filters.floorId || r.floorId === filters.floorId)
+  const handleResolve = useCallback(() => {
+    loadDashboard()
+  }, [loadDashboard])
+
+  const hasActiveFilters = filters.locationId
 
   if (loading) {
     return (
@@ -160,37 +150,22 @@ export default function Dashboard() {
             ))}
           </select>
         </label>
-        <label>
-          Floor
-          <select value={filters.floorId} onChange={handleFilterChange('floorId')} className="select" disabled={!filters.locationId}>
-            <option value="">All Floors</option>
-            {filteredFloors.map((floor) => (
-              <option key={floor.id} value={floor.id}>{floor.floorName}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Restroom
-          <select value={filters.restroomId} onChange={handleFilterChange('restroomId')} className="select" disabled={!filters.floorId}>
-            <option value="">All Restrooms</option>
-            {filteredRestrooms.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
-        </label>
       </div>
-
-      <DashboardCards stats={dashboardData.stats} />
 
       <div className="dashboard-top">
         <div className="dashboard-map">
-          <RestroomGeoMap restrooms={allRestroomsForMap} />
+          <RestroomGeoMap restrooms={allRestroomsForMap} mapConfig={mapConfig} />
         </div>
         <UnhappyEventsPanel
           alerts={dashboardData.alerts}
           onViewOnMap={(restroomId) => setFilters((current) => ({ ...current, restroomId }))}
+          onAcknowledge={handleAcknowledge}
+          onResolve={handleResolve}
+          limit={10}
         />
       </div>
+
+      <DashboardCards stats={dashboardData.stats} />
 
       <div className="dashboard-grid dashboard-grid--overview">
         <FeedbackChart data={dashboardData.feedbackTrend} />
@@ -199,7 +174,7 @@ export default function Dashboard() {
 
       <div className="dashboard-grid">
         <RestroomMap restrooms={dashboardData.restrooms} />
-        <AlertWidget alerts={dashboardData.alerts} />
+        <AlertWidget alerts={dashboardData.alerts} onAcknowledge={handleAcknowledge} onResolve={handleResolve} />
       </div>
 
       <div className="dashboard-grid">

@@ -27,9 +27,12 @@ export const feedbackEntries = [
 ]
 
 export const alerts = [
-  { id: 'a1', time: now - 10 * 60 * 1000, restroomId: 'r3', type: 'Unhappy Feedback', status: 'open', assignedTo: 'John Smith', acknowledgedBy: null, resolvedTime: null },
-  { id: 'a2', time: now - 2 * hour, restroomId: 'r5', type: 'Device Offline', status: 'acknowledged', assignedTo: 'Jane Doe', acknowledgedBy: 'Jane Doe', resolvedTime: null },
-  { id: 'a3', time: now - 5 * hour, restroomId: 'r3', type: 'Low Battery', status: 'resolved', assignedTo: 'John Smith', acknowledgedBy: 'John Smith', resolvedTime: now - 3 * hour },
+  { id: 'a1', time: now - 10 * 60 * 1000, restroomId: 'r3', type: 'needs_cleaning', status: 'open', assignedTo: 'John Smith', acknowledgedBy: null, resolvedTime: null },
+  { id: 'a2', time: now - 2 * hour, restroomId: 'r5', type: 'emergency', status: 'assigned', assignedTo: 'Jane Doe', acknowledgedBy: 'Jane Doe', resolvedTime: null },
+  { id: 'a3', time: now - 5 * hour, restroomId: 'r3', type: 'needs_cleaning', status: 'closed', assignedTo: 'John Smith', acknowledgedBy: 'John Smith', resolvedTime: now - 3 * hour },
+  { id: 'a4', time: now - 30 * 60 * 1000, restroomId: 'r1', type: 'emergency', status: 'open', assignedTo: null, acknowledgedBy: null, resolvedTime: null },
+  { id: 'a5', time: now - 45 * 60 * 1000, restroomId: 'r2', type: 'needs_cleaning', status: 'assigned', assignedTo: 'John Smith', acknowledgedBy: null, resolvedTime: null },
+  { id: 'a6', time: now - 3 * hour, restroomId: 'r4', type: 'needs_cleaning', status: 'open', assignedTo: 'Jane Doe', acknowledgedBy: null, resolvedTime: null },
 ]
 
 export const users = [
@@ -44,7 +47,7 @@ export const dashboardStats = {
   totalRestrooms: restrooms.length,
   totalDevices: devices.length,
   todayFeedback: feedbackEntries.filter((f) => f.time > now - 24 * hour).length,
-  activeAlerts: alerts.filter((a) => a.status !== 'resolved').length,
+  activeAlerts: alerts.filter((a) => a.status !== 'closed' && ['needs_cleaning', 'emergency'].includes(a.type)).length,
 }
 
 export const feedbackTrend = [

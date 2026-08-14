@@ -13,24 +13,25 @@ export const ROLE_LABELS = {
 }
 
 export const FEEDBACK_TYPES = {
-  happy: { label: 'Happy', color: '#22c55e' },
-  neutral: { label: 'Neutral', color: '#eab308' },
+  happy: { label: 'Happy', color: '#10b981' },
+  neutral: { label: 'Neutral', color: '#f59e0b' },
   unhappy: { label: 'Unhappy', color: '#ef4444' },
 }
 
 export const DEVICE_STATUS = {
-  online: { label: 'Online', color: '#22c55e' },
+  online: { label: 'Online', color: '#10b981' },
   offline: { label: 'Offline', color: '#94a3b8' },
-  low_battery: { label: 'Low Battery', color: '#f97316' },
-  healthy: { label: 'Healthy', color: '#22c55e' },
-  warning: { label: 'Warning', color: '#f97316' },
+  low_battery: { label: 'Low Battery', color: '#f59e0b' },
+  healthy: { label: 'Healthy', color: '#10b981' },
+  warning: { label: 'Warning', color: '#f59e0b' },
   critical: { label: 'Critical', color: '#ef4444' },
 }
 
 export const ALERT_STATUS = {
   open: { label: 'Open', color: '#ef4444' },
-  acknowledged: { label: 'Acknowledged', color: '#eab308' },
-  resolved: { label: 'Resolved', color: '#22c55e' },
+  assigned: { label: 'Assigned', color: '#f59e0b' },
+  in_progress: { label: 'In Progress', color: '#f59e0b' },
+  closed: { label: 'Closed', color: '#10b981' },
 }
 
 export const NAV_ITEMS = [

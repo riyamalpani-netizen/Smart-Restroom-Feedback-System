@@ -80,9 +80,9 @@ export default function Login() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: 8,
-                  border: '1px solid #dbeafe',
-                  background: '#f8fafc',
-                  color: '#0f172a',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface-muted)',
+                  color: 'var(--text-h)',
                   cursor: 'pointer',
                   fontWeight: 600,
                 }}

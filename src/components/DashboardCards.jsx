@@ -1,14 +1,14 @@
 export default function DashboardCards({ stats }) {
   const cards = [
-    { label: 'Unhappy Reports Today', value: stats.unhappyFeedback, icon: '⚠️', color: '#ef4444' },
-    { label: 'Active Alerts', value: stats.activeAlerts, icon: '🔔', color: '#f97316' },
-    { label: "Today's Feedback", value: stats.todayFeedback, icon: '💬', color: '#3b82f6' },
-    { label: 'Total Restrooms', value: stats.totalRestrooms, icon: '🚻', color: '#3b82f6' },
-    { label: 'Total Devices', value: stats.totalDevices, icon: '📱', color: '#8b5cf6' },
-    { label: 'Online Devices', value: stats.onlineDevices, icon: '🟢', color: '#22c55e' },
-    { label: 'Offline Devices', value: stats.offlineDevices, icon: '🔴', color: '#ef4444' },
-    { label: 'Happy', value: stats.happyFeedback, icon: '😊', color: '#22c55e' },
-    { label: 'Okay', value: stats.okayFeedback, icon: '😐', color: '#eab308' },
+    { label: 'Unhappy Reports Today', value: stats.unhappyFeedback, icon: '⚠️', color: 'var(--danger)' },
+    { label: 'Active Alerts', value: stats.activeAlerts, icon: '🔔', color: 'var(--warning)' },
+    { label: "Today's Feedback", value: stats.todayFeedback, icon: '💬', color: 'var(--primary)' },
+    { label: 'Total Restrooms', value: stats.totalRestrooms, icon: '🚻', color: 'var(--accent)' },
+    { label: 'Total Devices', value: stats.totalDevices, icon: '📱', color: '#6366f1' },
+    { label: 'Online Devices', value: stats.onlineDevices, icon: '🟢', color: 'var(--success)' },
+    { label: 'Offline Devices', value: stats.offlineDevices, icon: '🔴', color: 'var(--danger)' },
+    { label: 'Happy', value: stats.happyFeedback, icon: '😊', color: 'var(--success)' },
+    { label: 'Okay', value: stats.okayFeedback, icon: '😐', color: 'var(--warning)' },
   ]
 
   return (

@@ -13,6 +13,17 @@ const prisma = new PrismaClient({ adapter });
 async function seedDashboardData() {
   const now = new Date();
 
+  const organization = await prisma.organization.upsert({
+    where: { id: "org-demo-1" },
+    update: {},
+    create: {
+      id: "org-demo-1",
+      name: "Demo Organization",
+      address: "123 Main Street",
+      timezone: "UTC",
+    },
+  });
+
   const admin = await prisma.user.upsert({
     where: { email: "admin@smartrestroom.com" },
     update: {},
@@ -22,22 +33,88 @@ async function seedDashboardData() {
       password: await bcrypt.hash("Admin@123", 10),
       role: "super_admin",
       active: true,
+      organizationId: organization.id,
+    },
+  });
+
+  const eastWing = await prisma.location.upsert({
+    where: { id: "loc-east" },
+    update: {},
+    create: {
+      id: "loc-east",
+      organizationId: organization.id,
+      city: "East Wing",
+      officeName: "East Wing",
+    },
+  });
+
+  const westWing = await prisma.location.upsert({
+    where: { id: "loc-west" },
+    update: {},
+    create: {
+      id: "loc-west",
+      organizationId: organization.id,
+      city: "West Wing",
+      officeName: "West Wing",
+    },
+  });
+
+  const central = await prisma.location.upsert({
+    where: { id: "loc-central" },
+    update: {},
+    create: {
+      id: "loc-central",
+      organizationId: organization.id,
+      city: "Central",
+      officeName: "Central",
+    },
+  });
+
+  const floor1East = await prisma.floor.upsert({
+    where: { id: "floor-1-east" },
+    update: {},
+    create: {
+      id: "floor-1-east",
+      locationId: eastWing.id,
+      floorName: "Floor 1",
+      floorNumber: 1,
+    },
+  });
+
+  const floor2West = await prisma.floor.upsert({
+    where: { id: "floor-2-west" },
+    update: {},
+    create: {
+      id: "floor-2-west",
+      locationId: westWing.id,
+      floorName: "Floor 2",
+      floorNumber: 2,
+    },
+  });
+
+  const floor3Central = await prisma.floor.upsert({
+    where: { id: "floor-3-central" },
+    update: {},
+    create: {
+      id: "floor-3-central",
+      locationId: central.id,
+      floorName: "Floor 3",
+      floorNumber: 3,
     },
   });
 
   const restroomData = [
-    { name: "Floor 1 - Men", floor: 1, location: "East Wing", badgeId: "B001", status: "good" },
-    { name: "Floor 1 - Women", floor: 1, location: "East Wing", badgeId: "B002", status: "good" },
-    { name: "Floor 2 - Men", floor: 2, location: "West Wing", badgeId: "B003", status: "alert" },
-    { name: "Floor 2 - Women", floor: 2, location: "West Wing", badgeId: "B004", status: "good" },
-    { name: "Floor 3 - Accessible", floor: 3, location: "Central", badgeId: "B005", status: "offline" },
+    { id: "r1", name: "Floor 1 - Men", floorId: floor1East.id, organizationId: organization.id, status: "good" },
+    { id: "r2", name: "Floor 1 - Women", floorId: floor1East.id, organizationId: organization.id, status: "good" },
+    { id: "r3", name: "Floor 2 - Men", floorId: floor2West.id, organizationId: organization.id, status: "alert" },
+    { id: "r4", name: "Floor 2 - Women", floorId: floor2West.id, organizationId: organization.id, status: "good" },
+    { id: "r5", name: "Floor 3 - Accessible", floorId: floor3Central.id, organizationId: organization.id, status: "offline" },
   ];
 
   const createdRestrooms = [];
-
   for (const room of restroomData) {
     const existing = await prisma.restroom.findUnique({
-      where: { badgeId: room.badgeId },
+      where: { id: room.id },
     });
 
     if (!existing) {
@@ -49,11 +126,11 @@ async function seedDashboardData() {
   }
 
   const deviceData = [
-    { badgeId: "B001", restroomId: createdRestrooms[0].id, battery: 92, status: "online", health: "healthy", lastCommunication: new Date(now.getTime() - 5 * 60 * 1000) },
-    { badgeId: "B002", restroomId: createdRestrooms[1].id, battery: 78, status: "online", health: "healthy", lastCommunication: new Date(now.getTime() - 12 * 60 * 1000) },
-    { badgeId: "B003", restroomId: createdRestrooms[2].id, battery: 24, status: "online", health: "warning", lastCommunication: new Date(now.getTime() - 3 * 60 * 1000) },
-    { badgeId: "B004", restroomId: createdRestrooms[3].id, battery: 65, status: "online", health: "healthy", lastCommunication: new Date(now.getTime() - 8 * 60 * 1000) },
-    { badgeId: "B005", restroomId: createdRestrooms[4].id, battery: 8, status: "offline", health: "critical", lastCommunication: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
+    { id: "d1", deviceEui: "EUI-001", badgeId: "B001", restroomId: createdRestrooms[0].id, floorId: createdRestrooms[0].floorId, batteryLevel: 92, healthStatus: "healthy", lastSeen: new Date(now.getTime() - 5 * 60 * 1000) },
+    { id: "d2", deviceEui: "EUI-002", badgeId: "B002", restroomId: createdRestrooms[1].id, floorId: createdRestrooms[1].floorId, batteryLevel: 78, healthStatus: "healthy", lastSeen: new Date(now.getTime() - 12 * 60 * 1000) },
+    { id: "d3", deviceEui: "EUI-003", badgeId: "B003", restroomId: createdRestrooms[2].id, floorId: createdRestrooms[2].floorId, batteryLevel: 24, healthStatus: "warning", lastSeen: new Date(now.getTime() - 3 * 60 * 1000) },
+    { id: "d4", deviceEui: "EUI-004", badgeId: "B004", restroomId: createdRestrooms[3].id, floorId: createdRestrooms[3].floorId, batteryLevel: 65, healthStatus: "healthy", lastSeen: new Date(now.getTime() - 8 * 60 * 1000) },
+    { id: "d5", deviceEui: "EUI-005", badgeId: "B005", restroomId: createdRestrooms[4].id, floorId: createdRestrooms[4].floorId, batteryLevel: 8, healthStatus: "critical", lastSeen: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
   ];
 
   for (const device of deviceData) {
@@ -64,56 +141,119 @@ async function seedDashboardData() {
     });
   }
 
+  const createdDevices = await prisma.device.findMany({
+    where: { badgeId: { in: deviceData.map((d) => d.badgeId) } },
+  });
+
+  const feedbackEntries = [
+    { id: "f1", deviceId: createdDevices[2].id, restroomId: createdRestrooms[2].id, feedbackType: "needs_cleaning", battery: 24, signalStrength: 80, timestamp: new Date(now.getTime() - 10 * 60 * 1000) },
+    { id: "f2", deviceId: createdDevices[0].id, restroomId: createdRestrooms[0].id, feedbackType: "happy", battery: 92, signalStrength: 90, timestamp: new Date(now.getTime() - 25 * 60 * 1000) },
+    { id: "f3", deviceId: createdDevices[1].id, restroomId: createdRestrooms[1].id, feedbackType: "happy", battery: 78, signalStrength: 85, timestamp: new Date(now.getTime() - 45 * 60 * 1000) },
+    { id: "f4", deviceId: createdDevices[3].id, restroomId: createdRestrooms[3].id, feedbackType: "average", battery: 65, signalStrength: 70, timestamp: new Date(now.getTime() - 60 * 60 * 1000) },
+    { id: "f5", deviceId: createdDevices[2].id, restroomId: createdRestrooms[2].id, feedbackType: "emergency", battery: 28, signalStrength: 60, timestamp: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
+    { id: "f6", deviceId: createdDevices[0].id, restroomId: createdRestrooms[0].id, feedbackType: "happy", battery: 94, signalStrength: 92, timestamp: new Date(now.getTime() - 3 * 60 * 60 * 1000) },
+    { id: "f7", deviceId: createdDevices[4].id, restroomId: createdRestrooms[4].id, feedbackType: "needs_cleaning", battery: 8, signalStrength: 40, timestamp: new Date(now.getTime() - 4 * 60 * 60 * 1000) },
+    { id: "f8", deviceId: createdDevices[1].id, restroomId: createdRestrooms[1].id, feedbackType: "emergency", battery: 76, signalStrength: 88, timestamp: new Date(now.getTime() - 5 * 60 * 60 * 1000) },
+    { id: "f9", deviceId: createdDevices[3].id, restroomId: createdRestrooms[3].id, feedbackType: "needs_cleaning", battery: 55, signalStrength: 72, timestamp: new Date(now.getTime() - 6 * 60 * 60 * 1000) },
+    { id: "f10", deviceId: createdDevices[0].id, restroomId: createdRestrooms[0].id, feedbackType: "emergency", battery: 88, signalStrength: 95, timestamp: new Date(now.getTime() - 7 * 60 * 60 * 1000) },
+  ];
+
+  const createdFeedback = [];
+  for (const entry of feedbackEntries) {
+    const existing = await prisma.feedback.findUnique({
+      where: { id: entry.id },
+    });
+
+    if (!existing) {
+      const feedback = await prisma.feedback.create({ data: entry });
+      createdFeedback.push(feedback);
+    } else {
+      createdFeedback.push(existing);
+    }
+  }
+
   const alerts = [
     {
+      id: "a1",
+      feedbackId: createdFeedback[0].id,
       restroomId: createdRestrooms[2].id,
-      type: "Unhappy Feedback",
       status: "open",
-      time: new Date(now.getTime() - 10 * 60 * 1000),
+      priority: "high",
       assignedToId: admin.id,
+      createdAt: new Date(now.getTime() - 10 * 60 * 1000),
     },
     {
-      restroomId: createdRestrooms[4].id,
-      type: "Device Offline",
-      status: "acknowledged",
-      time: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-      assignedToId: admin.id,
-      acknowledgedById: admin.id,
-    },
-    {
+      id: "a2",
+      feedbackId: createdFeedback[4].id,
       restroomId: createdRestrooms[2].id,
-      type: "Low Battery",
-      status: "resolved",
-      time: new Date(now.getTime() - 5 * 60 * 60 * 1000),
+      status: "assigned",
+      priority: "critical",
       assignedToId: admin.id,
       acknowledgedById: admin.id,
-      resolvedTime: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+      createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+    },
+    {
+      id: "a3",
+      feedbackId: createdFeedback[6].id,
+      restroomId: createdRestrooms[4].id,
+      status: "open",
+      priority: "medium",
+      assignedToId: admin.id,
+      createdAt: new Date(now.getTime() - 4 * 60 * 60 * 1000),
+    },
+    {
+      id: "a4",
+      feedbackId: createdFeedback[7].id,
+      restroomId: createdRestrooms[1].id,
+      status: "in_progress",
+      priority: "high",
+      assignedToId: admin.id,
+      acknowledgedById: admin.id,
+      createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000),
+    },
+    {
+      id: "a5",
+      feedbackId: createdFeedback[8].id,
+      restroomId: createdRestrooms[3].id,
+      status: "open",
+      priority: "medium",
+      assignedToId: admin.id,
+      createdAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
+    },
+    {
+      id: "a6",
+      feedbackId: createdFeedback[9].id,
+      restroomId: createdRestrooms[0].id,
+      status: "assigned",
+      priority: "critical",
+      assignedToId: admin.id,
+      acknowledgedById: admin.id,
+      createdAt: new Date(now.getTime() - 7 * 60 * 60 * 1000),
     },
   ];
+
+  await prisma.alert.deleteMany({
+    where: {
+      id: {
+        in: alerts.map((a) => a.id),
+      },
+    },
+  });
 
   for (const alert of alerts) {
     await prisma.alert.create({ data: alert });
   }
 
-  const feedbackEntries = [
-    { restroomId: createdRestrooms[2].id, type: "unhappy", badgeId: "B003", battery: 24, deviceStatus: "online", time: new Date(now.getTime() - 10 * 60 * 1000) },
-    { restroomId: createdRestrooms[0].id, type: "happy", badgeId: "B001", battery: 92, deviceStatus: "online", time: new Date(now.getTime() - 25 * 60 * 1000) },
-    { restroomId: createdRestrooms[1].id, type: "happy", badgeId: "B002", battery: 78, deviceStatus: "online", time: new Date(now.getTime() - 45 * 60 * 1000) },
-    { restroomId: createdRestrooms[3].id, type: "neutral", badgeId: "B004", battery: 65, deviceStatus: "online", time: new Date(now.getTime() - 60 * 60 * 1000) },
-    { restroomId: createdRestrooms[2].id, type: "unhappy", badgeId: "B003", battery: 28, deviceStatus: "online", time: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
-    { restroomId: createdRestrooms[0].id, type: "happy", badgeId: "B001", battery: 94, deviceStatus: "online", time: new Date(now.getTime() - 3 * 60 * 60 * 1000) },
-  ];
-
-  for (const entry of feedbackEntries) {
-    await prisma.feedbackEntry.create({ data: entry });
-  }
-
   console.log("Dashboard seed data created successfully");
   console.log({
     admin: admin.email,
+    organization: organization.name,
+    locations: 3,
+    floors: 3,
     restrooms: createdRestrooms.length,
+    devices: createdDevices.length,
     alerts: alerts.length,
-    feedback: feedbackEntries.length,
+    feedback: createdFeedback.length,
   });
 }
 

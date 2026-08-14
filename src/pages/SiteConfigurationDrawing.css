@@ -8,11 +8,11 @@
   opacity: .28 !important;
 }
 
-/* Solid blue live geometry, matching the rectangle treatment in the reference. */
+/* Solid primary live geometry, matching the rectangle treatment in the reference. */
 .planner-map:has(.planner-toolbox input) .leaflet-overlay-pane path {
-  stroke: #3b82f6 !important;
+  stroke: var(--primary) !important;
   stroke-width: 4 !important;
   stroke-dasharray: none !important;
-  fill: #3b82f6 !important;
+  fill: var(--primary) !important;
   fill-opacity: .2 !important;
 }
