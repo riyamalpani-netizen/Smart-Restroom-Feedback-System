@@ -136,44 +136,42 @@ async function createGateway(req, res) {
       },
     });
 
+    let ttnRegistration = null;
+    let ttnStatus = "not_registered";
     if (registerGatewayInTTNService) {
-      registerGatewayInTTNService({
-        gatewayEui: gateway.gatewayEui,
-        gatewayId: `gateway-${gateway.gatewayEui.toLowerCase()}`,
-        frequencyPlanId: gateway.frequencyPlanId || undefined,
-        latitude: gateway.latitude || undefined,
-        longitude: gateway.longitude || undefined,
-        description: gateway.name,
-      }).then((ttnRegistration) => {
-        prisma.gateway.update({
-          where: { id: gateway.id },
-          data: {
-            ttnStatus: "registered",
-            ttnDeviceId: ttnRegistration.gatewayId,
-            frequencyPlanId: ttnRegistration.frequencyPlanId || gateway.frequencyPlanId,
-          },
-        }).catch((updateError) => {
-          console.error("Failed to update gateway TTN status after registration:", updateError);
+      try {
+        ttnRegistration = await registerGatewayInTTNService({
+          gatewayEui: gateway.gatewayEui,
+          gatewayId: `gateway-${gateway.gatewayEui.toLowerCase()}`,
+          frequencyPlanId: gateway.frequencyPlanId || undefined,
+          latitude: gateway.latitude || undefined,
+          longitude: gateway.longitude || undefined,
+          description: gateway.name,
         });
-      }).catch((ttnError) => {
-        console.error("Background TTN gateway registration failed:", ttnError.message);
-        prisma.gateway.update({
-          where: { id: gateway.id },
-          data: { ttnStatus: "not_registered" },
-        }).catch((updateError) => {
-          console.error("Failed to update gateway TTN status after failed registration:", updateError);
-        });
-      });
+        ttnStatus = "registered";
+      } catch (ttnError) {
+        console.error("TTN gateway registration failed:", ttnError.message);
+        ttnStatus = "not_registered";
+      }
     }
+
+    const updatedGateway = await prisma.gateway.update({
+      where: { id: gateway.id },
+      data: {
+        ttnStatus,
+        ttnDeviceId: ttnRegistration?.gatewayId || null,
+        frequencyPlanId: ttnRegistration?.frequencyPlanId || gateway.frequencyPlanId,
+      },
+    });
 
     res.status(201).json({
       message: "Gateway created successfully",
-      gateway: { id: gateway.id, name: gateway.name, gatewayEui: gateway.gatewayEui, status: gateway.status, lastSeen: gateway.lastSeen,
+      gateway: { id: updatedGateway.id, name: updatedGateway.name, gatewayEui: updatedGateway.gatewayEui, status: updatedGateway.status, lastSeen: updatedGateway.lastSeen,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
-        locationId: gateway.locationId, floorId: gateway.floorId, zoneId: gateway.zoneId,
-        ttnStatus: gateway.ttnStatus, ttnDeviceId: gateway.ttnDeviceId, frequencyPlanId: gateway.frequencyPlanId,
-        latitude: gateway.latitude, longitude: gateway.longitude, connectedDevices: gateway.connectedDevices,
-        createdAt: gateway.createdAt, updatedAt: gateway.updatedAt },
+        locationId: updatedGateway.locationId, floorId: updatedGateway.floorId, zoneId: updatedGateway.zoneId,
+        ttnStatus: updatedGateway.ttnStatus, ttnDeviceId: updatedGateway.ttnDeviceId, frequencyPlanId: updatedGateway.frequencyPlanId,
+        latitude: updatedGateway.latitude, longitude: updatedGateway.longitude, connectedDevices: updatedGateway.connectedDevices,
+        createdAt: updatedGateway.createdAt, updatedAt: updatedGateway.updatedAt },
     });
   } catch (error) {
     console.error("Create gateway error:", error);
@@ -221,6 +219,7 @@ async function updateGateway(req, res) {
       if (normalizedEui.length !== 16) return res.status(400).json({ message: "Gateway EUI must be exactly 16 hexadecimal characters" });
       updateData.gatewayEui = normalizedEui;
     }
+
     const gateway = await prisma.gateway.update({
       where: { id }, data: updateData,
       include: {
@@ -229,14 +228,76 @@ async function updateGateway(req, res) {
         zone: { select: { id: true, name: true } },
       },
     });
+
+    let ttnStatus = gateway.ttnStatus;
+    let ttnDeviceId = gateway.ttnDeviceId;
+    if (registerGatewayInTTNService) {
+      if (gatewayEui !== undefined && existing.gatewayEui !== gateway.gatewayEui) {
+        if (existing.ttnStatus === "registered") {
+          try {
+            await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: existing.ttnDeviceId || undefined });
+          } catch (ttnError) {
+            console.error("TTN gateway delete error during update:", ttnError.message);
+          }
+        }
+        try {
+          const ttnRegistration = await registerGatewayInTTNService({
+            gatewayEui: gateway.gatewayEui,
+            gatewayId: `gateway-${gateway.gatewayEui.toLowerCase()}`,
+            frequencyPlanId: gateway.frequencyPlanId || undefined,
+            latitude: gateway.latitude || undefined,
+            longitude: gateway.longitude || undefined,
+            description: gateway.name,
+          });
+          ttnStatus = "registered";
+          ttnDeviceId = ttnRegistration.gatewayId;
+          if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
+            await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
+          }
+        } catch (ttnError) {
+          console.error("TTN gateway re-registration failed after EUI change:", ttnError.message);
+          ttnStatus = "not_registered";
+          ttnDeviceId = null;
+        }
+      } else if (frequencyPlanId !== undefined || latitude !== undefined || longitude !== undefined || name !== undefined) {
+        try {
+          const ttnRegistration = await registerGatewayInTTNService({
+            gatewayEui: gateway.gatewayEui,
+            gatewayId: gateway.ttnDeviceId || `gateway-${gateway.gatewayEui.toLowerCase()}`,
+            frequencyPlanId: gateway.frequencyPlanId || undefined,
+            latitude: gateway.latitude || undefined,
+            longitude: gateway.longitude || undefined,
+            description: gateway.name,
+          });
+          ttnStatus = "registered";
+          ttnDeviceId = ttnRegistration.gatewayId;
+          if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
+            await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
+          }
+        } catch (ttnError) {
+          console.error("TTN gateway update failed:", ttnError.message);
+          if (ttnError.message.includes("409") || ttnError.message.includes("already registered")) {
+            ttnStatus = "registered";
+          } else {
+            ttnStatus = "not_registered";
+          }
+        }
+      }
+    }
+
+    const finalGateway = await prisma.gateway.update({
+      where: { id: gateway.id },
+      data: { ttnStatus, ttnDeviceId },
+    });
+
     res.status(200).json({
       message: "Gateway updated successfully",
-      gateway: { id: gateway.id, name: gateway.name, gatewayEui: gateway.gatewayEui, status: gateway.status, lastSeen: gateway.lastSeen,
+      gateway: { id: finalGateway.id, name: finalGateway.name, gatewayEui: finalGateway.gatewayEui, status: finalGateway.status, lastSeen: finalGateway.lastSeen,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
-        locationId: gateway.locationId, floorId: gateway.floorId, zoneId: gateway.zoneId,
-        ttnStatus: gateway.ttnStatus, ttnDeviceId: gateway.ttnDeviceId, frequencyPlanId: gateway.frequencyPlanId,
-        latitude: gateway.latitude, longitude: gateway.longitude, connectedDevices: gateway.connectedDevices,
-        createdAt: gateway.createdAt, updatedAt: gateway.updatedAt },
+        locationId: finalGateway.locationId, floorId: finalGateway.floorId, zoneId: finalGateway.zoneId,
+        ttnStatus: finalGateway.ttnStatus, ttnDeviceId: finalGateway.ttnDeviceId, frequencyPlanId: finalGateway.frequencyPlanId,
+        latitude: finalGateway.latitude, longitude: finalGateway.longitude, connectedDevices: finalGateway.connectedDevices,
+        createdAt: finalGateway.createdAt, updatedAt: finalGateway.updatedAt },
     });
   } catch (error) {
     console.error("Update gateway error:", error);
@@ -256,7 +317,7 @@ async function deleteGateway(req, res) {
     if (!existing) return res.status(404).json({ message: "Gateway not found" });
     if (existing.devices.length > 0) return res.status(400).json({ message: "Cannot delete gateway with connected devices. Reassign devices first." });
     try {
-      await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: existing.ttnDeviceId || existing.gatewayEui.toLowerCase() });
+      await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: existing.ttnDeviceId || undefined });
     } catch (ttnError) {
       console.error("TTN gateway delete error:", ttnError.message);
     }
@@ -287,7 +348,9 @@ async function registerGatewayInTTN(req, res) {
         latitude: latitude || existing.latitude, longitude: longitude || existing.longitude, description: description || existing.name,
       });
     } catch (error) {
-      if (error.message.includes("409")) return res.status(409).json({ message: `Gateway ${existing.gatewayEui} is already registered on TTN.` });
+      if (error.message.includes("409") || error.message.includes("already registered")) {
+        return res.status(409).json({ message: `Gateway ${existing.gatewayEui} is already registered on TTN.` });
+      }
       return res.status(502).json({ message: `TTN gateway registration failed: ${error.message}` });
     }
     const gateway = await prisma.gateway.update({ where: { id }, data: { ttnStatus: "registered", ttnDeviceId: resolvedGatewayId, frequencyPlanId: resolvedFrequencyPlan, latitude: latitude ? parseFloat(latitude) : existing.latitude, longitude: longitude ? parseFloat(longitude) : existing.longitude } });
@@ -361,7 +424,11 @@ async function getGatewayEvents(req, res) {
     if (req.user?.role !== "super_admin") whereClause.organizationId = req.user?.organizationId;
     const gateway = await prisma.gateway.findFirst({
       where: whereClause,
-      include: { devices: { select: { id: true }, include: { deviceHealth: { orderBy: { recordedAt: "desc" }, take: parseInt(limit) } } } },
+      include: {
+        devices: {
+          include: { deviceHealth: { orderBy: { recordedAt: "desc" }, take: parseInt(limit) } },
+        },
+      },
     });
     if (!gateway) return res.status(404).json({ message: "Gateway not found" });
     const deviceIds = gateway.devices.map((d) => d.id);

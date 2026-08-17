@@ -317,7 +317,7 @@ async function createDevice(req, res) {
 async function updateDevice(req, res) {
   try {
     const { id } = req.params;
-    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType, joinEui, appKey, gatewayId } = req.body;
+    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType, joinEui, appKey, gatewayId, name, deviceEui } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -368,6 +368,10 @@ async function updateDevice(req, res) {
     if (joinEui !== undefined) updateData.joinEui = joinEui || null
     if (appKey !== undefined) updateData.appKey = appKey || null
     if (gatewayId !== undefined) updateData.gatewayId = gatewayId || null
+    if (name !== undefined) updateData.name = name || null
+    if (deviceEui) updateData.deviceEui = deviceEui
+
+    const oldGatewayId = existing.gatewayId;
 
     const device = await prisma.device.update({
       where: { id },
@@ -375,11 +379,23 @@ async function updateDevice(req, res) {
     });
 
     if (gatewayId !== undefined) {
-      const deviceCount = await prisma.device.count({ where: { gatewayId: gatewayId || null } });
-      await prisma.gateway.updateMany({
-        where: { id: gatewayId || null },
-        data: { connectedDevices: deviceCount },
-      });
+      const newGatewayId = gatewayId || null;
+
+      if (oldGatewayId && oldGatewayId !== newGatewayId) {
+        const oldCount = await prisma.device.count({ where: { gatewayId: oldGatewayId } });
+        await prisma.gateway.update({
+          where: { id: oldGatewayId },
+          data: { connectedDevices: oldCount },
+        });
+      }
+
+      if (newGatewayId) {
+        const newCount = await prisma.device.count({ where: { gatewayId: newGatewayId } });
+        await prisma.gateway.update({
+          where: { id: newGatewayId },
+          data: { connectedDevices: newCount },
+        });
+      }
     }
 
     res.status(200).json({ message: "Device updated successfully", device });
@@ -602,6 +618,20 @@ async function deleteDevice(req, res) {
       });
     } catch (ttnError) {
       console.error("TTN delete error:", ttnError.message);
+    }
+
+    await prisma.feedback.deleteMany({ where: { deviceId: id } });
+    await prisma.deviceHealthRecord.deleteMany({ where: { deviceId: id } });
+
+    if (existing.gatewayId) {
+      await prisma.gateway.update({
+        where: { id: existing.gatewayId },
+        data: {
+          connectedDevices: {
+            decrement: 1,
+          },
+        },
+      });
     }
 
     await prisma.device.delete({ where: { id } });
