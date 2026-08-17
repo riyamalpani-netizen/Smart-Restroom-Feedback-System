@@ -136,38 +136,33 @@ async function createGateway(req, res) {
       },
     });
 
-    try {
-      const ttnRegistration = await registerGatewayInTTNService({
+    if (registerGatewayInTTNService) {
+      registerGatewayInTTNService({
         gatewayEui: gateway.gatewayEui,
         gatewayId: `gateway-${gateway.gatewayEui.toLowerCase()}`,
         frequencyPlanId: gateway.frequencyPlanId || undefined,
         latitude: gateway.latitude || undefined,
         longitude: gateway.longitude || undefined,
         description: gateway.name,
-      });
-      gateway = await prisma.gateway.update({
-        where: { id: gateway.id },
-        data: {
-          ttnStatus: "registered",
-          ttnDeviceId: ttnRegistration.gatewayId,
-          frequencyPlanId: ttnRegistration.frequencyPlanId || gateway.frequencyPlanId,
-        },
-        include: {
-          location: { select: { id: true, city: true, officeName: true } },
-          floor: { select: { id: true, floorName: true } },
-          zone: { select: { id: true, name: true } },
-        },
-      });
-    } catch (ttnError) {
-      console.error("Auto TTN registration failed:", ttnError.message);
-      gateway = await prisma.gateway.update({
-        where: { id: gateway.id },
-        data: { ttnStatus: "not_registered" },
-        include: {
-          location: { select: { id: true, city: true, officeName: true } },
-          floor: { select: { id: true, floorName: true } },
-          zone: { select: { id: true, name: true } },
-        },
+      }).then((ttnRegistration) => {
+        prisma.gateway.update({
+          where: { id: gateway.id },
+          data: {
+            ttnStatus: "registered",
+            ttnDeviceId: ttnRegistration.gatewayId,
+            frequencyPlanId: ttnRegistration.frequencyPlanId || gateway.frequencyPlanId,
+          },
+        }).catch((updateError) => {
+          console.error("Failed to update gateway TTN status after registration:", updateError);
+        });
+      }).catch((ttnError) => {
+        console.error("Background TTN gateway registration failed:", ttnError.message);
+        prisma.gateway.update({
+          where: { id: gateway.id },
+          data: { ttnStatus: "not_registered" },
+        }).catch((updateError) => {
+          console.error("Failed to update gateway TTN status after failed registration:", updateError);
+        });
       });
     }
 
