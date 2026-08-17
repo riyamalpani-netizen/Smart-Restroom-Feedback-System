@@ -1,14 +1,10 @@
-.site-planner > .planner-workspace { display: none; }
-.site-planner > .planner-floor-map { display: none; }
-.planner-floor-plan-map { display:grid; grid-template-columns:31% 69%; min-height:650px; position:relative; padding-bottom:66px; border-top:1px solid #292b42; }
-.planner-floor-plan-map__upload { width:100%; margin-top:14px; }
-.planner-floor-plan-map__align { position:absolute; z-index:600; left:15px; top:15px; width:210px; padding:12px; border-radius:7px; color:#eff0f4; background:#202338; box-shadow:0 4px 14px rgba(0,0,0,.35); }
-.planner-floor-plan-map__align small { display:block; margin:5px 0 9px; color:#b2b7c6; }
-.planner-floor-plan-map__align div { display:grid; grid-template-columns:repeat(2,1fr); gap:5px; }
-.planner-floor-plan-map__align button { border:0; border-radius:4px; padding:6px; color:#eee; background:#34374d; cursor:pointer; }
-.planner-floor-map { display:grid; grid-template-columns: 31% 69%; min-height:650px; border-top:1px solid #292b42; position:relative; padding-bottom:66px; }
-.planner-floor-map__sidebar { background:#101124; padding:18px 20px; border-right:1px solid #2d3046; }
-.planner-floor-map__canvas { position:relative; background:#f4f1ed; overflow:hidden; }
-.planner-floor-map__tools { position:absolute; z-index:600; top:14px; left:14px; padding:12px 15px; line-height:2; font-size:20px; color:#f4f4f7; background:#202338; border-radius:7px; box-shadow:0 3px 12px rgba(0,0,0,.35); }
-.planner-floor-map__footer { position:absolute; left:0; right:0; bottom:0; height:66px; display:flex; align-items:center; justify-content:space-between; padding:0 22px; box-sizing:border-box; border-top:1px solid #2d3046; background:#151629; }
-@media (max-width: 800px) { .planner-floor-map { grid-template-columns:1fr; } .planner-floor-map__sidebar { border-right:0; border-bottom:1px solid #2d3046; } .planner-floor-map__canvas { min-height:430px; } }
+/* Floor step layout — consolidated single view for step 2 */
+.planner-floor-plan-map__upload {
+  width: auto;
+}
+
+@media (max-width: 800px) {
+  .planner-step-layout__canvas {
+    min-height: 430px;
+  }
+}

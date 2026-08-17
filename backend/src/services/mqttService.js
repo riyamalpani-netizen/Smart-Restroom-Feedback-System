@@ -98,7 +98,7 @@ async function processFeedback(payload) {
 
     const device = await prisma.device.findUnique({
       where: { deviceEui },
-      include: { restroom: true },
+      include: { restroom: { include: { floor: true } } },
     });
 
     if (!device) {
@@ -159,6 +159,7 @@ async function processFeedback(payload) {
         signalStrength: signalStrength ?? null,
         timestamp: feedback?.timestamp || new Date(),
         restroomName: device.restroom?.name || '—',
+        locationId: device.restroom?.floor?.locationId || null,
         badgeId: device.badgeId,
         deviceStatus: device.healthStatus,
       },

@@ -193,7 +193,10 @@ async function createFeedback(req, res) {
       return res.status(400).json({ message: "Invalid feedback type" });
     }
 
-    const restroom = await prisma.restroom.findUnique({ where: { id: restroomId } });
+    const restroom = await prisma.restroom.findUnique({
+      where: { id: restroomId },
+      include: { floor: true },
+    });
     if (!restroom) {
       return res.status(404).json({ message: "Restroom not found" });
     }
@@ -204,7 +207,7 @@ async function createFeedback(req, res) {
 
     const feedback = await prisma.feedback.create({
       data: { deviceId, restroomId, feedbackType, battery, signalStrength },
-      include: { device: true, restroom: true },
+      include: { device: true, restroom: { include: { floor: true } } },
     });
 
     await prisma.device.update({
@@ -238,6 +241,7 @@ async function createFeedback(req, res) {
         battery: feedback.battery,
         signalStrength: feedback.signalStrength,
         restroomName: feedback.restroom.name,
+        locationId: feedback.restroom.floor?.locationId || null,
         badgeId: feedback.device.badgeId,
         deviceStatus: feedback.device.healthStatus,
       });

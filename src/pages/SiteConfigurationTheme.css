@@ -12,7 +12,9 @@
 .planner-step.is-active { background:var(--primary-soft); color:var(--primary); }
 .planner-step.is-done { color:var(--text-h); }
 .planner-step__number { background:#e2e8f0; color:var(--text); }
-.planner-step.is-active .planner-step__number { background:var(--primary); color:#fff; }
+.planner-button--danger { background: transparent; border-color: rgba(239, 68, 68, 0.35); color: var(--danger); }
+.planner-button--danger:hover { background: rgba(239, 68, 68, 0.12); border-color: var(--danger); }
+.planner-step.is-active .planner-step__number { background: var(--primary); color: #fff; border-color: var(--primary); }
 .planner-step.is-done .planner-step__number { background:#dcfce7; color:#15803d; }
 .planner-form-card, .planner-review, .planner-modal { background:var(--surface); border-color:var(--border); box-shadow:var(--shadow); }
 .planner-form-card footer, .planner-floor-map__footer { background:var(--surface-muted); border-color:var(--border); }

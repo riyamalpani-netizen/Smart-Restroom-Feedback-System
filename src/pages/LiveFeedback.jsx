@@ -25,6 +25,7 @@ export default function LiveFeedback() {
   const pollTimerRef = useRef(null)
   const filterRef = useRef(filter)
   const locationIdRef = useRef(locationId)
+  const pageRef = useRef(page)
 
   const loadFeedback = useCallback(async (pageNum = 1, filterType = 'all', locId = '') => {
     try {
@@ -64,15 +65,31 @@ export default function LiveFeedback() {
   }, [locationId])
 
   useEffect(() => {
+    pageRef.current = page
+  }, [page])
+
+  useEffect(() => {
     loadLocations()
   }, [loadLocations])
 
+  // Socket connection — stays open; filters applied via refs in the handler
   useEffect(() => {
     let mounted = true
     const token = localStorage.getItem('srfs_token')
 
+    function startPolling() {
+      if (pollTimerRef.current) return
+      if (!mounted) return
+
+      pollTimerRef.current = setInterval(() => {
+        if (mounted) {
+          loadFeedback(pageRef.current, filterRef.current, locationIdRef.current)
+        }
+      }, 10000)
+    }
+
     function connectSocket() {
-      if (!token) return
+      if (!token) return null
 
       try {
         const socket = io(API_URL, {
@@ -107,29 +124,30 @@ export default function LiveFeedback() {
         })
 
         socket.on('new-feedback', (entry) => {
-          if (mounted) {
-            const currentFilter = filterRef.current
-            const currentLocationId = locationIdRef.current
+          if (!mounted) return
 
-            if (currentFilter !== 'all' && entry.feedbackType !== currentFilter) {
-              return
-            }
+          const currentFilter = filterRef.current
+          const currentLocationId = locationIdRef.current
 
-            if (currentLocationId && entry.restroom?.floor?.locationId !== currentLocationId && entry.locationId !== currentLocationId) {
-              return
-            }
-
-            setLiveEntries((prev) => {
-              const exists = prev.some((item) => item.id === entry.id)
-              if (exists) return prev
-              const normalized = {
-                ...entry,
-                device: entry.device || { badgeId: entry.badgeId, healthStatus: entry.deviceStatus || 'unknown' },
-                restroom: entry.restroom || { name: entry.restroomName || 'Unknown' },
-              }
-              return [normalized, ...prev]
-            })
+          if (currentFilter !== 'all' && entry.feedbackType !== currentFilter) {
+            return
           }
+
+          const entryLocationId = entry.locationId || entry.restroom?.floor?.locationId
+          if (currentLocationId && entryLocationId !== currentLocationId) {
+            return
+          }
+
+          setLiveEntries((prev) => {
+            const exists = prev.some((item) => item.id === entry.id)
+            if (exists) return prev
+            const normalized = {
+              ...entry,
+              device: entry.device || { badgeId: entry.badgeId, healthStatus: entry.deviceStatus || 'unknown' },
+              restroom: entry.restroom || { name: entry.restroomName || 'Unknown' },
+            }
+            return [normalized, ...prev]
+          })
         })
 
         return socket
@@ -140,30 +158,11 @@ export default function LiveFeedback() {
       }
     }
 
-    function startPolling() {
-      if (pollTimerRef.current) return
-      if (!mounted) return
-
-      pollTimerRef.current = setInterval(() => {
-        if (mounted) {
-          loadFeedback(1, filter, locationId)
-        }
-      }, 10000)
+    const socket = connectSocket()
+    if (!socket) {
+      setConnectionStatus('polling')
+      startPolling()
     }
-
-    async function init() {
-      setLoading(true)
-      setPage(1)
-      setLiveEntries([])
-      const socket = connectSocket()
-      await loadFeedback(1, filter, locationId)
-
-      if (!socket) {
-        setConnectionStatus('polling')
-      }
-    }
-
-    init()
 
     return () => {
       mounted = false
@@ -176,6 +175,14 @@ export default function LiveFeedback() {
         pollTimerRef.current = null
       }
     }
+  }, [loadFeedback])
+
+  // Reload paginated data when filters change
+  useEffect(() => {
+    setLoading(true)
+    setPage(1)
+    setLiveEntries([])
+    loadFeedback(1, filter, locationId)
   }, [filter, locationId, loadFeedback])
 
   const handleSearch = useCallback((value) => {
@@ -185,6 +192,7 @@ export default function LiveFeedback() {
 
   const handleFilterChange = useCallback((e) => {
     setFilter(e.target.value)
+    setPage(1)
     setLiveEntries([])
   }, [])
 
@@ -206,7 +214,13 @@ export default function LiveFeedback() {
   }, [page, totalPages, filter, locationId, loadFeedback])
 
   const displayed = useMemo(() => {
-    const combined = [...liveEntries, ...feedback]
+    const seen = new Set()
+    const combined = []
+    for (const entry of [...liveEntries, ...feedback]) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      combined.push(entry)
+    }
     if (!search) return combined
     const searchLower = search.toLowerCase()
     return combined.filter((entry) => {
