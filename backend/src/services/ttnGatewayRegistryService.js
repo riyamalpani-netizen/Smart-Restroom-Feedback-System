@@ -1,11 +1,12 @@
 const {
   TTN_API_BASE_URL,
-  TTN_APPLICATION_ID,
+  TTN_GATEWAY_API_KEY,
   TTN_API_KEY,
-  TTN_FREQUENCY_PLAN_ID,
-  TTN_MQTT_BROKER,
-  TTN_MQTT_USERNAME,
   TTN_MQTT_PASSWORD,
+  TTN_MQTT_BROKER,
+  TTN_FREQUENCY_PLAN_ID,
+  TTN_GATEWAY_OWNER_TYPE,
+  TTN_GATEWAY_OWNER_ID,
 } = require("../config/env");
 
 function normalizeHex(value, length, label) {
@@ -26,132 +27,87 @@ function makeGatewayId(gatewayEui, requestedId) {
 
 function getConfiguration() {
   const apiBaseUrl = TTN_API_BASE_URL || (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
-  const applicationId = TTN_APPLICATION_ID || String(TTN_MQTT_USERNAME || "").split("@")[0];
-  const apiKey = TTN_API_KEY || TTN_MQTT_PASSWORD;
+  const apiKey = TTN_GATEWAY_API_KEY || TTN_API_KEY || TTN_MQTT_PASSWORD;
+  const ownerType = TTN_GATEWAY_OWNER_TYPE;
+  const ownerId = TTN_GATEWAY_OWNER_ID;
 
-  if (!apiBaseUrl || !applicationId || !apiKey || !TTN_FREQUENCY_PLAN_ID) {
-    throw new Error("TTN gateway registration is not configured. Set TTN_FREQUENCY_PLAN_ID and TTN_API_BASE_URL, TTN_APPLICATION_ID, and TTN_API_KEY.");
+  if (!apiBaseUrl || !apiKey || !TTN_FREQUENCY_PLAN_ID || !ownerType || !ownerId) {
+    throw new Error(
+      "TTN gateway registration is not configured. Set TTN_API_BASE_URL, TTN_GATEWAY_API_KEY, TTN_FREQUENCY_PLAN_ID, TTN_GATEWAY_OWNER_TYPE, and TTN_GATEWAY_OWNER_ID."
+    );
+  }
+  if (!["user", "organization"].includes(ownerType)) {
+    throw new Error('TTN_GATEWAY_OWNER_TYPE must be "user" or "organization"');
   }
 
   const clusterHost = apiBaseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  return { apiBaseUrl: apiBaseUrl.replace(/\/$/, ""), applicationId, apiKey, clusterHost };
+  return { apiBaseUrl: apiBaseUrl.replace(/\/$/, ""), apiKey, clusterHost, ownerType, ownerId };
 }
 
 async function ttnRequest(url, apiKey, method, body) {
   const response = await fetch(url, {
     method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-
   if (!response.ok) {
     const text = await response.text();
-    const message = text ? `${method} ${url} failed (${response.status}): ${text}` : `${method} ${url} failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(`${method} ${url} failed (${response.status}): ${text}`);
   }
-
   return response.status === 204 ? null : response.json();
 }
 
-/**
- * A TTN v3 gateway is registered in two steps:
- *   1. Identity Server - gateway identity + gateway server address
- *   2. Optional update with frequency plan and location
- */
 async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, latitude, longitude, description }) {
-  const { apiBaseUrl, applicationId, apiKey, clusterHost } = getConfiguration();
-
+  const { apiBaseUrl, apiKey, clusterHost, ownerType, ownerId } = getConfiguration();
   const gEui = normalizeHex(gatewayEui, 16, "Gateway EUI");
   const resolvedGatewayId = makeGatewayId(gEui, gatewayId);
-  const resolvedFrequencyPlan = frequencyPlanId || TTN_FREQUENCY_PLAN_ID || "AS_923";
+  const resolvedFrequencyPlan = frequencyPlanId || TTN_FREQUENCY_PLAN_ID;
 
-  const ids = { gateway_id: resolvedGatewayId, eui: gEui };
+  const gatewayBody = {
+    ids: { gateway_id: resolvedGatewayId, eui: gEui },
+    gateway_server_address: clusterHost,
+    frequency_plan_id: resolvedFrequencyPlan,
+    ...(description ? { description } : {}),
+    ...(latitude !== undefined && longitude !== undefined
+      ? { antenna: { location: { latitude, longitude } } }
+      : {}),
+  };
 
-  const createdSteps = [];
+  const ownerSegment = ownerType === "organization" ? "organizations" : "users";
+  const createUrl = `${apiBaseUrl}/api/v3/${ownerSegment}/${encodeURIComponent(ownerId)}/gateways`;
+  const updateUrl = `${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(resolvedGatewayId)}`;
 
   try {
-    await ttnRequest(
-      `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/gateways`,
-      apiKey,
-      "POST",
-      {
-        gateway: {
-          ids,
-          gateway_server_address: clusterHost,
-          frequency_plan_id: resolvedFrequencyPlan,
-          ...(description ? { description } : {}),
-          ...(latitude !== undefined && longitude !== undefined ? { location: { latitude, longitude } } : {}),
-        },
-        field_mask: {
-          paths: [
-            "gateway_server_address",
-            "frequency_plan_id",
-            "ids.eui",
-            "ids.gateway_id",
-            ...(description ? ["description"] : []),
-            ...(latitude !== undefined && longitude !== undefined ? ["location.latitude", "location.longitude"] : []),
-          ],
-        },
-      },
-    );
-    createdSteps.push("is");
-
-    await ttnRequest(
-      `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/gateways/${encodeURIComponent(resolvedGatewayId)}`,
-      apiKey,
-      "PUT",
-      {
-        gateway: {
-          ids,
-          gateway_server_address: clusterHost,
-          frequency_plan_id: resolvedFrequencyPlan,
-          ...(description ? { description } : {}),
-          ...(latitude !== undefined && longitude !== undefined ? { location: { latitude, longitude } } : {}),
-        },
-        field_mask: {
-          paths: [
-            "gateway_server_address",
-            "frequency_plan_id",
-            "ids.eui",
-            "ids.gateway_id",
-            ...(description ? ["description"] : []),
-            ...(latitude !== undefined && longitude !== undefined ? ["location.latitude", "location.longitude"] : []),
-          ],
-        },
-      },
-    );
-    createdSteps.push("update");
+    await ttnRequest(createUrl, apiKey, "POST", { gateway: gatewayBody });
   } catch (error) {
-    try {
-      await ttnRequest(
-        `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/gateways/${encodeURIComponent(resolvedGatewayId)}`,
-        apiKey,
-        "DELETE",
-      );
-    } catch (cleanupError) {
-      console.error("TTN gateway cleanup after failed registration also failed:", cleanupError.message);
+    if (error.message.includes("409") || error.message.includes("already exists")) {
+      await ttnRequest(updateUrl, apiKey, "PUT", {
+        gateway: gatewayBody,
+        field_mask: {
+          paths: [
+            "gateway_server_address",
+            "frequency_plan_id",
+            ...(description ? ["description"] : []),
+            ...(latitude !== undefined && longitude !== undefined
+              ? ["antenna.location.latitude", "antenna.location.longitude"]
+              : []),
+          ],
+        },
+      });
+    } else {
+      throw new Error(`TTN gateway registration failed: ${error.message}`);
     }
-    throw new Error(`TTN gateway registration failed at step "${createdSteps[createdSteps.length - 1] || "is"}": ${error.message}`);
   }
 
-  return { applicationId, gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan };
+  return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan };
 }
 
 async function deleteGatewayFromTTN({ gatewayEui, gatewayId }) {
-  const { apiBaseUrl, applicationId, apiKey } = getConfiguration();
+  const { apiBaseUrl, apiKey } = getConfiguration();
   const gEui = normalizeHex(gatewayEui, 16, "Gateway EUI");
   const resolvedGatewayId = makeGatewayId(gEui, gatewayId);
-
-  await ttnRequest(
-    `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/gateways/${encodeURIComponent(resolvedGatewayId)}`,
-    apiKey,
-    "DELETE",
-  );
-
-  return { applicationId, gatewayId: resolvedGatewayId, gatewayEui: gEui };
+  await ttnRequest(`${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(resolvedGatewayId)}`, apiKey, "DELETE");
+  return { gatewayId: resolvedGatewayId, gatewayEui: gEui };
 }
 
 module.exports = { registerGatewayInTTN, deleteGatewayFromTTN };

@@ -37,8 +37,8 @@ export default function GatewayManagement() {
   const [zones, setZones] = useState([])
   const canEdit = user?.role !== 'viewer'
 
-  const [form, setForm] = useState({ name: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
-  const [editForm, setEditForm] = useState({ name: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', status: 'offline', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
+  const [form, setForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
+  const [editForm, setEditForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', status: 'offline', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
   const [registerForm, setRegisterForm] = useState({ ttnGatewayId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '', description: '' })
 
   const loadGateways = useCallback(async () => {
@@ -94,12 +94,12 @@ export default function GatewayManagement() {
     setSaving(true)
     try {
       await gatewayAPI.create({
-        name: form.name, gatewayEui: form.gatewayEui,
+        name: form.name, gatewayId: form.gatewayId || undefined, gatewayEui: form.gatewayEui,
         locationId: form.locationId || null, floorId: form.floorId || null, zoneId: form.zoneId || null,
         frequencyPlanId: form.frequencyPlanId || null,
         latitude: form.latitude || null, longitude: form.longitude || null,
       })
-      setForm({ name: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
+      setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadGateways()
     } catch (e) {
@@ -115,7 +115,7 @@ export default function GatewayManagement() {
     setSaving(true)
     try {
       const data = await gatewayAPI.update(selected.id, {
-        name: editForm.name, gatewayEui: editForm.gatewayEui,
+        name: editForm.name, gatewayId: editForm.gatewayId || undefined, gatewayEui: editForm.gatewayEui,
         locationId: editForm.locationId || null, floorId: editForm.floorId || null, zoneId: editForm.zoneId || null,
         status: editForm.status, frequencyPlanId: editForm.frequencyPlanId || null,
         latitude: editForm.latitude || null, longitude: editForm.longitude || null,
@@ -171,7 +171,7 @@ export default function GatewayManagement() {
   const openEdit = (gw) => {
     setSelected(gw)
     setEditForm({
-      name: gw.name || '', gatewayEui: gw.gatewayEui || '',
+      name: gw.name || '', gatewayId: gw.gatewayId || '', gatewayEui: gw.gatewayEui || '',
       locationId: gw.locationId || '', floorId: gw.floorId || '', zoneId: gw.zoneId || '',
       status: gw.status || 'offline', frequencyPlanId: gw.frequencyPlanId || 'EU_863_870',
       latitude: gw.latitude || '', longitude: gw.longitude || '',
@@ -192,7 +192,7 @@ export default function GatewayManagement() {
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>
+            <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>
               Add Gateway
             </button>
           ) : null
@@ -260,6 +260,7 @@ export default function GatewayManagement() {
             <dl>
               <dt>Name</dt><dd>{selected.name || '—'}</dd>
               <dt>Gateway ID / EUI</dt><dd><code>{selected.gatewayEui}</code></dd>
+              <dt>TTN Gateway ID</dt><dd><code>{selected.gatewayId || selected.ttnDeviceId || '—'}</code></dd>
               <dt>Status</dt><dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
               <dt>TTN Status</dt><dd><StatusBadge status={selected.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></dd>
               <dt>Site</dt><dd>{selected.site || '—'}</dd>
@@ -336,6 +337,7 @@ export default function GatewayManagement() {
             <form onSubmit={handleCreate}>
               <label>Gateway Name *<input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required /></label>
               <label>Gateway EUI *<input type="text" value={form.gatewayEui} onChange={(e) => setForm((f) => ({ ...f, gatewayEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" required /></label>
+              <label>Gateway ID<input type="text" value={form.gatewayId} onChange={(e) => setForm((f) => ({ ...f, gatewayId: e.target.value }))} placeholder="e.g. my-gateway-1 (optional)" /></label>
               <label>Site<select value={form.locationId} onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value, floorId: '', zoneId: '' }))}><option value="">Select site</option>{locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}</select></label>
               <label>Floor<select value={form.floorId} onChange={(e) => setForm((f) => ({ ...f, floorId: e.target.value, zoneId: '' }))} disabled={!form.locationId}><option value="">Select floor</option>{floors.filter((f) => !form.locationId || f.locationId === form.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}</select></label>
               <label>Zone<select value={form.zoneId} onChange={(e) => setForm((f) => ({ ...f, zoneId: e.target.value }))} disabled={!form.floorId}><option value="">Select zone</option>{zones.filter((z) => !form.floorId || z.floorId === form.floorId).map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}</select></label>
@@ -358,6 +360,7 @@ export default function GatewayManagement() {
             <form onSubmit={handleEdit}>
               <label>Gateway Name<input type="text" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} /></label>
               <label>Gateway EUI<input type="text" value={editForm.gatewayEui} onChange={(e) => setEditForm((f) => ({ ...f, gatewayEui: e.target.value }))} /></label>
+              <label>Gateway ID<input type="text" value={editForm.gatewayId} onChange={(e) => setEditForm((f) => ({ ...f, gatewayId: e.target.value }))} placeholder="e.g. my-gateway-1 (optional)" /></label>
               <label>Site<select value={editForm.locationId} onChange={(e) => setEditForm((f) => ({ ...f, locationId: e.target.value, floorId: '', zoneId: '' }))}><option value="">Select site</option>{locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}</select></label>
               <label>Floor<select value={editForm.floorId} onChange={(e) => setEditForm((f) => ({ ...f, floorId: e.target.value, zoneId: '' }))} disabled={!editForm.locationId}><option value="">Select floor</option>{floors.filter((f) => !editForm.locationId || f.locationId === editForm.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}</select></label>
               <label>Zone<select value={editForm.zoneId} onChange={(e) => setEditForm((f) => ({ ...f, zoneId: e.target.value }))} disabled={!editForm.floorId}><option value="">Select zone</option>{zones.filter((z) => !editForm.floorId || z.floorId === editForm.floorId).map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}</select></label>

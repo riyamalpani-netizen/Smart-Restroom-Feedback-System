@@ -180,6 +180,7 @@ model Gateway {
   status          GatewayStatusEnum @default(offline)
   lastSeen        DateTime?
   ttnStatus       String?        @default("not_registered")
+  gatewayId       String?        @unique
   ttnDeviceId     String?
   frequencyPlanId String?
   latitude        Float?
