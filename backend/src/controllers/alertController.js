@@ -234,6 +234,204 @@ async function acknowledgeAlert(req, res) {
   }
 }
 
+const PENDING = 'open';
+const ACKNOWLEDGED = 'assigned';
+const RESOLVED = 'closed';
+
+const STATUS_DISPLAY = {
+  [PENDING]: 'Pending',
+  [ACKNOWLEDGED]: 'Acknowledged',
+  [RESOLVED]: 'Resolved',
+};
+
+const PRIORITY_SCORE = { critical: 4, high: 3, medium: 2, low: 1 };
+
+async function getUnhappyAggregated(req, res) {
+  try {
+    const role = req.user?.role;
+    const orgId = req.user?.organizationId;
+
+    const conditions = ['a.status != \'closed\''];
+    const params = [];
+    let paramIndex = 1;
+
+    if (role !== 'super_admin') {
+      conditions.push(`r."organizationId" = $${paramIndex}`);
+      params.push(orgId);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const sql = `
+      SELECT
+        l.id as "locationId",
+        l.city,
+        l."officeName",
+        COALESCE(z.id, 'unassigned') as "zoneId",
+        COALESCE(z."name", 'Unassigned Zone') as "zoneName",
+        COUNT(a.id) as "unhappyCount",
+        CASE
+          WHEN COUNT(CASE WHEN a.status = 'open' THEN 1 END) > 0 THEN 'open'
+          WHEN COUNT(CASE WHEN a.status IN ('assigned', 'in_progress') THEN 1 END) > 0 THEN 'assigned'
+          ELSE 'closed'
+        END as "status",
+        MAX(
+          CASE a.priority
+            WHEN 'critical' THEN 4
+            WHEN 'high' THEN 3
+            WHEN 'medium' THEN 2
+            WHEN 'low' THEN 1
+            ELSE 0
+          END
+        ) as "priorityScore",
+        MAX(a."createdAt") as "lastReported"
+      FROM alerts a
+      JOIN restrooms r ON a."restroomId" = r.id
+      JOIN floors f ON r."floorId" = f.id
+      JOIN locations l ON f."locationId" = l.id
+      JOIN feedback fb ON a."feedbackId" = fb.id
+      JOIN devices d ON fb."deviceId" = d.id
+      LEFT JOIN zones z ON d."zoneId" = z.id
+      WHERE ${whereClause}
+        AND fb."feedbackType" IN ('needs_cleaning', 'emergency')
+      GROUP BY l.id, l."officeName", z.id, z."name"
+      ORDER BY "unhappyCount" DESC
+    `;
+
+    const results = await prisma.$queryRawUnsafe(sql, ...params);
+
+    const aggregated = results.map((row) => ({
+      locationId: row.locationId,
+      locationName: `${row.city} - ${row.officeName}`,
+      zoneId: row.zoneId,
+      zoneName: row.zoneName,
+      unhappyCount: parseInt(row.unhappyCount, 10),
+      status: row.status,
+      statusDisplay: STATUS_DISPLAY[row.status] || row.status,
+      priority: PRIORITY_SCORE[row.priorityScore] === 4 ? 'critical' : PRIORITY_SCORE[row.priorityScore] === 3 ? 'high' : PRIORITY_SCORE[row.priorityScore] === 2 ? 'medium' : 'low',
+      lastReported: row.lastReported ? new Date(row.lastReported).getTime() : null,
+    }));
+
+    res.status(200).json({
+      message: "Aggregated unhappy alerts fetched successfully",
+      aggregated,
+    });
+  } catch (error) {
+    console.error("Get unhappy aggregated error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function acknowledgeGroup(req, res) {
+  try {
+    const { locationId, zoneId } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+    const userId = req.user?.sub;
+
+    if (!locationId || zoneId === undefined) {
+      return res.status(400).json({ message: "Location ID and Zone ID are required" });
+    }
+
+    const deviceFilter = zoneId === 'unassigned' ? { zoneId: null } : { zoneId: zoneId };
+
+    const where = {
+      status: 'open',
+      restroom: {
+        floor: {
+          locationId: locationId,
+        },
+        ...(userRole !== 'super_admin' ? { organizationId: userOrgId } : {}),
+      },
+      feedback: {
+        device: deviceFilter,
+      },
+    };
+
+    const matchingAlerts = await prisma.alert.findMany({
+      where,
+      select: { id: true },
+    });
+
+    if (matchingAlerts.length === 0) {
+      return res.status(404).json({ message: "No matching open alerts found" });
+    }
+
+    const updated = await prisma.alert.updateMany({
+      where: {
+        id: { in: matchingAlerts.map(a => a.id) },
+      },
+      data: {
+        status: 'assigned',
+        acknowledgedById: userId,
+      },
+    });
+
+    res.status(200).json({
+      message: `${updated.count} alerts acknowledged successfully`,
+      count: updated.count,
+    });
+  } catch (error) {
+    console.error("Acknowledge group error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function resolveGroup(req, res) {
+  try {
+    const { locationId, zoneId } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+
+    if (!locationId || zoneId === undefined) {
+      return res.status(400).json({ message: "Location ID and Zone ID are required" });
+    }
+
+    const deviceFilter = zoneId === 'unassigned' ? { zoneId: null } : { zoneId: zoneId };
+
+    const where = {
+      status: { not: 'closed' },
+      restroom: {
+        floor: {
+          locationId: locationId,
+        },
+        ...(userRole !== 'super_admin' ? { organizationId: userOrgId } : {}),
+      },
+      feedback: {
+        device: deviceFilter,
+      },
+    };
+
+    const matchingAlerts = await prisma.alert.findMany({
+      where,
+      select: { id: true },
+    });
+
+    if (matchingAlerts.length === 0) {
+      return res.status(404).json({ message: "No matching open alerts found" });
+    }
+
+    const updated = await prisma.alert.updateMany({
+      where: {
+        id: { in: matchingAlerts.map(a => a.id) },
+      },
+      data: {
+        status: 'closed',
+        resolvedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: `${updated.count} alerts resolved successfully`,
+      count: updated.count,
+    });
+  } catch (error) {
+    console.error("Resolve group error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 async function resolveAlert(req, res) {
   try {
     const { id } = req.params;
@@ -275,4 +473,7 @@ module.exports = {
   updateAlert,
   acknowledgeAlert,
   resolveAlert,
+  getUnhappyAggregated,
+  acknowledgeGroup,
+  resolveGroup,
 };

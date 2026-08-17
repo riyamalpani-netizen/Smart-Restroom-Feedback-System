@@ -89,7 +89,7 @@ async function createAlertForFeedback(feedback, device) {
 
 async function getFeedback(req, res) {
   try {
-    const { restroomId, deviceId, feedbackType, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const { restroomId, deviceId, feedbackType, startDate, endDate, page = 1, limit = 20, locationId } = req.query;
     const role = req.user?.role;
     const orgId = req.user?.organizationId;
     const where = {};
@@ -105,6 +105,18 @@ async function getFeedback(req, res) {
       where.timestamp = {};
       if (startDate) where.timestamp.gte = new Date(startDate);
       if (endDate) where.timestamp.lte = new Date(endDate);
+    }
+
+    if (locationId) {
+      const locationFloors = await prisma.floor.findMany({
+        where: { locationId },
+        select: { id: true },
+      });
+      const locationRestrooms = await prisma.restroom.findMany({
+        where: { floorId: { in: locationFloors.map((f) => f.id) } },
+        select: { id: true },
+      });
+      where.restroomId = { in: locationRestrooms.map((r) => r.id) };
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);

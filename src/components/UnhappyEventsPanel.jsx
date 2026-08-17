@@ -1,70 +1,66 @@
 import StatusBadge from './common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import api from '../services/api'
+import { alertAPI } from '../services/api'
 
-export default function UnhappyEventsPanel({ alerts = [], onViewOnMap, limit = 3, onAcknowledge, onResolve }) {
-  const unhappyAlerts = alerts.filter((alert) => ['needs_cleaning', 'emergency'].includes(alert.type))
-  const visibleAlerts = unhappyAlerts.slice(0, limit)
-
-  async function handleAcknowledge(id) {
+export default function UnhappyEventsPanel({ aggregatedComplaints = [], onAcknowledge, onResolve }) {
+  async function handleAcknowledge(locationId, zoneId) {
     try {
-      const updated = await api.post(`/api/alerts/${id}/acknowledge`)
-      onAcknowledge?.(updated.alert)
+      const updated = await alertAPI.acknowledgeGroup({ locationId, zoneId })
+      onAcknowledge?.(updated)
     } catch (e) {
-      console.error('Acknowledge failed:', e)
+      console.error('Acknowledge group failed:', e)
     }
   }
 
-  async function handleResolve(id) {
+  async function handleResolve(locationId, zoneId) {
     try {
-      const updated = await api.post(`/api/alerts/${id}/resolve`)
-      onResolve?.(updated.alert)
+      const updated = await alertAPI.resolveGroup({ locationId, zoneId })
+      onResolve?.(updated)
     } catch (e) {
-      console.error('Resolve failed:', e)
+      console.error('Resolve group failed:', e)
     }
   }
 
   return (
     <div className="card unhappy-panel">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 className="card__title" style={{ margin: 0 }}>Unhappy Events Requiring Action</h3>
-        <span className="unhappy-panel__badge">{unhappyAlerts.length}</span>
+        <h3 className="card__title" style={{ margin: 0 }}>Unhappy Complaints</h3>
+        <span className="unhappy-panel__badge">{aggregatedComplaints.reduce((sum, c) => sum + (c.unhappyCount || 0), 0)}</span>
       </div>
 
-      {unhappyAlerts.length === 0 ? (
-        <p style={{ color: '#64748b', fontSize: 13 }}>No unresolved unhappy events reported.</p>
+      {aggregatedComplaints.length === 0 ? (
+        <p style={{ color: '#64748b', fontSize: 13 }}>No unresolved unhappy complaints.</p>
       ) : (
         <div className="unhappy-panel__list">
-          {visibleAlerts.map((alert) => (
-            <div key={alert.id} className="unhappy-panel__item">
+          {aggregatedComplaints.map((complaint) => (
+            <div key={`${complaint.locationId}-${complaint.zoneId}`} className="unhappy-panel__item">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-h)', fontSize: 13 }}>{alert.restroomName}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-h)', fontSize: 13 }}>{complaint.locationName}</div>
                   <div style={{ fontSize: 11, color: 'var(--text)', marginTop: 2 }}>
-                    {alert.locationName || 'Location unavailable'} · {alert.type.replace(/_/g, ' ')}
+                    {complaint.zoneName} · {(complaint.unhappyCount || 0).toLocaleString()} Unhappy
                   </div>
                 </div>
-                <StatusBadge status={alert.status} variant="alert" />
+                <StatusBadge status={complaint.statusDisplay || complaint.status} variant="alert" />
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-                Assigned: {alert.assignedTo || 'Unassigned'} · Reported: {formatDateTime(alert.time)}
+                Priority: {complaint.priority} · Last Reported: {complaint.lastReported ? formatDateTime(complaint.lastReported) : 'N/A'}
               </div>
-              {alert.notes && <div style={{ fontSize: 11, color: '#334155', marginTop: 6 }}>Note: {alert.notes}</div>}
               <div className="unhappy-panel__actions" style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {alert.status === 'open' && (
+                {complaint.status === 'open' && (
                   <button
                     type="button"
                     className="btn btn--secondary"
-                    onClick={(e) => { e.stopPropagation(); handleAcknowledge(alert.id) }}
+                    onClick={() => handleAcknowledge(complaint.locationId, complaint.zoneId)}
                   >
                     Acknowledge
                   </button>
                 )}
-                {alert.status !== 'closed' && (
+                {complaint.status !== 'closed' && (
                   <button
                     type="button"
                     className="btn btn--primary"
-                    onClick={(e) => { e.stopPropagation(); handleResolve(alert.id) }}
+                    onClick={() => handleResolve(complaint.locationId, complaint.zoneId)}
                   >
                     Resolve
                   </button>

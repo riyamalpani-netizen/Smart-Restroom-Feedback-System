@@ -57,7 +57,12 @@ async function getDashboard(req, res) {
       locationIds = locationId ? [locationId] : locationIds;
     }
 
-    const floorWhere = isSuperAdmin ? {} : { locationId: { in: locationIds } };
+    const floorWhere = {};
+    if (locationId) {
+      floorWhere.locationId = locationId;
+    } else if (!isSuperAdmin) {
+      floorWhere.locationId = { in: locationIds };
+    }
     const floors = await prisma.floor.findMany({
       where: floorWhere,
       select: { id: true },
@@ -68,7 +73,12 @@ async function getDashboard(req, res) {
       floorIds = floorId ? [floorId] : floorIds;
     }
 
-    let restroomWhere = isSuperAdmin ? {} : { floorId: { in: floorIds } };
+    let restroomWhere = {};
+    if (floorId) {
+      restroomWhere.floorId = floorId;
+    } else if (locationId || !isSuperAdmin) {
+      restroomWhere.floorId = { in: floorIds };
+    }
 
     if (restroomId) {
       restroomWhere = { id: restroomId };
@@ -706,7 +716,7 @@ async function getHeatMapData(req, res) {
         ? { id: locationId, organizationId: orgFilter.organizationId }
         : { organizationId: orgFilter.organizationId };
 
-    const [mapLocations, mapFloors, mapFloorPlans, mapZones, mapDevices] =
+    const [mapLocations, mapFloors, mapFloorPlans, mapZones, mapDevices, mapGateways] =
       await Promise.all([
         prisma.location.findMany({
           where: locationWhereForMap,
@@ -760,6 +770,19 @@ async function getHeatMapData(req, res) {
           },
           include: { zone: true },
         }),
+        prisma.gateway.findMany({
+          where: { floorId: { in: targetFloorIds } },
+          select: {
+            id: true,
+            name: true,
+            gatewayEui: true,
+            floorId: true,
+            zoneId: true,
+            latitude: true,
+            longitude: true,
+            ttnStatus: true,
+          },
+        }),
       ]);
 
     const planByFloorId = new Map();
@@ -811,6 +834,7 @@ async function getHeatMapData(req, res) {
       })),
       zones: mapZones,
       devices: devicesWithGeo,
+      gateways: mapGateways,
     };
 
     res.status(200).json({

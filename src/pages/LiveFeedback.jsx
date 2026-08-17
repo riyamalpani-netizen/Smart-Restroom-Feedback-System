@@ -4,6 +4,7 @@ import SearchBar from '../components/common/SearchBar'
 import Pagination from '../components/common/Pagination'
 import StatusBadge from '../components/common/StatusBadge'
 import api from '../services/api'
+import { locationAPI } from '../services/api'
 import { formatDateTime } from '../utils/formatters'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
@@ -14,6 +15,8 @@ export default function LiveFeedback() {
   const [liveEntries, setLiveEntries] = useState([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const [locationId, setLocationId] = useState('')
+  const [locations, setLocations] = useState([])
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState('connecting')
@@ -21,10 +24,11 @@ export default function LiveFeedback() {
   const socketRef = useRef(null)
   const pollTimerRef = useRef(null)
 
-  const loadFeedback = useCallback(async (pageNum = 1, filterType = 'all') => {
+  const loadFeedback = useCallback(async (pageNum = 1, filterType = 'all', locId = '') => {
     try {
       const params = { page: pageNum, limit: PAGE_SIZE }
       if (filterType !== 'all') params.feedbackType = filterType
+      if (locId) params.locationId = locId
 
       const data = await api.get(`/api/feedback?${new URLSearchParams(params).toString()}`)
       const entries = data.feedback || []
@@ -39,6 +43,19 @@ export default function LiveFeedback() {
       setLoading(false)
     }
   }, [])
+
+  const loadLocations = useCallback(async () => {
+    try {
+      const data = await locationAPI.getAll()
+      setLocations(data.locations || [])
+    } catch (e) {
+      console.error('LiveFeedback locations load error:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadLocations()
+  }, [loadLocations])
 
   useEffect(() => {
     let mounted = true
@@ -108,7 +125,7 @@ export default function LiveFeedback() {
 
       pollTimerRef.current = setInterval(() => {
         if (mounted) {
-          loadFeedback(1, filter)
+          loadFeedback(1, filter, locationId)
         }
       }, 10000)
     }
@@ -118,7 +135,7 @@ export default function LiveFeedback() {
       setPage(1)
       setLiveEntries([])
       const socket = connectSocket()
-      await loadFeedback(1, filter)
+      await loadFeedback(1, filter, locationId)
 
       if (!socket) {
         setConnectionStatus('polling')
@@ -138,7 +155,7 @@ export default function LiveFeedback() {
         pollTimerRef.current = null
       }
     }
-  }, [filter, loadFeedback])
+  }, [filter, locationId, loadFeedback])
 
   const handleSearch = useCallback((value) => {
     setSearch(value)
@@ -149,16 +166,22 @@ export default function LiveFeedback() {
     setFilter(e.target.value)
   }, [])
 
+  const handleLocationChange = useCallback((e) => {
+    setLocationId(e.target.value)
+    setPage(1)
+    setLiveEntries([])
+  }, [])
+
   const handlePageChange = useCallback((newPage) => {
     setLiveEntries([])
-    loadFeedback(newPage, filter)
-  }, [filter, loadFeedback])
+    loadFeedback(newPage, filter, locationId)
+  }, [filter, locationId, loadFeedback])
 
   const loadOlder = useCallback(() => {
     if (page < totalPages) {
-      loadFeedback(page + 1, filter)
+      loadFeedback(page + 1, filter, locationId)
     }
-  }, [page, totalPages, filter, loadFeedback])
+  }, [page, totalPages, filter, locationId, loadFeedback])
 
   const displayed = useMemo(() => {
     const combined = [...liveEntries, ...feedback]
@@ -235,6 +258,17 @@ export default function LiveFeedback() {
           <option value="average">Average</option>
           <option value="needs_cleaning">Needs Cleaning</option>
           <option value="emergency">Emergency</option>
+        </select>
+        <select
+          value={locationId}
+          onChange={handleLocationChange}
+          className="select"
+          aria-label="Filter by location"
+        >
+          <option value="">All Locations</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>
+          ))}
         </select>
         <span
           style={{

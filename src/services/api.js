@@ -80,6 +80,7 @@ export const locationAPI = {
 }
 
 export const floorAPI = {
+  getAll: () => request('/api/floors'),
   getByLocation: (locationId) => request(`/api/floors?locationId=${encodeURIComponent(locationId)}`),
   getById: (id) => request(`/api/floors/${encodeURIComponent(id)}`),
   create: (data) => request('/api/floors', { method: 'POST', body: JSON.stringify(data) }),
@@ -88,6 +89,7 @@ export const floorAPI = {
 }
 
 export const zoneAPI = {
+  getAll: () => request('/api/zones'),
   getByFloor: (floorId) => request(`/api/zones?floorId=${encodeURIComponent(floorId)}`),
   getById: (id) => request(`/api/zones/${encodeURIComponent(id)}`),
   create: (data) => request('/api/zones', { method: 'POST', body: JSON.stringify(data) }),
@@ -104,4 +106,31 @@ export const deviceAPI = {
   delete: (id) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
+export const gatewayAPI = {
+  getAll: (params) => {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.locationId) qs.set('locationId', params.locationId)
+    if (params?.floorId) qs.set('floorId', params.floorId)
+    if (params?.zoneId) qs.set('zoneId', params.zoneId)
+    if (params?.search) qs.set('search', params.search)
+    const q = qs.toString()
+    return request(`/api/gateway${q ? `?${q}` : ''}`)
+  },
+  getById: (id) => request(`/api/gateway/${encodeURIComponent(id)}`),
+  create: (data) => request('/api/gateway', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/api/gateway/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/api/gateway/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  registerTTN: (id, data) => request(`/api/gateway/${encodeURIComponent(id)}/register-ttn`, { method: 'POST', body: JSON.stringify(data) }),
+  getDevices: (id) => request(`/api/gateway/${encodeURIComponent(id)}/devices`),
+  getUplinks: (id, limit) => request(`/api/gateway/${encodeURIComponent(id)}/uplinks${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
+  getEvents: (id, limit) => request(`/api/gateway/${encodeURIComponent(id)}/events${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
+}
+
 export default api
+
+export const alertAPI = {
+  getUnhappyAggregated: () => request('/api/alerts/unhappy-aggregated'),
+  acknowledgeGroup: (data) => request('/api/alerts/acknowledge-group', { method: 'POST', body: JSON.stringify(data) }),
+  resolveGroup: (data) => request('/api/alerts/resolve-group', { method: 'POST', body: JSON.stringify(data) }),
+}

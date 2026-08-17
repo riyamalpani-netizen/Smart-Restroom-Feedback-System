@@ -73,7 +73,7 @@ function FitMapBounds({ bounds, center, zoom }) {
 
   useEffect(() => {
     if (bounds && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 18 })
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 21 })
       return
     }
     if (center) {
@@ -139,6 +139,7 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
     floorPlans: [],
     zones: [],
     devices: [],
+    gateways: [],
   }
 
   useEffect(() => {
@@ -162,6 +163,11 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
     if (!selectedFloorId) return config.devices
     return config.devices.filter((device) => device.floorId === selectedFloorId)
   }, [config.devices, selectedFloorId])
+
+  const visibleGateways = useMemo(() => {
+    if (!selectedFloorId) return config.gateways
+    return config.gateways.filter((gateway) => gateway.floorId === selectedFloorId)
+  }, [config.gateways, selectedFloorId])
 
   const visibleFloorPlans = useMemo(() => {
     const plans = selectedFloorId
@@ -226,6 +232,7 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
   const hasSpatialData =
     visibleZones.length > 0 ||
     visibleDevices.length > 0 ||
+    visibleGateways.length > 0 ||
     siteLocations.length > 0 ||
     validRestrooms.length > 0
 
@@ -281,8 +288,11 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
         <MapContainer
           center={center}
           zoom={16}
+          maxZoom={22}
+          minZoom={3}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom
+          zoomControl
         >
           <FitMapBounds bounds={bounds} center={center} zoom={16} />
           <TileLayer
@@ -373,6 +383,27 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
             </Marker>
           ))}
 
+          {visibleGateways.map((gateway) => {
+            const lat = Number(gateway.latitude)
+            const lng = Number(gateway.longitude)
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+            return (
+              <Marker
+                key={gateway.id}
+                position={[lat, lng]}
+                icon={createDeviceIcon('gateway')}
+              >
+                <Popup>
+                  <strong>Gateway: {gateway.name}</strong>
+                  <br />
+                  EUI: {gateway.gatewayEui || 'N/A'}
+                  <br />
+                  Status: {gateway.ttnStatus || 'unknown'}
+                </Popup>
+              </Marker>
+            )
+          })}
+
           {validRestrooms.map((restroom) => (
             <Marker
               key={restroom.id}
@@ -393,7 +424,7 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
           ))}
         </MapContainer>
 
-        {(visibleZones.length > 0 || visibleDevices.length > 0) && (
+        {(visibleZones.length > 0 || visibleDevices.length > 0 || visibleGateways.length > 0) && (
           <div className="restroom-geo-map__legend">
             {visibleZones.length > 0 && (
               <div className="restroom-geo-map__legend-group">
@@ -427,6 +458,20 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
                     </span>
                   )
                 )}
+              </div>
+            )}
+            {visibleGateways.length > 0 && (
+              <div className="restroom-geo-map__legend-group">
+                <strong>Gateways</strong>
+                <span className="restroom-geo-map__legend-item">
+                  <i
+                    className="restroom-geo-map__legend-dot"
+                    style={{ color: DEVICE_META.gateway.color }}
+                  >
+                    {DEVICE_META.gateway.icon}
+                  </i>
+                  Gateway
+                </span>
               </div>
             )}
           </div>

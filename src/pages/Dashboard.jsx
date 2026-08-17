@@ -11,6 +11,7 @@ import UnhappyEventsPanel from '../components/UnhappyEventsPanel'
 import { formatDateTime } from '../utils/formatters'
 import Loader from '../components/Loader'
 import api from '../services/api'
+import { alertAPI } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -28,6 +29,7 @@ export default function Dashboard() {
   const [filters, setFilters] = useState({ locationId: '' })
   const [allRestroomsForMap, setAllRestroomsForMap] = useState([])
   const [mapConfig, setMapConfig] = useState(null)
+  const [aggregatedComplaints, setAggregatedComplaints] = useState([])
 
   const loadFilters = useCallback(async () => {
     try {
@@ -35,6 +37,15 @@ export default function Dashboard() {
       setLocations(locRes.locations || [])
     } catch (e) {
       console.error('Dashboard filters load error:', e)
+    }
+  }, [])
+
+  const loadAggregated = useCallback(async () => {
+    try {
+      const res = await alertAPI.getUnhappyAggregated()
+      setAggregatedComplaints(res.aggregated || [])
+    } catch (e) {
+      console.error('Aggregated complaints load error:', e)
     }
   }, [])
 
@@ -90,7 +101,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadFilters()
-  }, [loadFilters])
+    loadAggregated()
+  }, [loadFilters, loadAggregated])
 
   useEffect(() => {
     loadMapData()
@@ -112,11 +124,13 @@ export default function Dashboard() {
 
   const handleAcknowledge = useCallback(() => {
     loadDashboard()
-  }, [loadDashboard])
+    loadAggregated()
+  }, [loadDashboard, loadAggregated])
 
   const handleResolve = useCallback(() => {
     loadDashboard()
-  }, [loadDashboard])
+    loadAggregated()
+  }, [loadDashboard, loadAggregated])
 
   const hasActiveFilters = filters.locationId
 
@@ -157,11 +171,9 @@ export default function Dashboard() {
           <RestroomGeoMap restrooms={allRestroomsForMap} mapConfig={mapConfig} />
         </div>
         <UnhappyEventsPanel
-          alerts={dashboardData.alerts}
-          onViewOnMap={(restroomId) => setFilters((current) => ({ ...current, restroomId }))}
+          aggregatedComplaints={aggregatedComplaints}
           onAcknowledge={handleAcknowledge}
           onResolve={handleResolve}
-          limit={10}
         />
       </div>
 
