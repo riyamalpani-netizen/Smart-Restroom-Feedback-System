@@ -4,13 +4,15 @@ import { ImageOverlay, MapContainer, Marker, Polygon, TileLayer, useMap, useMapE
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useAuth } from '../hooks/useAuth'
-import { deviceAPI, floorAPI, floorPlanAPI, locationAPI, zoneAPI } from '../services/api'
+import { deviceAPI, floorAPI, floorPlanAPI, locationAPI, zoneAPI, gatewayAPI } from '../services/api'
 import './SiteConfiguration.css'
 import './SiteConfigurationOverrides.css'
 import './SiteConfigurationFloorStep.css'
 import './SiteConfigurationZones.css'
 import './SiteConfigurationDrawing.css'
 import './SiteConfigurationTheme.css'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const DEFAULT_CENTER = [30.7333, 76.7794]
 const ZONE_COLORS = { restroom: '#38bdf8', corridor: '#94a3b8', lobby: '#34d399', maintenance: '#fbbf24', other: '#a78bfa' }
@@ -72,12 +74,27 @@ function CenterPicker({ initial, onCancel, onSave }) {
   const [focus, setFocus] = useState(initial || DEFAULT_CENTER)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
+  const searchTimerRef = useRef(null)
   async function searchLocation() {
     if (!query.trim()) return
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`)
-      setResults(await response.json())
-    } catch { setResults([]) }
+      const token = localStorage.getItem('srfs_token')
+      const headers = {}
+      if (token) headers.Authorization = `Bearer ${token}`
+      const response = await fetch(`${API_URL}/api/locations/search?q=${encodeURIComponent(query)}`, { headers })
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('Location search failed:', response.status, text)
+        setResults([])
+        return
+      }
+      const data = await response.json()
+      console.log('Location search results:', data)
+      setResults(data.results || [])
+    } catch (error) {
+      console.error('Location search error:', error)
+      setResults([])
+    }
   }
   return <div className="planner-modal-backdrop">
     <div className="planner-modal planner-modal--map">
@@ -110,6 +127,7 @@ export default function SiteConfiguration() {
   const [plan, setPlan] = useState(null)
   const [zones, setZones] = useState([])
   const [devices, setDevices] = useState([])
+  const [gateways, setGateways] = useState([])
   const [siteForm, setSiteForm] = useState({ name: '', type: '', description: '', location: '', latitude: '', longitude: '' })
   const [floorForm, setFloorForm] = useState({ name: '', number: '' })
   const [zoneForm, setZoneForm] = useState({ name: '', type: 'restroom' })
@@ -130,8 +148,8 @@ export default function SiteConfiguration() {
 
   useEffect(() => {
     if (!floor) return
-    Promise.all([floorPlanAPI.getByFloor(floor.id), zoneAPI.getByFloor(floor.id), deviceAPI.getByFloor(floor.id)])
-      .then(([plans, zoneData, deviceData]) => { setPlan(plans.floorPlans?.[0] || null); setZones(zoneData.zones || []); setDevices(deviceData.devices || []) })
+    Promise.all([floorPlanAPI.getByFloor(floor.id), zoneAPI.getByFloor(floor.id), deviceAPI.getByFloor(floor.id), gatewayAPI.getAll({ floorId: floor.id })])
+      .then(([plans, zoneData, deviceData, gatewayData]) => { setPlan(plans.floorPlans?.[0] || null); setZones(zoneData.zones || []); setDevices(deviceData.devices || []); setGateways(gatewayData.gateways || []) })
       .catch(() => setNotice('Could not load the saved spatial configuration.'))
   }, [floor])
 
@@ -214,7 +232,9 @@ export default function SiteConfiguration() {
     if (points.length < 3) { setNotice('A zone needs at least three points.'); return }
     try {
       const coordinates = { type: 'Polygon', coordinates: [[...points, points[0]].map(([lat, lng]) => [lng, lat])] }
-      const data = await zoneAPI.create({ floorId: floor.id, name: zoneForm.name.trim() || `${zoneForm.type} zone`, type: zoneForm.type, coordinates })
+      const zoneName = zoneForm.name.trim() || `${zoneForm.type} zone`
+      const restroomData = await floorPlanAPI.createRestroom({ floorId: floor.id, name: zoneName, organizationId: user?.organizationId || '' })
+      const data = await zoneAPI.create({ floorId: floor.id, name: zoneName, type: zoneForm.type, coordinates, restroomId: restroomData.restroom.id })
       setZones((all) => [...all, data.zone]); setPoints([]); setZoneForm({ name: '', type: zoneForm.type }); setNotice('Zone saved. Draw another zone or continue.')
     } catch (error) { setNotice(error.message || 'Unable to create zone.') }
   }
@@ -233,8 +253,16 @@ export default function SiteConfiguration() {
     setBusy(true)
     const token = Math.random().toString(36).slice(2, 8).toUpperCase(); const zone = zoneAt(point.lat, point.lng)
     try {
-      const data = await deviceAPI.create({ deviceEui: `${type.toUpperCase()}-${token}`, badgeId: `${type.toUpperCase()}-${token}`, floorId: floor.id, zoneId: zone?.id || null, deviceType: type, batteryLevel: type === 'gateway' ? 100 : 90, floorPlanPosX: x, floorPlanPosY: y })
-      setDevices((all) => [...all, data.device]); setNotice(`${TYPE_META[type].label} placed${zone ? ` in ${zone.name}` : ''}.`)
+      if (type === 'gateway') {
+        const gwEui = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('').toUpperCase()
+        const data = await gatewayAPI.create({ name: `${TYPE_META[type].label} ${token}`, gatewayEui: gwEui, floorId: floor.id, zoneId: zone?.id || null, latitude: point.lat, longitude: point.lng })
+        setGateways((all) => [...all, data.gateway])
+        setNotice(`${TYPE_META[type].label} placed${zone ? ` in ${zone.name}` : ''}.`)
+      } else {
+        const data = await deviceAPI.create({ name: `${TYPE_META[type].label} ${token}`, floorId: floor.id, zoneId: zone?.id || null, deviceType: type, batteryLevel: type === 'gateway' ? 100 : 90, floorPlanPosX: x, floorPlanPosY: y, isLayoutAsset: true })
+        setDevices((all) => [...all, data.device])
+        setNotice(`${TYPE_META[type].label} placed${zone ? ` in ${zone.name}` : ''}.`)
+      }
     } catch (error) { setNotice(error.message || `Unable to place ${type}.`) } finally { setBusy(false) }
   }
 
@@ -249,6 +277,7 @@ export default function SiteConfiguration() {
 
   const zonePositions = (zone) => zone.coordinates?.coordinates?.[0]?.map(([lng, lat]) => [lat, lng]) || []
   const devicePosition = (device) => plan && [plan.geoBounds.northLat - (device.floorPlanPosY / plan.height) * (plan.geoBounds.northLat - plan.geoBounds.southLat), plan.geoBounds.westLng + (device.floorPlanPosX / plan.width) * (plan.geoBounds.eastLng - plan.geoBounds.westLng)]
+  const gatewayPosition = (gateway) => gateway.latitude && gateway.longitude ? [gateway.latitude, gateway.longitude] : null
 
   return <div className="site-planner">
     <header className="site-planner__header"><div><h1>Site Planner Wizard</h1><p>Step {step} — {steps[step - 1][0]}</p><span>{steps[step - 1][1]}</span></div><button className="planner-button planner-button--ghost" onClick={() => setStep(1)}>Back to Site Planner Wizard</button></header>
@@ -270,7 +299,7 @@ export default function SiteConfiguration() {
     {step === 2 && <section className="planner-floor-plan-map"><aside className="planner-floor-map__sidebar"><div className="planner-sidebar__heading"><strong>Floors</strong><button className="planner-button" onClick={() => setAddFloorOpen(true)}>+ Add Floor</button></div>{floors.map((item) => <button key={item.id} className={`planner-floor ${floor?.id === item.id ? 'is-selected' : ''}`} onClick={() => setFloor(item)}><span>{item.floorNumber ?? '-'}</span>{item.floorName}</button>)}{floor && <button className="planner-button planner-floor-plan-map__upload" onClick={() => fileRef.current?.click()}>Upload floor plan</button>}<input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} /></aside><main className="planner-floor-map__canvas"><MapContainer center={center} zoom={17} style={{ height: '100%', width: '100%' }}><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="OpenStreetMap" /><MapFocus center={center} zoom={17} /><MapClick onClick={onMapClick} /><SitePin location={site} />{bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}</MapContainer>{plan && <div className="planner-floor-plan-map__align"><strong>Align tracing image</strong><small>Click the map to move the floor plan.</small><div><button onClick={() => adjustPlan('up')}>Up</button><button onClick={() => adjustPlan('left')}>Left</button><button onClick={() => adjustPlan('right')}>Right</button><button onClick={() => adjustPlan('down')}>Down</button><button onClick={() => adjustPlan('grow')}>Zoom in</button><button onClick={() => adjustPlan('shrink')}>Zoom out</button></div></div>}</main><footer className="planner-floor-map__footer"><button className="planner-button planner-button--ghost" onClick={() => setStep(1)}>Back</button><button className="planner-button" disabled={!floor} onClick={plan ? savePlan : () => setStep(3)}>{plan ? 'Save & Continue' : 'Continue to upload'}</button></footer></section>}
 
     {step >= 3 && <section className="planner-map-shell"><div className="planner-mapbar"><div>{floor && <select value={floor.id} onChange={(e) => setFloor(floors.find((item) => item.id === e.target.value))}>{floors.map((item) => <option key={item.id} value={item.id}>{item.floorName}{item.floorNumber !== null ? ` (Floor ${item.floorNumber})` : ''}</option>)}</select>}</div>{step === 3 && <button className="planner-button planner-button--ghost" onClick={() => fileRef.current?.click()}>⇧ Upload floor plan</button>}{step === 3 && <input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} />}{step === 4 && <button className="planner-button planner-button--ghost" onClick={() => geoJsonRef.current?.click()}>⇧ Upload GeoJSON</button>}{step === 4 && <input ref={geoJsonRef} hidden type="file" accept="application/json,.geojson" onChange={importGeoJson} />}</div>
-      <div className="planner-map"><MapContainer center={center} zoom={17} style={{ height: '100%', width: '100%' }}><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" /><MapFocus center={center} zoom={17} /><MapClick onClick={onMapClick} /><SitePin location={site} />{bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}{zones.map((zone) => <Polygon key={zone.id} positions={zonePositions(zone)} color={ZONE_COLORS[zone.type] || ZONE_COLORS.other} fillColor={ZONE_COLORS[zone.type] || ZONE_COLORS.other} fillOpacity={.18} />)}{drawing && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}{devices.map((item) => { const position = devicePosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon(item.deviceType)} /> : null })}</MapContainer>
+      <div className="planner-map"><MapContainer center={center} zoom={17} style={{ height: '100%', width: '100%' }}><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" /><MapFocus center={center} zoom={17} /><MapClick onClick={onMapClick} /><SitePin location={site} />{bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}{zones.map((zone) => <Polygon key={zone.id} positions={zonePositions(zone)} color={ZONE_COLORS[zone.type] || ZONE_COLORS.other} fillColor={ZONE_COLORS[zone.type] || ZONE_COLORS.other} fillOpacity={.18} />)}{drawing && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}{devices.map((item) => { const position = devicePosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon(item.deviceType)} /> : null })}{gateways.map((item) => { const position = gatewayPosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon('gateway')} /> : null })}</MapContainer>
         {step === 3 && plan && <div className="planner-align"><strong>Align tracing image</strong><small>Move and scale the plan against the site map.</small><div className="planner-align__controls"><button onClick={() => adjustPlan('up')}>↑</button><button onClick={() => adjustPlan('left')}>←</button><button onClick={() => adjustPlan('right')}>→</button><button onClick={() => adjustPlan('down')}>↓</button><button onClick={() => adjustPlan('grow')}>＋</button><button onClick={() => adjustPlan('shrink')}>−</button></div><button className="planner-button" onClick={savePlan}>✓ Save & Continue</button></div>}
         {step === 4 && <div className="planner-toolbox"><strong>Draw zones</strong>{drawing ? <><input placeholder="Zone name" value={zoneForm.name} onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })} /><select value={zoneForm.type} onChange={(e) => setZoneForm({ ...zoneForm, type: e.target.value })}>{Object.keys(ZONE_COLORS).map((type) => <option key={type}>{type}</option>)}</select><small>{drawingMode === 'rectangle' ? 'Click two opposite corners of the rectangle.' : `Click the plan to add vertices (${points.length}/3 minimum).`}</small><button className="planner-button" onClick={finishZone}>Save zone</button><button className="planner-button planner-button--ghost" onClick={() => { setDrawing(false); setPoints([]) }}>Cancel</button></> : <><p>Define spatial zones for restrooms, corridors, lobbies and maintenance areas.</p><button className="planner-button" onClick={() => { setDrawingMode('polygon'); setDrawing(true) }}>⌗ Draw polygon</button><button className="planner-button planner-button--ghost" onClick={() => { setDrawingMode('rectangle'); setDrawing(true) }}>□ Draw rectangle</button></>}</div>}
         {step === 4 && <div className="planner-placement"><strong>Zone drawing</strong><p>Create zones by drawing polygons or rectangles on the map.</p><div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -284,7 +313,7 @@ export default function SiteConfiguration() {
       </div>
     </section>}
 
-    {step === 7 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId}</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => navigate('/dashboard')}>Finish</button></section>}
+    {step === 7 && <section className="planner-review"><h2>Review site configuration</h2><p>Everything below is spatially connected to the selected site centre.</p><div className="planner-review__tree"><strong>{site?.officeName}</strong><span>↳ {site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>{floors.map((item) => <div key={item.id}><strong>↳ {item.floorName}</strong>{item.id === floor?.id && <><span>↳ Floor plan: {plan?.name || 'Not uploaded'}</span>{zones.map((z) => <span key={z.id}>↳ Zone: {z.name} ({z.type})</span>)}{devices.map((d) => <span key={d.id}>↳ {TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId || d.name}</span>)}{gateways.map((g) => <span key={g.id}>↳ Gateway: {g.name} ({g.gatewayEui})</span>)}</>}</div>)}</div><button className="planner-button" onClick={() => navigate('/dashboard')}>Finish</button></section>}
     {pickerOpen && <CenterPicker initial={siteForm.latitude ? [Number(siteForm.latitude), Number(siteForm.longitude)] : null} onCancel={() => setPickerOpen(false)} onSave={setCoords} />}
     {addFloorOpen && <div className="planner-modal-backdrop"><div className="planner-modal planner-modal--small"><button className="planner-modal__close" onClick={() => setAddFloorOpen(false)}>×</button><h2>Add Floor</h2><label>Floor Name <b>*</b><input autoFocus value={floorForm.name} placeholder="e.g. Ground Floor" onChange={(e) => setFloorForm({ ...floorForm, name: e.target.value })} /></label><label>Floor Number <b>*</b><input type="number" value={floorForm.number} placeholder="0 for ground, 1 for first floor" onChange={(e) => setFloorForm({ ...floorForm, number: e.target.value })} /></label><div className="planner-modal__actions"><button className="planner-button planner-button--ghost" onClick={() => setAddFloorOpen(false)}>Cancel</button><button className="planner-button" disabled={busy} onClick={addFloor}>Add Floor</button></div></div></div>}
   </div>

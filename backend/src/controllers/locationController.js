@@ -1,3 +1,4 @@
+const express = require("express");
 const prisma = require("../config/database");
 
 function getOrgFilter(req) {
@@ -5,6 +6,44 @@ function getOrgFilter(req) {
   const orgId = req.user?.organizationId;
   if (role === "super_admin") return {};
   return { organizationId: orgId };
+}
+
+const searchCache = new Map();
+const CACHE_TTL_MS = 1000 * 60 * 60;
+
+async function searchLocations(req, res) {
+  try {
+    const { q } = req.query;
+    if (!q || !q.trim()) {
+      return res.status(200).json({ results: [] });
+    }
+
+    const key = q.trim().toLowerCase();
+    const cached = searchCache.get(key);
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      return res.status(200).json(cached.value);
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(key)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "SmartRestroomFeedbackSystem/1.0",
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: "Geocoding service unavailable" });
+    }
+
+    const data = await response.json();
+    const payload = { results: data };
+    searchCache.set(key, { ts: Date.now(), value: payload });
+    return res.status(200).json(payload);
+  } catch (error) {
+    console.error("Location search error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 }
 
 async function getLocations(req, res) {
@@ -131,10 +170,38 @@ async function deleteLocation(req, res) {
   }
 }
 
+async function searchLocations(req, res) {
+  try {
+    const { q } = req.query;
+    if (!q || !q.trim()) {
+      return res.status(200).json({ results: [] });
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&q=${encodeURIComponent(q.trim())}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "SmartRestroomFeedbackSystem/1.0",
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ message: "Geocoding service unavailable" });
+    }
+
+    const data = await response.json();
+    res.status(200).json({ results: data });
+  } catch (error) {
+    console.error("Location search error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   getLocations,
   getLocationById,
   createLocation,
   updateLocation,
   deleteLocation,
+  searchLocations,
 };

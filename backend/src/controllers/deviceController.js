@@ -1,5 +1,6 @@
 const prisma = require("../config/database");
 const { registerOtaaDevice } = require("../services/ttnDeviceRegistryService");
+const { deleteDeviceFromTTN } = require("../services/ttnDeviceRegistryService");
 const crypto = require("crypto");
 
 function getOrgFilter(req) {
@@ -47,6 +48,7 @@ async function getDevices(req, res) {
         restroom: { include: { floor: { include: { location: true } } } },
         floor: { include: { location: true } },
         zone: true,
+        gateway: true,
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
@@ -74,6 +76,8 @@ async function getDevices(req, res) {
         floorId: device.floorId,
         zoneId: device.zoneId,
         zoneName: device.zone?.name || null,
+        gatewayId: device.gatewayId,
+        gatewayName: device.gateway?.name || null,
         floorPlanPosX: device.floorPlanPosX,
         floorPlanPosY: device.floorPlanPosY,
         joinEui: device.joinEui || null,
@@ -113,6 +117,7 @@ async function getDeviceById(req, res) {
         restroom: { include: { floor: { include: { location: true } } } },
         floor: { include: { location: true } },
         zone: true,
+        gateway: true,
         feedback: { orderBy: { timestamp: "desc" }, take: 20 },
         deviceHealth: { orderBy: { recordedAt: "desc" }, take: 10 },
       },
@@ -142,6 +147,8 @@ async function getDeviceById(req, res) {
       deviceType: device.deviceType,
       zoneId: device.zoneId,
       zoneName: device.zone?.name || null,
+      gatewayId: device.gatewayId,
+      gatewayName: device.gateway?.name || null,
       joinEui: device.joinEui || null,
       appKey: device.appKey || null,
       lorawanVersion: device.lorawanVersion || null,
@@ -159,16 +166,40 @@ async function getDeviceById(req, res) {
 
 async function createDevice(req, res) {
   try {
-    let { name, deviceType, restroomId, batteryLevel, floorId, zoneId, floorPlanPosX, floorPlanPosY, ttnDeviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, isLayoutAsset = false } = req.body;
+    let { name, deviceType, restroomId, batteryLevel, floorId, zoneId, floorPlanPosX, floorPlanPosY, deviceEui: providedDeviceEui, ttnDeviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, isLayoutAsset = false } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
-    const generatedDeviceEui = crypto.randomBytes(8).toString("hex").toUpperCase();
-    const generatedBadgeId = name ? `BADGE-${name.replace(/[^A-Z0-9]/gi, '').slice(0, 8).toUpperCase()}` : `BADGE-${generatedDeviceEui.slice(0, 8)}`;
-    const resolvedDeviceEui = generatedDeviceEui;
+    if (!isLayoutAsset) {
+      if (!providedDeviceEui) {
+        return res.status(400).json({ message: "Device EUI is required" });
+      }
+
+      if (!appKey) {
+        return res.status(400).json({ message: "App Key is required" });
+      }
+
+      const normalizedDeviceEui = providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+      if (normalizedDeviceEui.length !== 16) {
+        return res.status(400).json({ message: "Device EUI must be exactly 16 hexadecimal characters" });
+      }
+
+      const normalizedAppKey = appKey.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+      if (normalizedAppKey.length !== 32) {
+        return res.status(400).json({ message: "App Key must be exactly 32 hexadecimal characters" });
+      }
+    }
+
+    const resolvedDeviceEui = isLayoutAsset
+      ? (providedDeviceEui || crypto.randomBytes(8).toString("hex").toUpperCase())
+      : providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+    const normalizedAppKey = isLayoutAsset
+      ? (appKey || crypto.randomBytes(16).toString("hex"))
+      : appKey.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+    const generatedBadgeId = name ? `BADGE-${name.replace(/[^A-Z0-9]/gi, '').slice(0, 8).toUpperCase()}` : `BADGE-${resolvedDeviceEui.slice(0, 8)}`;
     const resolvedBadgeId = generatedBadgeId;
     const resolvedJoinEui = joinEui || "0000000000000000";
-    const resolvedAppKey = appKey || crypto.randomBytes(16).toString("hex");
+    const resolvedAppKey = normalizedAppKey;
     const resolvedLorawanVersion = lorawanVersion || "MAC_V1_0_3";
 
     const existingDevice = await prisma.device.findFirst({
@@ -205,31 +236,34 @@ async function createDevice(req, res) {
     }
 
     let ttnRegistration = null;
-    if (!isLayoutAsset) {
-      try {
-        const resolvedTtnDeviceId = `device-${resolvedDeviceEui.toLowerCase()}`;
-        const ttnPayload = {
-          deviceEui: resolvedDeviceEui,
-          deviceId: resolvedTtnDeviceId,
-          joinEui: resolvedJoinEui,
-          appKey: resolvedAppKey,
-          lorawanVersion: resolvedLorawanVersion,
-        };
+    try {
+      const resolvedTtnDeviceId = `device-${resolvedDeviceEui.toLowerCase()}`;
+      const ttnPayload = {
+        deviceEui: resolvedDeviceEui,
+        deviceId: resolvedTtnDeviceId,
+        joinEui: resolvedJoinEui,
+        appKey: resolvedAppKey,
+        lorawanVersion: resolvedLorawanVersion,
+      };
 
-        if (lorawanPhyVersion) {
-          ttnPayload.lorawanPhyVersion = lorawanPhyVersion;
-        }
-
-        ttnRegistration = await registerOtaaDevice(ttnPayload);
-
-        joinEui = resolvedJoinEui;
-        appKey = resolvedAppKey;
-        ttnDeviceId = resolvedTtnDeviceId;
-        lorawanVersion = resolvedLorawanVersion;
-        lorawanPhyVersion = lorawanPhyVersion || null;
-      } catch (error) {
-        return res.status(502).json({ message: error.message });
+      if (lorawanPhyVersion) {
+        ttnPayload.lorawanPhyVersion = lorawanPhyVersion;
       }
+
+      ttnRegistration = await registerOtaaDevice(ttnPayload);
+
+      joinEui = resolvedJoinEui;
+      appKey = resolvedAppKey;
+      ttnDeviceId = resolvedTtnDeviceId;
+      lorawanVersion = resolvedLorawanVersion;
+      lorawanPhyVersion = lorawanPhyVersion || null;
+    } catch (error) {
+      if (error.message.includes("409")) {
+        return res.status(409).json({
+          message: `Device EUI ${resolvedDeviceEui} is already registered on TTN. Use a different DevEUI or remove the existing device from the TTN Console.`,
+        });
+      }
+      return res.status(502).json({ message: error.message });
     }
 
     const deviceData = {
@@ -283,7 +317,7 @@ async function createDevice(req, res) {
 async function updateDevice(req, res) {
   try {
     const { id } = req.params;
-    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType, joinEui, appKey } = req.body;
+    const { badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY, floorId, zoneId, deviceType, joinEui, appKey, gatewayId } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -333,11 +367,20 @@ async function updateDevice(req, res) {
     if (deviceType !== undefined) updateData.deviceType = deviceType
     if (joinEui !== undefined) updateData.joinEui = joinEui || null
     if (appKey !== undefined) updateData.appKey = appKey || null
+    if (gatewayId !== undefined) updateData.gatewayId = gatewayId || null
 
     const device = await prisma.device.update({
       where: { id },
       data: updateData,
     });
+
+    if (gatewayId !== undefined) {
+      const deviceCount = await prisma.device.count({ where: { gatewayId: gatewayId || null } });
+      await prisma.gateway.updateMany({
+        where: { id: gatewayId || null },
+        data: { connectedDevices: deviceCount },
+      });
+    }
 
     res.status(200).json({ message: "Device updated successfully", device });
   } catch (error) {
@@ -456,7 +499,7 @@ async function getOfflineDevices(req, res) {
 async function registerDeviceInTTN(req, res) {
   try {
     const { id } = req.params;
-    const { ttnDeviceId, joinEui, appKey } = req.body;
+    const { ttnDeviceId, joinEui, appKey, deviceEui: providedDeviceEui } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -481,24 +524,41 @@ async function registerDeviceInTTN(req, res) {
       return res.status(400).json({ message: "App Key is required" });
     }
 
+    if (providedDeviceEui) {
+      const normalizedEui = providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+      if (normalizedEui.length !== 16) {
+        return res.status(400).json({ message: "Device EUI must be exactly 16 hexadecimal characters" });
+      }
+    }
+
     let ttnRegistration = null;
     try {
       ttnRegistration = await registerOtaaDevice({
-        deviceEui: existing.deviceEui,
+        deviceEui: providedDeviceEui ? providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase() : existing.deviceEui,
         deviceId: ttnDeviceId || existing.deviceEui,
         joinEui: joinEui || "0000000000000000",
         appKey,
       });
     } catch (error) {
+      if (error.message.includes("409")) {
+        return res.status(409).json({
+          message: `Device is already registered on TTN as another device. Use the repair endpoint or remove the conflicting device from the TTN Console.`,
+        });
+      }
       return res.status(502).json({ message: `TTN registration failed: ${error.message}` });
+    }
+
+    const updateData = {
+      joinEui: joinEui || existing.joinEui || "0000000000000000",
+      appKey,
+    };
+    if (providedDeviceEui) {
+      updateData.deviceEui = providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
     }
 
     const device = await prisma.device.update({
       where: { id },
-      data: {
-        joinEui: joinEui || existing.joinEui || "0000000000000000",
-        appKey,
-      },
+      data: updateData,
     });
 
     res.status(200).json({
@@ -512,6 +572,47 @@ async function registerDeviceInTTN(req, res) {
   }
 }
 
+async function deleteDevice(req, res) {
+  try {
+    const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+
+    const whereClause = { id };
+    if (userRole !== "super_admin") {
+      whereClause.OR = [
+        { restroom: { organizationId: userOrgId } },
+        { restroomId: null }
+      ];
+    }
+
+    const existing = await prisma.device.findFirst({
+      where: whereClause,
+      include: { restroom: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: "Device not found" });
+    }
+
+    try {
+      await deleteDeviceFromTTN({
+        deviceEui: existing.deviceEui,
+        deviceId: `device-${existing.deviceEui.toLowerCase()}`,
+      });
+    } catch (ttnError) {
+      console.error("TTN delete error:", ttnError.message);
+    }
+
+    await prisma.device.delete({ where: { id } });
+
+    res.status(200).json({ message: "Device deleted successfully" });
+  } catch (error) {
+    console.error("Delete device error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   getDevices,
   getDeviceById,
@@ -520,4 +621,5 @@ module.exports = {
   getDeviceHealth,
   getOfflineDevices,
   registerDeviceInTTN,
+  deleteDevice,
 };

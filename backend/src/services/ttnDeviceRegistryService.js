@@ -447,4 +447,18 @@ async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lora
   return { applicationId, deviceId: resolvedDeviceIdForSteps, deviceEui: devEui, clusterHost, updatedSteps };
 }
 
-module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration };
+async function deleteDeviceFromTTN({ deviceEui, deviceId }) {
+  const { apiBaseUrl, applicationId, apiKey } = getConfiguration();
+  const devEui = normalizeHex(deviceEui, 16, "Device EUI");
+  const resolvedDeviceId = makeDeviceId(devEui, deviceId);
+
+  await ttnRequest(
+    `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/devices/${encodeURIComponent(resolvedDeviceId)}`,
+    apiKey,
+    "DELETE",
+  );
+
+  return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui };
+}
+
+module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration, deleteDeviceFromTTN };

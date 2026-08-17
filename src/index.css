@@ -1043,7 +1043,8 @@ select::-webkit-scrollbar {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-h);
+  /* color: var(--text-h); */
+  color:#4a8392
 }
 
 .restroom-geo-map__legend-swatch {

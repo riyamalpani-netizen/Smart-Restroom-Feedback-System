@@ -12,6 +12,8 @@ function connectMQTT(io) {
     return null;
   }
 
+  logger.info(`Connecting to TTN MQTT broker at ${TTN_MQTT_BROKER}:${TTN_MQTT_PORT} as ${TTN_MQTT_USERNAME}`);
+
   const clientId = `smart-restroom-backend-${Date.now()}`;
   const url = `mqtts://${TTN_MQTT_BROKER}:${TTN_MQTT_PORT}`;
 
@@ -24,9 +26,11 @@ function connectMQTT(io) {
 
   mqttClient.on("connect", () => {
     logger.info("Connected to TTN MQTT broker");
-    mqttClient.subscribe(TTN_MQTT_TOPIC, (err) => {
+    logger.info(`MQTT topic: ${TTN_MQTT_TOPIC}`);
+
+    mqttClient.subscribe(TTN_MQTT_TOPIC, { qos: 0 }, (err) => {
       if (err) {
-        logger.error("Failed to subscribe to TTN MQTT topic:", err);
+        logger.error(`Failed to subscribe to TTN MQTT topic "${TTN_MQTT_TOPIC}": ${err.message}`);
       } else {
         logger.info(`Subscribed to TTN MQTT topic: ${TTN_MQTT_TOPIC}`);
       }
@@ -36,7 +40,8 @@ function connectMQTT(io) {
   mqttClient.on("message", async (topic, message) => {
     try {
       const payload = JSON.parse(message.toString());
-      logger.debug("Received MQTT message from TTN");
+      const devEuiFromPayload = payload.end_device_ids?.dev_eui || payload.uplink_message?.ids?.dev_eui;
+      logger.info(`MQTT message received on topic: ${topic} | dev_eui: ${devEuiFromPayload || "unknown"}`);
 
       const result = await processFeedback(payload);
 
@@ -45,6 +50,8 @@ function connectMQTT(io) {
         if (result.alert) {
           io.emit("new-alert", result.alert);
         }
+      } else if (!result.success) {
+        logger.warn(`MQTT message processing failed: ${result.error || "unknown error"}`);
       }
     } catch (error) {
       logger.error("Error processing MQTT message:", error);
@@ -99,21 +106,6 @@ async function processFeedback(payload) {
       return { success: false, error: "Device not found" };
     }
 
-    const feedback = await prisma.feedback.create({
-      data: {
-        deviceId: device.id,
-        restroomId: device.restroomId,
-        feedbackType,
-        battery,
-        signalStrength,
-        rawPayload: JSON.stringify(rawPayload),
-      },
-      include: {
-        device: true,
-        restroom: true,
-      },
-    });
-
     await prisma.device.update({
       where: { id: device.id },
       data: {
@@ -132,19 +124,41 @@ async function processFeedback(payload) {
       },
     });
 
-    const alert = await createAlertForFeedback(feedback, device);
+    let feedback = null;
+    let alert = null;
+    try {
+      feedback = await prisma.feedback.create({
+        data: {
+          device: { connect: { id: device.id } },
+          ...(device.restroomId ? { restroom: { connect: { id: device.restroomId } } } : {}),
+          feedbackType,
+          battery,
+          signalStrength,
+          rawPayload: JSON.stringify(rawPayload),
+        },
+        include: {
+          device: true,
+          restroom: true,
+        },
+      });
 
-    const result = {
+      alert = await createAlertForFeedback(feedback, device);
+    } catch (e) {
+      logger.warn(`Feedback record creation skipped: ${e.message}`);
+    }
+
+    return {
       success: true,
       data: {
-        id: feedback.id,
-        deviceId: feedback.deviceId,
-        restroomId: feedback.restroomId,
-        feedbackType: feedback.feedbackType,
-        timestamp: feedback.timestamp,
-        battery: feedback.battery,
-        signalStrength: feedback.signalStrength,
-        restroomName: feedback.restroom.name,
+        id: feedback?.id || `${device.id}-${Date.now()}`,
+        deviceId: device.id,
+        feedbackId: feedback?.id,
+        restroomId: device.restroomId,
+        feedbackType,
+        battery: battery ?? null,
+        signalStrength: signalStrength ?? null,
+        timestamp: feedback?.timestamp || new Date(),
+        restroomName: device.restroom?.name || '—',
         badgeId: device.badgeId,
         deviceStatus: device.healthStatus,
       },
@@ -156,9 +170,6 @@ async function processFeedback(payload) {
         priority: alert.priority,
       } : null,
     };
-
-    logger.info(`Feedback processed: ${feedbackType} for restroom ${device.restroom.name}`);
-    return result;
   } catch (error) {
     logger.error("Error processing feedback:", error);
     return { success: false, error: error.message };
@@ -169,7 +180,12 @@ function decodePayload(payload) {
   try {
     const decoded = payload.uplink_message?.decoded_payload || payload.decoded_payload || payload;
 
-    const deviceEui = decoded.device_eui || decoded.deviceEui || decoded.deveui || decoded.devEUI;
+    const envelopeDeviceEui = payload.uplink_message?.ids?.dev_eui || payload.end_device_ids?.dev_eui;
+    const deviceEui = (decoded.device_eui || decoded.deviceEui || decoded.deveui || decoded.devEUI || envelopeDeviceEui || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+
+    if (!deviceEui) {
+      logger.warn("Could not extract DevEUI from TTN payload. Payload keys:", Object.keys(payload));
+    }
     const badgeId = decoded.badge_id || decoded.badgeId || decoded.badge;
     const feedbackType = decoded.feedback_type || decoded.feedbackType || decoded.type || "average";
     const battery = decoded.battery ?? decoded.battery_level ?? null;
@@ -199,6 +215,10 @@ function decodePayload(payload) {
 
 async function createAlertForFeedback(feedback, device) {
   try {
+    if (!device.restroomId) {
+      return null;
+    }
+
     const oneHourAgo = new Date();
     oneHourAgo.setHours(oneHourAgo.getHours() - 1);
 

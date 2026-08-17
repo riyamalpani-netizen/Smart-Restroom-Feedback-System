@@ -6,6 +6,294 @@ datasource db {
   provider = "postgresql"
 }
 
+model Organization {
+  id        String     @id @default(cuid())
+  name      String
+  address   String?
+  timezone  String?    @default("UTC")
+  logo      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  auditLogs AuditLog[]
+  locations Location[]
+  restrooms Restroom[] @relation("OrganizationRestrooms")
+  settings  Settings?
+  users     User[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                 String         @id @default(cuid())
+  organizationId     String
+  name               String
+  email              String         @unique
+  password           String
+  role               UserRole       @default(viewer)
+  active             Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  acknowledgedAlerts Alert[]        @relation("AlertAcknowledgedBy")
+  assignedAlerts     Alert[]        @relation("AlertAssignedTo")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  organization       Organization   @relation(fields: [organizationId], references: [id])
+
+  @@map("users")
+}
+
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  city           String
+  officeName     String
+  address        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  latitude       Float?
+  longitude      Float?
+  floors         Floor[]
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  gateways       Gateway[]
+
+  @@map("locations")
+}
+
+model Floor {
+  id          String      @id @default(cuid())
+  locationId  String
+  floorName   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  floorNumber Int?
+  devices     Device[]
+  floorPlans  FloorPlan[]
+  location    Location    @relation(fields: [locationId], references: [id])
+  restrooms   Restroom[]
+  zones       Zone[]
+  gateways    Gateway[]
+
+  @@map("floors")
+}
+
+model FloorPlan {
+  id          String   @id @default(cuid())
+  floorId     String
+  name        String
+  imageData   String
+  width       Int      @default(400)
+  height      Int      @default(300)
+  posX        Int      @default(0)
+  posY        Int      @default(0)
+  rotation    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  geoBounds   Json?
+  geoJsonData Json?
+  floor       Floor    @relation(fields: [floorId], references: [id])
+
+  @@map("floor_plans")
+}
+
+model Zone {
+  id          String    @id @default(cuid())
+  floorId     String
+  name        String
+  type        String    @default("other")
+  coordinates Json?
+  restroomId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  devices     Device[]
+  floor       Floor     @relation(fields: [floorId], references: [id])
+  restroom    Restroom? @relation(fields: [restroomId], references: [id])
+  gateways    Gateway[]
+
+  @@map("zones")
+}
+
+model Restroom {
+  id             String       @id @default(cuid())
+  floorId        String
+  organizationId String
+  name           String
+  gender         String?
+  status         String       @default("good")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  height         Float?
+  posX           Float?
+  posY           Float?
+  width          Float?
+  alerts         Alert[]
+  devices        Device[]
+  feedback       Feedback[]
+  floor          Floor        @relation(fields: [floorId], references: [id])
+  organization   Organization @relation("OrganizationRestrooms", fields: [organizationId], references: [id])
+  zones          Zone[]
+
+  @@map("restrooms")
+}
+
+model Device {
+  id                String               @id @default(cuid())
+  deviceEui         String               @unique
+  badgeId           String               @unique
+  restroomId        String?
+  batteryLevel      Int
+  lastSeen          DateTime?
+  healthStatus      DeviceHealth         @default(healthy)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  floorPlanPosX     Float?
+  floorPlanPosY     Float?
+  floorId           String?
+  deviceType        String?              @default("sensor")
+  zoneId            String?
+  appKey            String?
+  joinEui           String?
+  name              String?
+  lorawanPhyVersion String?
+  lorawanVersion    String?
+  gatewayId         String?
+  gateway           Gateway?             @relation(fields: [gatewayId], references: [id])
+  deviceHealth      DeviceHealthRecord[]
+  floor             Floor?               @relation(fields: [floorId], references: [id])
+  restroom          Restroom?            @relation(fields: [restroomId], references: [id])
+  zone              Zone?                @relation(fields: [zoneId], references: [id])
+  feedback          Feedback[]
+
+  @@map("devices")
+}
+
+model Gateway {
+  id              String         @id @default(cuid())
+  name            String
+  gatewayEui      String         @unique
+  organizationId  String?
+  locationId      String?
+  location        Location?      @relation(fields: [locationId], references: [id])
+  floorId         String?
+  floor           Floor?         @relation(fields: [floorId], references: [id])
+  zoneId          String?
+  zone            Zone?          @relation(fields: [zoneId], references: [id])
+  status          GatewayStatusEnum @default(offline)
+  lastSeen        DateTime?
+  ttnStatus       String?        @default("not_registered")
+  ttnDeviceId     String?
+  frequencyPlanId String?
+  latitude        Float?
+  longitude       Float?
+  connectedDevices Int           @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  devices Device[]
+
+  @@map("gateways")
+}
+
+model Feedback {
+  id             String       @id @default(cuid())
+  deviceId       String
+  restroomId     String?
+  feedbackType   FeedbackType
+  timestamp      DateTime     @default(now())
+  battery        Int?
+  signalStrength Int?
+  rawPayload     String?
+  alert          Alert?
+  device         Device       @relation(fields: [deviceId], references: [id])
+  restroom       Restroom?    @relation(fields: [restroomId], references: [id])
+
+  @@map("feedback")
+}
+
+model Alert {
+  id               String         @id @default(cuid())
+  feedbackId       String         @unique
+  restroomId       String
+  status           AlertStatus    @default(open)
+  priority         AlertPriority  @default(medium)
+  assignedToId     String?
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  notes            String?
+  acknowledgedBy   User?          @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  assignedTo       User?          @relation("AlertAssignedTo", fields: [assignedToId], references: [id])
+  feedback         Feedback       @relation(fields: [feedbackId], references: [id])
+  restroom         Restroom       @relation(fields: [restroomId], references: [id])
+  notifications    Notification[]
+
+  @@map("alerts")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  alertId   String
+  userId    String?
+  type      NotificationType
+  recipient String
+  status    String           @default("pending")
+  sentAt    DateTime?
+  createdAt DateTime         @default(now())
+  alert     Alert            @relation(fields: [alertId], references: [id])
+  user      User?            @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model DeviceHealthRecord {
+  id         String   @id @default(cuid())
+  deviceId   String
+  battery    Int
+  signal     Int
+  online     Boolean
+  recordedAt DateTime @default(now())
+  device     Device   @relation(fields: [deviceId], references: [id])
+
+  @@map("device_health")
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  module         String
+  action         String
+  description    String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Settings {
+  id              String       @id @default(cuid())
+  organizationId  String       @unique
+  teamsWebhook    String?
+  reportFrequency String?      @default("daily")
+  sessionTimeout  Int?         @default(28800)
+  passwordPolicy  String?      @default("min 8 chars, 1 uppercase, 1 number")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("settings")
+}
+
+model gateway_status {
+  id          String            @id
+  gatewayName String            @unique
+  status      GatewayStatusEnum
+  lastSeen    DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime
+}
+
 enum FeedbackType {
   happy
   average
@@ -56,270 +344,4 @@ enum GatewayStatusEnum {
   online
   offline
   degraded
-}
-
-model Organization {
-  id        String    @id @default(cuid())
-  name      String
-  address   String?
-  timezone  String?   @default("UTC")
-  logo      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  locations    Location[]
-  users        User[]
-  settings     Settings?
-  auditLogs    AuditLog[]
-  restrooms    Restroom[]  @relation("OrganizationRestrooms")
-
-  @@map("organizations")
-}
-
-model User {
-  id                 String    @id @default(cuid())
-  organizationId     String
-  organization       Organization @relation(fields: [organizationId], references: [id])
-  name               String
-  email              String    @unique
-  password           String
-  role               UserRole  @default(viewer)
-  active             Boolean   @default(true)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  assignedAlerts     Alert[]   @relation("AlertAssignedTo")
-  acknowledgedAlerts Alert[]   @relation("AlertAcknowledgedBy")
-  auditLogs          AuditLog[]
-  notifications      Notification[]
-
-  @@map("users")
-}
-
-model Location {
-  id             String     @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  city           String
-  officeName     String
-  address        String?
-  latitude       Float?
-  longitude      Float?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-
-  floors Floor[]
-
-  @@map("locations")
-}
-
-model Floor {
-  id         String    @id @default(cuid())
-  locationId String
-  location   Location  @relation(fields: [locationId], references: [id])
-  floorName  String
-  floorNumber Int?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  restrooms  Restroom[]
-  floorPlans FloorPlan[]
-  zones      Zone[]
-  devices    Device[]
-
-  @@map("floors")
-}
-
-model FloorPlan {
-  id          String   @id @default(cuid())
-  floorId     String
-  floor       Floor     @relation(fields: [floorId], references: [id])
-  name        String
-  imageData   String
-  width       Int      @default(400)
-  height      Int      @default(300)
-  posX        Int      @default(0)
-  posY        Int      @default(0)
-  rotation    Int      @default(0)
-  geoBounds   Json?
-  geoJsonData Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("floor_plans")
-}
-
-model Zone {
-  id          String     @id @default(cuid())
-  floorId     String
-  floor       Floor      @relation(fields: [floorId], references: [id])
-  name        String
-  type        String     @default("other")
-  coordinates Json?
-  restroomId  String?
-  restroom    Restroom?  @relation(fields: [restroomId], references: [id])
-  devices     Device[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  @@map("zones")
-}
-
-model Restroom {
-  id         String    @id @default(cuid())
-  floorId    String
-  floor      Floor     @relation(fields: [floorId], references: [id])
-  organizationId String
-  organization Organization @relation("OrganizationRestrooms", fields: [organizationId], references: [id])
-  name       String
-  gender     String?
-  status     String    @default("good")
-  posX       Float?
-  posY       Float?
-  width      Float?
-  height     Float?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  devices    Device[]
-  zones      Zone[]
-  feedback   Feedback[]
-  alerts     Alert[]
-
-  @@map("restrooms")
-}
-
-model Device {
-  id              String       @id @default(cuid())
-  name            String?
-  deviceEui       String       @unique
-  badgeId         String       @unique
-  restroomId      String?
-  restroom        Restroom?    @relation(fields: [restroomId], references: [id])
-  floorId         String?
-  floor           Floor?       @relation(fields: [floorId], references: [id])
-  zoneId          String?
-  zone            Zone?        @relation(fields: [zoneId], references: [id])
-  deviceType      String?      @default("sensor")
-  batteryLevel    Int
-  lastSeen        DateTime?
-  healthStatus    DeviceHealth @default(healthy)
-  floorPlanPosX   Float?
-  floorPlanPosY   Float?
-  joinEui         String?
-  appKey          String?
-  lorawanVersion  String?
-  lorawanPhyVersion String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-
-  feedback        Feedback[]
-  deviceHealth    DeviceHealthRecord[]
-
-  @@map("devices")
-}
-
-model Feedback {
-  id             String       @id @default(cuid())
-  deviceId       String
-  device         Device       @relation(fields: [deviceId], references: [id])
-  restroomId     String
-  restroom       Restroom     @relation(fields: [restroomId], references: [id])
-  feedbackType   FeedbackType
-  timestamp      DateTime     @default(now())
-  battery        Int?
-  signalStrength Int?
-  rawPayload     String?
-
-  alert          Alert?
-
-  @@map("feedback")
-}
-
-model Alert {
-  id              String        @id @default(cuid())
-  feedbackId      String        @unique
-  feedback        Feedback      @relation(fields: [feedbackId], references: [id])
-  restroomId      String
-  restroom        Restroom      @relation(fields: [restroomId], references: [id])
-  status          AlertStatus   @default(open)
-  priority        AlertPriority @default(medium)
-  assignedToId    String?
-  assignedTo      User?         @relation("AlertAssignedTo", fields: [assignedToId], references: [id])
-  acknowledgedById String?
-  acknowledgedBy  User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
-  resolvedAt      DateTime?
-  notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  notifications   Notification[]
-
-  @@map("alerts")
-}
-
-model Notification {
-  id        String           @id @default(cuid())
-  alertId   String
-  alert     Alert            @relation(fields: [alertId], references: [id])
-  userId    String?
-  user      User?            @relation(fields: [userId], references: [id])
-  type      NotificationType
-  recipient String
-  status    String           @default("pending")
-  sentAt    DateTime?
-  createdAt DateTime         @default(now())
-
-  @@map("notifications")
-}
-
-model DeviceHealthRecord {
-  id          String      @id @default(cuid())
-  deviceId    String
-  device      Device      @relation(fields: [deviceId], references: [id])
-  battery     Int
-  signal      Int
-  online      Boolean
-  recordedAt  DateTime    @default(now())
-
-  @@map("device_health")
-}
-
-model GatewayStatus {
-  id         String         @id @default(cuid())
-  gatewayName String        @unique
-  status     GatewayStatusEnum
-  lastSeen   DateTime?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-
-  @@map("gateway_status")
-}
-
-model AuditLog {
-  id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  organizationId String
-  organization Organization @relation(fields: [organizationId], references: [id])
-  module      String
-  action      String
-  description String
-  createdAt   DateTime  @default(now())
-
-  @@map("audit_logs")
-}
-
-model Settings {
-  id              String    @id @default(cuid())
-  organizationId  String    @unique
-  organization    Organization @relation(fields: [organizationId], references: [id])
-  teamsWebhook    String?
-  reportFrequency String?   @default("daily")
-  sessionTimeout  Int?      @default(28800)
-  passwordPolicy  String?   @default("min 8 chars, 1 uppercase, 1 number")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@map("settings")
 }

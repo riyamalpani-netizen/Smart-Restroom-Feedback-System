@@ -413,6 +413,7 @@ import {
 import L from 'leaflet'
 import { useAuth } from '../hooks/useAuth'
 import 'leaflet/dist/leaflet.css'
+import './SideMap.css'
 
 /*
 |--------------------------------------------------------------------------
@@ -2143,100 +2144,35 @@ export default function SideMap() {
   }) {
     return (
       <div
-        style={{
-          background:
-            '#ffffff',
-
-          border:
-            '1px solid #e2e8f0',
-
-          borderRadius: 14,
-
-          padding: 16,
-
-          minHeight: 105,
-
-          boxShadow:
-            '0 3px 10px rgba(15,23,42,0.04)',
-        }}
+        className="side-map__summary-card"
+        style={{ '--card-accent': accent }}
       >
         <div
-          style={{
-            display:
-              'flex',
-
-            alignItems:
-              'center',
-
-            justifyContent:
-              'space-between',
-          }}
+          className="side-map__summary-header"
         >
           <span
-            style={{
-              fontSize: 11,
-
-              fontWeight: 600,
-
-              color: '#64748b',
-            }}
+            className="side-map__summary-title"
           >
             {title}
           </span>
 
           <span
-            style={{
-              width: 30,
-
-              height: 30,
-
-              borderRadius: 9,
-
-              background:
-                `${accent}18`,
-
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              justifyContent:
-                'center',
-
-              fontSize: 15,
-            }}
+            className="side-map__summary-icon"
+            style={{ background: `${accent}18` }}
           >
             {icon}
           </span>
         </div>
 
         <div
-          style={{
-            marginTop: 10,
-
-            fontSize: 25,
-
-            lineHeight: 1,
-
-            fontWeight: 800,
-
-            color:
-              accent ||
-              '#0f172a',
-          }}
+          className="side-map__summary-value"
+          style={{ color: accent || '#0f172a' }}
         >
           {value}
         </div>
 
         <div
-          style={{
-            marginTop: 7,
-
-            fontSize: 9,
-
-            color: '#94a3b8',
-          }}
+          className="side-map__summary-subtitle"
         >
           {subtitle}
         </div>
@@ -4171,19 +4107,11 @@ export default function SideMap() {
   */
 
   return (
-    <div className="page">
+    <div className="page side-map">
       {/* Restroom name modal */}
       {showRestroomModal && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15,23,42,0.5)',
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          className="side-map__modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowRestroomModal(false)
@@ -4193,14 +4121,7 @@ export default function SideMap() {
           }}
         >
           <div
-            style={{
-              background: '#fff',
-              padding: 24,
-              borderRadius: 16,
-              boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
-              width: 360,
-              maxWidth: '90vw',
-            }}
+            className="side-map__modal"
             onClick={(e) => e.stopPropagation()}
           >
             <h3
@@ -4233,17 +4154,9 @@ export default function SideMap() {
                   setNewRestroomName('')
                 }
               }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid #cbd5e1',
-                borderRadius: 8,
-                fontSize: 13,
-                outline: 'none',
-                marginBottom: 12,
-              }}
+              className="side-map__modal-input"
             />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="side-map__modal-actions">
               <button
                 type="button"
                 onClick={() => {
@@ -4252,16 +4165,7 @@ export default function SideMap() {
                   setInteractionMode('view')
                   setNewRestroomName('')
                 }}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5e1',
-                  background: '#fff',
-                  color: '#475569',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
+                className="side-map__btn side-map__btn--ghost"
               >
                 Cancel
               </button>
@@ -4271,16 +4175,7 @@ export default function SideMap() {
                   handleCreateRestroom(newRestroomName)
                   setNewRestroomName('')
                 }}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #2563eb',
-                  background: '#2563eb',
-                  color: '#fff',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
+                className="side-map__btn side-map__btn--primary"
               >
                 Save Restroom
               </button>
@@ -4291,25 +4186,7 @@ export default function SideMap() {
 
       {/* Interaction mode banner */}
       {(interactionMode === 'draw-restroom' || interactionMode === 'place-device') && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 9999,
-            background: '#0f172a',
-            color: '#fff',
-            padding: '10px 20px',
-            borderRadius: 12,
-            boxShadow: '0 10px 40px rgba(15,23,42,0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            fontSize: 12,
-            fontWeight: 700,
-          }}
-        >
+        <div className="side-map__banner">
           <span>
             {interactionMode === 'draw-restroom'
               ? 'Click and drag on the floor plan to draw a restroom'
@@ -4320,16 +4197,7 @@ export default function SideMap() {
           <button
             type="button"
             onClick={cancelInteraction}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.3)',
-              background: 'rgba(255,255,255,0.1)',
-              color: '#fff',
-              fontSize: 10,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
+            className="side-map__banner-btn"
           >
             Cancel
           </button>
@@ -4476,89 +4344,19 @@ export default function SideMap() {
           FILTERS
       ================================================================= */}
 
-      <div
-        style={{
-          display:
-            'flex',
-
-          alignItems:
-            'center',
-
-          justifyContent:
-            'space-between',
-
-          flexWrap:
-            'wrap',
-
-          gap: 15,
-
-          padding: 15,
-
-          marginBottom: 18,
-
-          background:
-            '#ffffff',
-
-          border:
-            '1px solid #e2e8f0',
-
-          borderRadius: 13,
-        }}
-      >
+      <div className="side-map__toolbar">
         <div
-          style={{
-            display:
-              'flex',
-
-            alignItems:
-              'center',
-
-            gap: 8,
-          }}
+          className="side-map__toolbar-group"
         >
-          <span
-            style={{
-              fontSize: 11,
-
-              fontWeight: 700,
-
-              color:
-                '#475569',
-            }}
-          >
-            Site
-          </span>
-
+          <span className="side-map__label">Site</span>
           <select
-            value={
-              siteFilter
-            }
+            className="side-map__select"
+            value={siteFilter}
             onChange={(e) =>
               setSiteFilter(
                 e.target.value
               )
             }
-            style={{
-              minWidth: 170,
-
-              padding:
-                '8px 12px',
-
-              border:
-                '1px solid #cbd5e1',
-
-              borderRadius: 8,
-
-              background:
-                '#ffffff',
-
-              color:
-                '#334155',
-
-              fontSize: 11,
-
-              outline: 'none',
-            }}
           >
             <option value="all">
               All Sites
@@ -4640,35 +4438,13 @@ export default function SideMap() {
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-          marginBottom: 18,
-          padding: 14,
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: 13,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>Floor</span>
+      <div className="side-map__toolbar">
+        <div className="side-map__toolbar-group">
+          <span className="side-map__label">Floor</span>
           <select
+            className="side-map__select"
             value={selectedFloorId}
             onChange={(e) => setSelectedFloorId(e.target.value)}
-            style={{
-              minWidth: 170,
-              padding: '8px 12px',
-              border: '1px solid #cbd5e1',
-              borderRadius: 8,
-              background: '#ffffff',
-              color: '#334155',
-              fontSize: 11,
-              outline: 'none',
-            }}
           >
             <option value="">All Floors</option>
             {availableFloors.map((floor) => (
@@ -4765,74 +4541,45 @@ export default function SideMap() {
           SUMMARY CARDS
       ================================================================= */}
 
-      <div
-        style={{
-          display:
-            'grid',
-
-          gridTemplateColumns:
-            'repeat(auto-fit,minmax(150px,1fr))',
-
-          gap: 12,
-
-          marginBottom: 20,
-        }}
-      >
+      <div className="side-map__summary-grid">
         <SummaryCard
           title="Total Restrooms"
-          value={
-            statistics.total
-          }
+          value={statistics.total}
           subtitle="Monitored locations"
           icon="🚻"
           accent="#2563eb"
         />
-
         <SummaryCard
           title="Healthy"
-          value={
-            statistics.healthy
-          }
+          value={statistics.healthy}
           subtitle="Low issue score"
           icon="✓"
           accent="#10b981"
         />
-
         <SummaryCard
           title="Needs Attention"
-          value={
-            statistics.attention
-          }
+          value={statistics.attention}
           subtitle="Moderate / high issues"
           icon="⚠"
           accent="#f59e0b"
         />
-
         <SummaryCard
           title="Critical"
-          value={
-            statistics.critical
-          }
+          value={statistics.critical}
           subtitle="Immediate attention"
           icon="!"
           accent="#ef4444"
         />
-
         <SummaryCard
           title="Active Alerts"
-          value={
-            statistics.alerts
-          }
+          value={statistics.alerts}
           subtitle="Requires action"
           icon="🔔"
           accent="#ef4444"
         />
-
         <SummaryCard
           title="Offline Devices"
-          value={
-            statistics.offline
-          }
+          value={statistics.offline}
           subtitle={`${statistics.lowBattery} low battery`}
           icon="📡"
           accent="#64748b"
@@ -4862,49 +4609,9 @@ export default function SideMap() {
             TOOLS PANEL
         ============================================================= */}
 
-        <div
-          style={{
-            background:
-              '#ffffff',
-
-            border:
-              '1px solid #e2e8f0',
-
-            borderRadius: 16,
-
-            padding: 14,
-
-            position:
-              'sticky',
-
-            top: 16,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-
-              fontWeight: 800,
-
-              color: '#0f172a',
-
-              marginBottom: 12,
-            }}
-          >
-            Tools
-          </div>
-
-          <div
-            style={{
-              display:
-                'flex',
-
-              flexDirection:
-                'column',
-
-              gap: 6,
-            }}
-          >
+      <div className="side-map__tools-panel">
+          <div className="side-map__tools-title">Tools</div>
+          <div className="side-map__tools-group">
             <button
               type="button"
               onClick={() => {
@@ -4917,38 +4624,17 @@ export default function SideMap() {
                   setShowDevicePicker(false)
                 }
               }}
+              className="side-map__btn side-map__btn--ghost"
               style={{
-                display: 'flex',
-
-                alignItems:
-                  'center',
-
-                gap: 8,
-
-                padding: '10px 12px',
-
-                borderRadius: 10,
-
-                border:
-                  interactionMode === 'draw-restroom'
-                    ? '1px solid #2563eb'
-                    : '1px solid #e2e8f0',
-
-                background:
-                  interactionMode === 'draw-restroom'
-                    ? '#eff6ff'
-                    : '#f8fafc',
-
-                color:
-                  interactionMode === 'draw-restroom'
-                    ? '#2563eb'
-                    : '#334155',
-
-                fontSize: 11,
-
-                fontWeight: 700,
-
-                cursor: 'pointer',
+                border: interactionMode === 'draw-restroom'
+                  ? '1px solid #2563eb'
+                  : '1px solid var(--border)',
+                background: interactionMode === 'draw-restroom'
+                  ? 'var(--primary-soft)'
+                  : 'var(--surface-muted)',
+                color: interactionMode === 'draw-restroom'
+                  ? 'var(--primary)'
+                  : 'var(--text)',
               }}
             >
               <span
@@ -4956,8 +4642,8 @@ export default function SideMap() {
                   width: 24,
                   height: 24,
                   borderRadius: 6,
-                  background: interactionMode === 'draw-restroom' ? '#2563eb' : '#e2e8f0',
-                  color: interactionMode === 'draw-restroom' ? '#fff' : '#64748b',
+                  background: interactionMode === 'draw-restroom' ? 'var(--primary)' : 'var(--surface-hover)',
+                  color: interactionMode === 'draw-restroom' ? '#fff' : 'var(--text)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4982,38 +4668,17 @@ export default function SideMap() {
                   setShowDevicePicker(false)
                 }
               }}
+              className="side-map__btn side-map__btn--ghost"
               style={{
-                display: 'flex',
-
-                alignItems:
-                  'center',
-
-                gap: 8,
-
-                padding: '10px 12px',
-
-                borderRadius: 10,
-
-                border:
-                  placeDeviceMode
-                    ? '1px solid #2563eb'
-                    : '1px solid #e2e8f0',
-
-                background:
-                  placeDeviceMode
-                    ? '#eff6ff'
-                    : '#f8fafc',
-
-                color:
-                  placeDeviceMode
-                    ? '#2563eb'
-                    : '#334155',
-
-                fontSize: 11,
-
-                fontWeight: 700,
-
-                cursor: 'pointer',
+                border: placeDeviceMode
+                  ? '1px solid #2563eb'
+                  : '1px solid var(--border)',
+                background: placeDeviceMode
+                  ? 'var(--primary-soft)'
+                  : 'var(--surface-muted)',
+                color: placeDeviceMode
+                  ? 'var(--primary)'
+                  : 'var(--text)',
               }}
             >
               <span
@@ -5021,8 +4686,8 @@ export default function SideMap() {
                   width: 24,
                   height: 24,
                   borderRadius: 6,
-                  background: placeDeviceMode ? '#2563eb' : '#e2e8f0',
-                  color: placeDeviceMode ? '#fff' : '#64748b',
+                  background: placeDeviceMode ? 'var(--primary)' : 'var(--surface-hover)',
+                  color: placeDeviceMode ? '#fff' : 'var(--text)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -5237,47 +4902,17 @@ export default function SideMap() {
             MAP
         ============================================================= */}
 
-        <div
-          style={{
-            background:
-              '#ffffff',
-
-            border:
-              '1px solid #e2e8f0',
-
-            borderRadius: 16,
-
-            padding: 16,
-
-            position:
-              'relative',
-          }}
-        >
+        <div className="side-map__map-container">
           <div
-            style={{
-              display:
-                'flex',
-
-              justifyContent:
-                'space-between',
-
-              alignItems:
-                'center',
-
-              marginBottom: 14,
-            }}
+            className="side-map__map-header"
           >
             <div>
               <h3
                 style={{
                   margin: 0,
-
                   fontSize: 17,
-
                   fontWeight: 800,
-
-                  color:
-                    '#0f172a',
+                  color: '#0f172a',
                 }}
               >
                 Unified Site Map
@@ -5285,13 +4920,9 @@ export default function SideMap() {
 
               <p
                 style={{
-                  margin:
-                    '4px 0 0',
-
+                  margin: '4px 0 0',
                   fontSize: 10,
-
-                  color:
-                    '#94a3b8',
+                  color: '#94a3b8',
                 }}
               >
                 Geo map with floor plan overlay and device placement
@@ -5301,9 +4932,7 @@ export default function SideMap() {
             <div
               style={{
                 fontSize: 10,
-
-                color:
-                  '#64748b',
+                color: '#64748b',
               }}
             >
               {statistics.totalFeedback}{' '}
@@ -5313,18 +4942,11 @@ export default function SideMap() {
 
           <div
             style={{
-              position:
-                'relative',
-
+              position: 'relative',
               height: 560,
-
               borderRadius: 18,
-
-              overflow:
-                'hidden',
-
-              border:
-                '1px solid #e2e8f0',
+              overflow: 'hidden',
+              border: '1px solid #e2e8f0',
             }}
           >
             {renderUnifiedMap()}
@@ -5335,44 +4957,17 @@ export default function SideMap() {
             CRITICAL PANEL
         ============================================================= */}
 
-        <div
-          style={{
-            background:
-              '#ffffff',
-
-            border:
-              '1px solid #e2e8f0',
-
-            borderRadius: 16,
-
-            padding: 16,
-          }}
-        >
+        <div className="side-map__critical-panel">
           <div
-            style={{
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              justifyContent:
-                'space-between',
-
-              marginBottom: 14,
-            }}
+            className="side-map__critical-item-header"
           >
             <div>
               <h3
                 style={{
                   margin: 0,
-
                   fontSize: 15,
-
                   fontWeight: 800,
-
-                  color:
-                    '#0f172a',
+                  color: '#0f172a',
                 }}
               >
                 Critical Restrooms
@@ -5381,11 +4976,8 @@ export default function SideMap() {
               <div
                 style={{
                   marginTop: 3,
-
                   fontSize: 9,
-
-                  color:
-                    '#94a3b8',
+                  color: '#94a3b8',
                 }}
               >
                 Highest issue score
@@ -5395,22 +4987,12 @@ export default function SideMap() {
             <span
               style={{
                 width: 28,
-
                 height: 28,
-
                 borderRadius: 8,
-
-                background:
-                  '#fef2f2',
-
-                display:
-                  'flex',
-
-                alignItems:
-                  'center',
-
-                justifyContent:
-                  'center',
+                background: '#fef2f2',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               🚨
@@ -5973,36 +5555,17 @@ export default function SideMap() {
       ================================================================= */}
 
       <div
-        style={{
-          background:
-            '#ffffff',
-
-          border:
-            '1px solid #e2e8f0',
-
-          borderRadius: 16,
-
-          padding: 20,
-
-          marginTop: 18,
-        }}
+        className="side-map__selected-restroom"
       >
         <div
-          style={{
-            marginBottom: 16,
-          }}
+          className="side-map__critical-header"
         >
           <h3
             style={{
               margin: 0,
-
               fontSize: 16,
-
-              fontWeight:
-                800,
-
-              color:
-                '#0f172a',
+              fontWeight: 800,
+              color: '#0f172a',
             }}
           >
             Selected Restroom
@@ -6010,13 +5573,9 @@ export default function SideMap() {
 
           <p
             style={{
-              margin:
-                '4px 0 0',
-
+              margin: '4px 0 0',
               fontSize: 10,
-
-              color:
-                '#94a3b8',
+              color: '#94a3b8',
             }}
           >
             Detailed operational
@@ -6033,19 +5592,7 @@ export default function SideMap() {
 
       {sites.length > 0 && (
         <div
-          style={{
-            background:
-              '#ffffff',
-
-            border:
-              '1px solid #e2e8f0',
-
-            borderRadius: 16,
-
-            padding: 20,
-
-            marginTop: 18,
-          }}
+          className="side-map__site-overview"
         >
           <div
             style={{
@@ -6086,15 +5633,7 @@ export default function SideMap() {
           </div>
 
           <div
-            style={{
-              display:
-                'grid',
-
-              gridTemplateColumns:
-                'repeat(auto-fit,minmax(180px,1fr))',
-
-              gap: 12,
-            }}
+            className="side-map__site-grid"
           >
             {sites.map(
               (site) => {
@@ -6134,18 +5673,7 @@ export default function SideMap() {
                       site.id ||
                       site.name
                     }
-                    style={{
-                      padding: 14,
-
-                      border:
-                        '1px solid #e2e8f0',
-
-                      borderRadius:
-                        12,
-
-                      background:
-                        '#f8fafc',
-                    }}
+                    className="side-map__site-card"
                   >
                     <div
                       style={{
@@ -6255,37 +5783,17 @@ function SmallStatus({
 }) {
   return (
     <div
-      style={{
-        padding: 9,
-
-        borderRadius: 8,
-
-        background:
-          '#f8fafc',
-      }}
+      className="side-map__status-card"
     >
       <div
-        style={{
-          fontSize: 9,
-
-          color:
-            '#94a3b8',
-        }}
+        className="side-map__status-label"
       >
         {label}
       </div>
 
       <div
-        style={{
-          marginTop: 3,
-
-          fontSize: 15,
-
-          fontWeight:
-            800,
-
-          color,
-        }}
+        className="side-map__status-value"
+        style={{ color }}
       >
         {value}
       </div>
@@ -6304,30 +5812,15 @@ function SiteMetric({
   value,
 }) {
   return (
-    <div>
+    <div className="side-map__metric">
       <div
-        style={{
-          fontSize: 8,
-
-          color:
-            '#94a3b8',
-        }}
+        className="side-map__metric-label"
       >
         {label}
       </div>
 
       <div
-        style={{
-          marginTop: 3,
-
-          fontSize: 14,
-
-          fontWeight:
-            800,
-
-          color:
-            '#334155',
-        }}
+        className="side-map__metric-value"
       >
         {value}
       </div>

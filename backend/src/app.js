@@ -422,44 +422,115 @@ const swaggerOptions = {
           responses: { "200": { description: "Test sent" } },
         },
       },
+      "/api/gateway": {
+        get: {
+          tags: ["Gateways"],
+          summary: "Get all gateways",
+          responses: { "200": { description: "Gateways list" } },
+        },
+        post: {
+          tags: ["Gateways"],
+          summary: "Create gateway",
+          responses: { "201": { description: "Created" } },
+        },
+      },
+      "/api/gateway/{id}": {
+        get: {
+          tags: ["Gateways"],
+          summary: "Get gateway by ID",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Gateway details" } },
+        },
+        put: {
+          tags: ["Gateways"],
+          summary: "Update gateway",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Gateways"],
+          summary: "Delete gateway",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/api/gateway/{id}/register-ttn": {
+        post: {
+          tags: ["Gateways"],
+          summary: "Register gateway in TTN",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Registered" } },
+        },
+      },
+      "/api/gateway/{id}/devices": {
+        get: {
+          tags: ["Gateways"],
+          summary: "Get gateway connected devices",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Devices list" } },
+        },
+      },
+      "/api/gateway/{id}/uplinks": {
+        get: {
+          tags: ["Gateways"],
+          summary: "Get gateway uplink history",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Uplinks list" } },
+        },
+      },
+      "/api/gateway/{id}/events": {
+        get: {
+          tags: ["Gateways"],
+          summary: "Get gateway event logs",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Events list" } },
+        },
+      },
       "/api/gateway/gateway-status": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get gateway status",
           responses: { "200": { description: "Gateway status" } },
         },
       },
+      "/api/gateway/gateway-status": {
+        post: {
+          tags: ["Gateways"],
+          summary: "Update gateway status",
+          responses: { "200": { description: "Updated" } },
+        },
+      },
       "/api/gateway/network-status": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get network status",
           responses: { "200": { description: "Network status" } },
         },
       },
       "/api/gateway/offline-devices": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get offline devices",
           responses: { "200": { description: "Offline devices" } },
         },
       },
       "/api/gateway/incident-log": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get incident log",
           responses: { "200": { description: "Incident log" } },
         },
       },
       "/api/gateway/recovery-status": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get recovery status",
           responses: { "200": { description: "Recovery status" } },
         },
       },
       "/api/gateway/incidents/{alertId}/close": {
         post: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Manually close incident",
           parameters: [{ name: "alertId", in: "path", required: true, schema: { type: "string" } }],
           responses: { "200": { description: "Incident closed" } },
@@ -467,19 +538,19 @@ const swaggerOptions = {
       },
       "/api/gateway/audit-log": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get audit log",
           responses: { "200": { description: "Audit log" } },
         },
         post: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Create audit log entry",
           responses: { "201": { description: "Audit log created" } },
         },
       },
       "/api/gateway/server-status": {
         get: {
-          tags: ["Disaster / Gateway"],
+          tags: ["Gateways"],
           summary: "Get server status",
           responses: { "200": { description: "Server status" } },
         },

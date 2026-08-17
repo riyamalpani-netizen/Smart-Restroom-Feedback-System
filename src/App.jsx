@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import LiveFeedback from './pages/LiveFeedback'
 import SideMap from './pages/SideMap'
 import Reports from './pages/Reports'
+import GatewayManagement from './pages/GatewayManagement'
 import DeviceManagement from './pages/DeviceManagement'
 import RestroomManagement from './pages/RestroomManagement'
 import AlertManagement from './pages/AlertManagement'
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="live-feedback" element={<ProtectedRoute path="/live-feedback"><LiveFeedback /></ProtectedRoute>} />
         <Route path="sidemap" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/sidemap"><SideMap /></ProtectedRoute>} />
         <Route path="reports" element={<ProtectedRoute path="/reports"><Reports /></ProtectedRoute>} />
+        <Route path="gateways" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/gateways"><GatewayManagement /></ProtectedRoute>} />
         <Route path="devices" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/devices"><DeviceManagement /></ProtectedRoute>} />
         <Route path="restrooms" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/restrooms"><RestroomManagement /></ProtectedRoute>} />
         <Route path="alerts" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]} path="/alerts"><AlertManagement /></ProtectedRoute>} />

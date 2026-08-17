@@ -31,5 +31,8 @@
 .planner-review__tree { background:var(--surface-muted); border-color:var(--border); }
 .planner-review__tree div, .planner-review__tree span { color:var(--text); }
 .planner-modal-backdrop { background:rgba(11,20,25,.6); }
-.planner-location-results { background:var(--surface); border-color:var(--border); box-shadow:var(--shadow); }
-.planner-location-results button { color:var(--text-h); border-color:var(--border); }
+.planner-location-search { position: relative; }
+.planner-location-results { position:absolute; left:0; right:0; top:100%; z-index:9999; max-height:220px; overflow-y:auto; margin-top:6px; display:flex; flex-direction:column; background:#202338; border:1px solid #363952; border-radius:8px; box-shadow:0 10px 30px #000a; }
+.planner-location-results button { color:#e8eaf4; border:none; border-bottom:1px solid #363952; background:transparent; text-align:left; padding:10px 12px; font-size:13px; cursor:pointer; width:100%; }
+.planner-location-results button:last-child { border-bottom:none; }
+.planner-location-results button:hover { background:#2a2d45; }

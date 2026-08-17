@@ -1,10 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { io } from 'socket.io-client'
 import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import api from '../services/api'
+import api, { gatewayAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export default function DeviceManagement() {
   const { user } = useAuth()
@@ -16,13 +19,19 @@ export default function DeviceManagement() {
   const [replaceOpen, setReplaceOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
-  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '' })
+  const [editForm, setEditForm] = useState({ name: '', deviceType: 'sensor', restroomId: '', floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '' })
+  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '' })
   const canEdit = user?.role !== 'viewer'
 
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
+  const [gateways, setGateways] = useState([])
+  const socketRef = useRef(null)
 
   const loadDevices = useCallback(async () => {
     try {
@@ -35,14 +44,16 @@ export default function DeviceManagement() {
 
   const loadRestrooms = useCallback(async () => {
     try {
-      const [locData, floorData, restData] = await Promise.all([
+      const [locData, floorData, restData, gwData] = await Promise.all([
         api.get('/api/locations'),
         api.get('/api/floors'),
         api.get('/api/restrooms'),
+        gatewayAPI.getAll(),
       ])
       setLocations(locData.locations || [])
       setFloors(floorData.floors || [])
       setRestrooms(restData.restrooms || [])
+      setGateways(gwData.gateways || [])
     } catch (e) {
       console.error('Load restrooms error:', e)
     }
@@ -64,6 +75,27 @@ export default function DeviceManagement() {
       loadDevices()
     }, 30000)
     return () => clearInterval(timer)
+   }, [loadDevices])
+
+  useEffect(() => {
+    const token = localStorage.getItem('srfs_token')
+    if (!token) return
+
+    const socket = io(API_URL, {
+      auth: { token },
+      transports: ['websocket'],
+    })
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      socket.on('new-feedback', () => loadDevices())
+    })
+
+    return () => {
+      socket.off('new-feedback')
+      socket.disconnect()
+      socketRef.current = null
+    }
   }, [loadDevices])
 
   const filtered = devices.filter(
@@ -131,16 +163,77 @@ export default function DeviceManagement() {
         deviceType: newDevice.deviceType,
         restroomId: newDevice.restroomId || null,
         floorId: newDevice.floorId || null,
+        deviceEui: newDevice.deviceEui || undefined,
+        appKey: newDevice.appKey || undefined,
         lorawanVersion: newDevice.lorawanVersion || undefined,
         lorawanPhyVersion: newDevice.lorawanPhyVersion || undefined,
       })
-      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '' })
+      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '' })
       setAddOpen(false)
       await loadDevices()
     } catch (e) {
       alert(e.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openEdit = (device) => {
+    setSelected(device)
+    setEditForm({
+      name: device.name || '',
+      deviceType: device.deviceType || 'sensor',
+      restroomId: device.restroomId || '',
+      floorId: device.floorId || '',
+      batteryLevel: device.battery ?? '',
+      deviceEui: device.deviceEui || '',
+      appKey: device.appKey || '',
+      gatewayId: device.gatewayId || '',
+    })
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault()
+    if (!selected) return
+    setSaving(true)
+    try {
+      const data = await api.put(`/api/devices/${selected.id}`, {
+        name: editForm.name,
+        deviceType: editForm.deviceType,
+        restroomId: editForm.restroomId || null,
+        floorId: editForm.floorId || null,
+        batteryLevel: editForm.batteryLevel ? Number(editForm.batteryLevel) : undefined,
+        deviceEui: editForm.deviceEui || undefined,
+        appKey: editForm.appKey || undefined,
+        gatewayId: editForm.gatewayId || null,
+      })
+      setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
+      setSelected((prev) => ({ ...prev, ...data.device }))
+      setEditOpen(false)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmDelete = () => {
+    setDeleteOpen(true)
+  }
+
+  const handleDelete = async () => {
+    if (!selected) return
+    setDeleting(true)
+    try {
+      await api.delete(`/api/devices/${selected.id}`)
+      setDevices((prev) => prev.filter((d) => d.id !== selected.id))
+      setSelected(null)
+      setDeleteOpen(false)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -169,46 +262,55 @@ export default function DeviceManagement() {
           ) : (
             <div className="table-wrapper">
               <table className="data-table">
-                 <thead>
-                   <tr>
-                     <th>Name</th>
-                     <th>Type</th>
-                     <th>Badge ID</th>
-                     <th>Restroom</th>
-                     <th>Battery</th>
-                     <th>Status</th>
-                     <th>Health</th>
-                     <th>Last Communication</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {filtered.map((device) => (
-                     <tr
-                       key={device.id}
-                       className={selected?.id === device.id ? 'data-table__row--selected' : ''}
-                       onClick={() => setSelected(device)}
-                     >
-                       <td>{device.name || '—'}</td>
-                       <td>{device.deviceType || 'sensor'}</td>
-                       <td><code>{device.badgeId}</code></td>
-                       <td>{device.restroomName}</td>
-                       <td>
-                         <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
-                           {device.battery ?? '—'}%
-                         </span>
-                       </td>
-                       <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
-                       <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
-                       <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
-                     </tr>
-                   ))}
-                   {filtered.length === 0 && (
-                     <tr>
-                       <td colSpan="8" style={{ textAlign: 'center', color: '#64748b' }}>
-                         No devices found
-                       </td>
-                     </tr>
-                   )}
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Badge ID</th>
+                      <th>Restroom</th>
+                      <th>Battery</th>
+                      <th>Status</th>
+                      <th>Health</th>
+                      <th>Last Communication</th>
+                      {canEdit && <th>Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((device) => (
+                      <tr
+                        key={device.id}
+                        className={selected?.id === device.id ? 'data-table__row--selected' : ''}
+                        onClick={() => setSelected(device)}
+                      >
+                        <td>{device.name || '—'}</td>
+                        <td>{device.deviceType || 'sensor'}</td>
+                        <td><code>{device.badgeId}</code></td>
+                        <td>{device.restroomName}</td>
+                        <td>
+                          <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
+                            {device.battery ?? '—'}%
+                          </span>
+                        </td>
+                        <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
+                        <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
+                        <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                        {canEdit && (
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
+                              <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); confirmDelete() }}>Delete</button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={canEdit ? "9" : "8"} style={{ textAlign: 'center', color: '#64748b' }}>
+                          No devices found
+                        </td>
+                      </tr>
+                    )}
                  </tbody>
               </table>
             </div>
@@ -247,19 +349,27 @@ export default function DeviceManagement() {
                <dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
                <dt>Health</dt>
                <dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
-               <dt>Last Communication</dt>
-               <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
-             </dl>
-             {canEdit && (
-               <div className="btn-group">
-                 <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
-                   Replace Badge
-                 </button>
-                 <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
-                   Map Badge
-                 </button>
-               </div>
-             )}
+                <dt>Last Communication</dt>
+                <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
+                <dt>Gateway</dt>
+                <dd>{selected.gatewayName || '—'}</dd>
+              </dl>
+              {canEdit && (
+                <div className="btn-group">
+                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>
+                    Edit
+                  </button>
+                  <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
+                    Replace Badge
+                  </button>
+                  <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
+                    Map Badge
+                  </button>
+                  <button type="button" className="btn btn--danger" onClick={confirmDelete}>
+                    Delete
+                  </button>
+                </div>
+              )}
           </aside>
         )}
       </div>
@@ -302,9 +412,9 @@ export default function DeviceManagement() {
         <div className="modal-overlay" onClick={() => setAddOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Add Device</h3>
-            <p style={{ color: '#64748b', fontSize: 13, marginTop: -8 }}>
-              The device will be automatically registered in TTN with generated credentials.
-            </p>
+              <p style={{ color: '#64748b', fontSize: 13, marginTop: -8 }}>
+                Enter the Details
+              </p>
             <form onSubmit={handleCreateDevice}>
               <label>
                 Device Name *
@@ -340,6 +450,14 @@ export default function DeviceManagement() {
                   <option value="">Select restroom</option>
                   {restrooms.filter((r) => !newDevice.floorId || r.floorId === newDevice.floorId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
+              </label>
+              <label>
+                Device EUI *
+                <input type="text" value={newDevice.deviceEui} onChange={(e) => setNewDevice((d) => ({ ...d, deviceEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" required />
+              </label>
+              <label>
+                App Key *
+                <input type="text" value={newDevice.appKey} onChange={(e) => setNewDevice((d) => ({ ...d, appKey: e.target.value }))} placeholder="e.g. A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6" required />
               </label>
               <label>
                 LoRaWAN Version
@@ -387,6 +505,95 @@ export default function DeviceManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {editOpen && (
+        <div className="modal-overlay" onClick={() => setEditOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Device</h3>
+            <form onSubmit={handleSaveEdit}>
+              <label>
+                Device Name
+                <input type="text" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+              </label>
+              <label>
+                Device Type
+                <select value={editForm.deviceType} onChange={(e) => setEditForm((f) => ({ ...f, deviceType: e.target.value }))}>
+                  <option value="sensor">Sensor</option>
+                  <option value="gateway">Gateway</option>
+                  <option value="badge">Badge</option>
+                </select>
+              </label>
+              <label>
+                Site
+                <select value={editForm.locationId} onChange={(e) => setEditForm((f) => ({ ...f, locationId: e.target.value, floorId: '', restroomId: '' }))}>
+                  <option value="">Select site</option>
+                  {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}
+                </select>
+              </label>
+              <label>
+                Floor
+                <select value={editForm.floorId} onChange={(e) => setEditForm((f) => ({ ...f, floorId: e.target.value, restroomId: '' }))} disabled={!editForm.locationId}>
+                  <option value="">Select floor</option>
+                  {floors.filter((f) => !editForm.locationId || f.locationId === editForm.locationId).map((floor) => (
+                    <option key={floor.id} value={floor.id}>{floor.floorName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Restroom
+                <select value={editForm.restroomId} onChange={(e) => setEditForm((f) => ({ ...f, restroomId: e.target.value }))} disabled={!editForm.floorId}>
+                  <option value="">Unassigned</option>
+                  {restrooms.filter((r) => !editForm.floorId || r.floorId === editForm.floorId).map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Battery Level
+                <input type="number" min="0" max="100" value={editForm.batteryLevel} onChange={(e) => setEditForm((f) => ({ ...f, batteryLevel: e.target.value }))} />
+              </label>
+              <label>
+                Device EUI
+                <input type="text" value={editForm.deviceEui} onChange={(e) => setEditForm((f) => ({ ...f, deviceEui: e.target.value }))} />
+              </label>
+              <label>
+                App Key
+                <input type="text" value={editForm.appKey} onChange={(e) => setEditForm((f) => ({ ...f, appKey: e.target.value }))} />
+              </label>
+              <label>
+                Gateway
+                <select value={editForm.gatewayId} onChange={(e) => setEditForm((f) => ({ ...f, gatewayId: e.target.value }))}>
+                  <option value="">Unassigned</option>
+                  {gateways.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </label>
+              <div className="btn-group">
+                <button type="button" className="btn btn--secondary" onClick={() => setEditOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteOpen && (
+        <div className="modal-overlay" onClick={() => setDeleteOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Device</h3>
+            <p style={{ color: '#64748b', fontSize: 14, margin: '8px 0 16px' }}>
+              Are you sure you want to delete <strong>{selected?.name || selected?.badgeId}</strong>? This will also remove it from the TTN console if it exists there.
+            </p>
+            <div className="btn-group">
+              <button type="button" className="btn btn--secondary" onClick={() => setDeleteOpen(false)}>Cancel</button>
+              <button type="button" className="btn btn--danger" disabled={deleting} onClick={handleDelete}>
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

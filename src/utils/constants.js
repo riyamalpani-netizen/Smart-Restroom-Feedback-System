@@ -40,19 +40,20 @@ export const NAV_ITEMS = [
   { path: '/sidemap', label: 'Sidemap', icon: '🗺️' },
    { path: '/reports', label: 'Reports', icon: '📈' },
    { path: '/site-config', label: 'Site Configuration', icon: '🗺️' },
+   { path: '/gateways', label: 'Gateway Management', icon: '📡' },
    { path: '/devices', label: 'Device Management', icon: '📱' },
   { path: '/restrooms', label: 'Restroom Management', icon: '🚻' },
   { path: '/alerts', label: 'Alert Management', icon: '🔔' },
   { path: '/disaster', label: 'Disaster Management', icon: '⚠️' },
   { path: '/users', label: 'User Management', icon: '👥' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
-]
+ ]
 
 export const ROLE_ROUTE_ACCESS = {
-  [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
-  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
-  [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
-  [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
+  [ROLES.SUPER_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/gateways', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
+  [ROLES.VENDOR_ADMIN]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/gateways', '/devices', '/restrooms', '/alerts', '/disaster', '/users', '/settings', '/profile'],
+  [ROLES.FACILITY_MANAGER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/site-config', '/gateways', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
+  [ROLES.VIEWER]: ['/dashboard', '/live-feedback', '/sidemap', '/reports', '/gateways', '/devices', '/restrooms', '/alerts', '/disaster', '/profile'],
 }
 
 export function canAccessRoute(role, path) {
