@@ -23,6 +23,8 @@ export default function LiveFeedback() {
   const [totalPages, setTotalPages] = useState(1)
   const socketRef = useRef(null)
   const pollTimerRef = useRef(null)
+  const filterRef = useRef(filter)
+  const locationIdRef = useRef(locationId)
 
   const loadFeedback = useCallback(async (pageNum = 1, filterType = 'all', locId = '') => {
     try {
@@ -52,6 +54,14 @@ export default function LiveFeedback() {
       console.error('LiveFeedback locations load error:', e)
     }
   }, [])
+
+  useEffect(() => {
+    filterRef.current = filter
+  }, [filter])
+
+  useEffect(() => {
+    locationIdRef.current = locationId
+  }, [locationId])
 
   useEffect(() => {
     loadLocations()
@@ -98,6 +108,17 @@ export default function LiveFeedback() {
 
         socket.on('new-feedback', (entry) => {
           if (mounted) {
+            const currentFilter = filterRef.current
+            const currentLocationId = locationIdRef.current
+
+            if (currentFilter !== 'all' && entry.feedbackType !== currentFilter) {
+              return
+            }
+
+            if (currentLocationId && entry.restroom?.floor?.locationId !== currentLocationId && entry.locationId !== currentLocationId) {
+              return
+            }
+
             setLiveEntries((prev) => {
               const exists = prev.some((item) => item.id === entry.id)
               if (exists) return prev
@@ -164,6 +185,7 @@ export default function LiveFeedback() {
 
   const handleFilterChange = useCallback((e) => {
     setFilter(e.target.value)
+    setLiveEntries([])
   }, [])
 
   const handleLocationChange = useCallback((e) => {
