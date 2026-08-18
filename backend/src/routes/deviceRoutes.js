@@ -5,12 +5,14 @@ const { authenticate, authorize } = require("../auth/authMiddleware");
 const router = express.Router();
 
 router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDevices);
-router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceById);
 router.post("/", authenticate, authorize("super_admin", "vendor_admin"), createDevice);
+
+router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getOfflineDevices);
+router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceHealth);
+
+router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceById);
 router.put("/:id", authenticate, authorize("super_admin", "vendor_admin"), updateDevice);
 router.delete("/:id", authenticate, authorize("super_admin", "vendor_admin"), deleteDevice);
 router.post("/:id/register-ttn", authenticate, authorize("super_admin", "vendor_admin"), registerDeviceInTTN);
-router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceHealth);
-router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getOfflineDevices);
 
 module.exports = router;

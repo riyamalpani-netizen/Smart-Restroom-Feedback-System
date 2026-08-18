@@ -1349,11 +1349,12 @@ label {
 }
 
 /* Device layout */
-.device-layout {
+/* .device-layout {
   display: grid;
   grid-template-columns: 1fr 280px;
   gap: 16px;
   margin-top: 16px;
+  align-items: start;
 }
 
 .device-detail dl {
@@ -1378,6 +1379,57 @@ label {
 .device-detail dd code {
   font-size: 12px;
   word-break: break-all;
+}
+
+.device-detail .btn-group {
+  margin-top: 16px;
+} */
+ /* Device layout */
+.device-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.device-detail {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.device-detail dl {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px 0;
+  font-size: 14px;
+}
+
+.device-detail dt {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 10px;
+}
+
+.device-detail dt:first-child {
+  margin-top: 0;
+}
+
+.device-detail dd {
+  margin: 0 0 2px;
+  color: var(--text-h);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.device-detail dd code {
+  font-size: 12px;
+  word-break: break-all;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .device-detail .btn-group {

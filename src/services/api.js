@@ -30,6 +30,9 @@ async function request(path, options = {}) {
     try {
       const json = JSON.parse(text)
       message = json.message || message
+      if (json.error && json.message === 'Internal server error') {
+        message = json.error
+      }
     } catch {
       // keep text as message
     }
@@ -128,6 +131,19 @@ export const gatewayAPI = {
 }
 
 export default api
+
+export const testModeAPI = {
+  simulate: (data) => request('/api/test-mode/simulate-feedback', { method: 'POST', body: JSON.stringify(data) }),
+  getEvents: (params) => {
+    const qs = new URLSearchParams()
+    if (params?.badgeId) qs.set('badgeId', params.badgeId)
+    if (params?.deviceEui) qs.set('deviceEui', params.deviceEui)
+    if (params?.limit) qs.set('limit', params.limit)
+    const q = qs.toString()
+    return request(`/api/test-mode/events${q ? `?${q}` : ''}`)
+  },
+  clearEvents: (data) => request('/api/test-mode/events/clear', { method: 'POST', body: JSON.stringify(data) }),
+}
 
 export const alertAPI = {
   getUnhappyAggregated: () => request('/api/alerts/unhappy-aggregated'),

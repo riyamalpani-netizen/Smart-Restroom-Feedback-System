@@ -170,33 +170,6 @@ async function deleteLocation(req, res) {
   }
 }
 
-async function searchLocations(req, res) {
-  try {
-    const { q } = req.query;
-    if (!q || !q.trim()) {
-      return res.status(200).json({ results: [] });
-    }
-
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&q=${encodeURIComponent(q.trim())}`;
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "SmartRestroomFeedbackSystem/1.0",
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      return res.status(response.status).json({ message: "Geocoding service unavailable" });
-    }
-
-    const data = await response.json();
-    res.status(200).json({ results: data });
-  } catch (error) {
-    console.error("Location search error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-}
-
 module.exports = {
   getLocations,
   getLocationById,

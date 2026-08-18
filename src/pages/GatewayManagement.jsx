@@ -161,6 +161,7 @@ export default function GatewayManagement() {
       setGateways((prev) => prev.map((g) => (g.id === selected.id ? { ...g, ...data.gateway } : g)))
       setRegisterOpen(false)
       setRegisterForm({ ttnGatewayId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '', description: '' })
+      alert(data.message || 'Gateway registered in TTN successfully')
     } catch (e) {
       alert(e.message)
     } finally {

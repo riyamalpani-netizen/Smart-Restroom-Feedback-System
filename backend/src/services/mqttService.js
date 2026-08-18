@@ -40,8 +40,13 @@ function connectMQTT(io) {
   mqttClient.on("message", async (topic, message) => {
     try {
       const payload = JSON.parse(message.toString());
+      if (payload.simulated) {
+        logger.info(`MQTT message received on topic: ${topic} | dev_eui: ${payload.end_device_ids?.dev_eui || "unknown"} | simulated=true - skipping to avoid duplicate test records`);
+        return;
+      }
       const devEuiFromPayload = payload.end_device_ids?.dev_eui || payload.uplink_message?.ids?.dev_eui;
       logger.info(`MQTT message received on topic: ${topic} | dev_eui: ${devEuiFromPayload || "unknown"}`);
+      logger.info(`TTN RAW PAYLOAD: ${JSON.stringify(payload, null, 2)}`);
 
       const result = await processFeedback(payload);
 

@@ -45,8 +45,12 @@ function getIO() {
 }
 
 function emitToClients(event, data) {
-  if (io) {
-    io.emit(event, data);
+  try {
+    if (io) {
+      io.emit(event, data);
+    }
+  } catch (error) {
+    logger.error("Socket emit error:", error);
   }
 }
 

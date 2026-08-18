@@ -4,7 +4,7 @@ import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import api, { gatewayAPI } from '../services/api'
+import api, { gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
@@ -23,6 +23,10 @@ export default function DeviceManagement() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [testOpen, setTestOpen] = useState(false)
+  const [testForm, setTestForm] = useState({ feedbackType: 'happy', count: 1 })
+  const [testResult, setTestResult] = useState(null)
+  const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
   const [editForm, setEditForm] = useState({ name: '', deviceType: 'sensor', restroomId: '', floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '' })
   const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '' })
@@ -237,6 +241,34 @@ export default function DeviceManagement() {
     }
   }
 
+  const openTest = () => {
+    setSelected((prev) => prev || null)
+    setTestForm({ feedbackType: 'happy', count: 1 })
+    setTestResult(null)
+    setTestOpen(true)
+  }
+
+  const handleSimulate = async (e) => {
+    e.preventDefault()
+    if (!selected) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const data = await testModeAPI.simulate({
+        badgeId: selected.badgeId,
+        deviceEui: selected.deviceEui,
+        feedbackType: testForm.feedbackType,
+        count: testForm.count,
+      })
+      setTestResult(data)
+      await loadDevices()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
@@ -356,18 +388,21 @@ export default function DeviceManagement() {
               </dl>
               {canEdit && (
                 <div className="btn-group">
-                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>
+                  {/* <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>
                     Edit
-                  </button>
+                  </button> */}
                   <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
                     Replace Badge
                   </button>
                   <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
                     Map Badge
                   </button>
-                  <button type="button" className="btn btn--danger" onClick={confirmDelete}>
-                    Delete
+                  <button type="button" className="btn btn--primary" onClick={openTest}>
+                    Test Device
                   </button>
+                  {/* <button type="button" className="btn btn--danger" onClick={confirmDelete}>
+                    Delete
+                  </button> */}
                 </div>
               )}
           </aside>
@@ -594,6 +629,79 @@ export default function DeviceManagement() {
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {testOpen && selected && (
+        <div className="modal-overlay" onClick={() => setTestOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Test Mode</h3>
+            <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
+              Simulate device feedback without pressing the physical button. Test data is separated from live data.
+            </p>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
+                <div><strong>Device:</strong> <code>{selected.badgeId || selected.deviceEui}</code></div>
+                <div><strong>Badge ID:</strong> <code>{selected.badgeId}</code></div>
+                <div><strong>Device EUI:</strong> <code>{selected.deviceEui || '—'}</code></div>
+                <div><strong>Gateway:</strong> <code>{selected.gatewayName || '—'}</code></div>
+                <div><strong>Restroom:</strong> {selected.restroomName}</div>
+                <div><strong>Status:</strong> <StatusBadge status={selected.status || 'offline'} variant="device" /></div>
+              </div>
+            </div>
+
+            {testResult && (
+              <div style={{
+                background: testResult.testMode ? '#dcfce7' : '#fee2e2',
+                border: `1px solid ${testResult.testMode ? '#86efac' : '#fca5a5'}`,
+                borderRadius: 8,
+                padding: 12,
+                marginBottom: 16,
+                fontSize: 13,
+              }}>
+                <strong>{testResult.testMode ? 'Test Event Generated' : 'Error'}</strong>
+                <p style={{ margin: '4px 0 0' }}>
+                  {testResult.testMode
+                    ? `${testResult.count} feedback event(s) simulated for ${testResult.results?.[0]?.badgeId || selected.badgeId}`
+                    : testResult.message || 'Something went wrong'}
+                </p>
+              </div>
+            )}
+
+            <form onSubmit={handleSimulate}>
+              <label>
+                Feedback Type
+                <select
+                  value={testForm.feedbackType}
+                  onChange={(e) => setTestForm((f) => ({ ...f, feedbackType: e.target.value }))}
+                >
+                  <option value="happy">Happy</option>
+                  <option value="average">Average</option>
+                  <option value="needs_cleaning">Needs Cleaning</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </label>
+
+              <label>
+                Count (1-100)
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={testForm.count}
+                  onChange={(e) => setTestForm((f) => ({ ...f, count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))}
+                />
+              </label>
+
+              <div className="btn-group">
+                <button type="button" className="btn btn--secondary" onClick={() => setTestOpen(false)}>Close</button>
+                <button type="submit" className="btn btn--primary" disabled={testing}>
+                  {testing ? 'Simulating...' : 'Generate Test Event'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
