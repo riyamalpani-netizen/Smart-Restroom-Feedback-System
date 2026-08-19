@@ -512,25 +512,25 @@ export default function DeviceManagement() {
                 </select>
               </label>
               <label>
-                Site *
+                Site
                 <select value={newDevice.locationId} onChange={(e) => setNewDevice((d) => ({ ...d, locationId: e.target.value, floorId: '', restroomId: '' }))}>
-                  <option value="">Select site</option>
+                  <option value="">Unassigned</option>
                   {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}
                 </select>
               </label>
               <label>
-                Floor *
+                Floor
                 <select value={newDevice.floorId} onChange={(e) => setNewDevice((d) => ({ ...d, floorId: e.target.value, restroomId: '' }))} disabled={!newDevice.locationId}>
-                  <option value="">Select floor</option>
+                  <option value="">Unassigned</option>
                   {floors.filter((f) => !newDevice.locationId || f.locationId === newDevice.locationId).map((floor) => (
                     <option key={floor.id} value={floor.id}>{floor.floorName}</option>
                   ))}
                 </select>
               </label>
               <label>
-                Restroom *
+                Restroom
                 <select value={newDevice.restroomId} onChange={(e) => setNewDevice((d) => ({ ...d, restroomId: e.target.value }))} disabled={!newDevice.floorId}>
-                  <option value="">Select restroom</option>
+                  <option value="">Unassigned</option>
                   {restrooms.filter((r) => !newDevice.floorId || r.floorId === newDevice.floorId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </label>
@@ -573,7 +573,6 @@ export default function DeviceManagement() {
                 <select
                   value={form.restroomId}
                   onChange={(e) => setForm((f) => ({ ...f, restroomId: e.target.value }))}
-                  required
                 >
                   <option value="">Unassigned</option>
                   {restrooms.map((r) => (
