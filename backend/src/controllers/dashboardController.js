@@ -619,6 +619,24 @@ async function getHeatMapData(req, res) {
       },
     });
 
+    // Site Configuration links each drawn restroom to a zone. The zone centroid
+    // is its actual map position; using the site centre stacks all markers.
+    const restroomZones = await prisma.zone.findMany({
+      where: {
+        restroomId: { in: restrooms.map((room) => room.id) },
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      select: { restroomId: true, latitude: true, longitude: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const zonePositionByRestroomId = new Map();
+    for (const zone of restroomZones) {
+      if (!zonePositionByRestroomId.has(zone.restroomId)) {
+        zonePositionByRestroomId.set(zone.restroomId, zone);
+      }
+    }
+
     const heatMapData = restrooms.map((room, index) => {
       const totalFeedback = room.feedback.length;
       const happyFeedback = room.feedback.filter((f) => f.feedbackType === "happy").length;
@@ -643,8 +661,9 @@ async function getHeatMapData(req, res) {
       const x = startX + col * (cellWidth + gapX) + cellWidth / 2
       const y = startY + row * (cellHeight + gapY) + cellHeight / 2
 
-      const latitude = room.floor.location.latitude || null
-      const longitude = room.floor.location.longitude || null
+      const zonePosition = zonePositionByRestroomId.get(room.id);
+      const latitude = zonePosition?.latitude ?? room.floor.location.latitude ?? null;
+      const longitude = zonePosition?.longitude ?? room.floor.location.longitude ?? null;
 
       return {
         id: room.id,

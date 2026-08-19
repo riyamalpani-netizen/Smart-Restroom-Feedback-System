@@ -35,6 +35,7 @@ export default function DeviceManagement() {
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
   const [gateways, setGateways] = useState([])
+  const [actionDeviceId, setActionDeviceId] = useState(null)
   const socketRef = useRef(null)
 
   const loadDevices = useCallback(async () => {
@@ -158,6 +159,38 @@ export default function DeviceManagement() {
     }
   }
 
+  const hasAssignedLocation = (device) => Boolean(
+    device?.locationName || device?.floorId || device?.restroomId || device?.zoneId
+  )
+
+  const handleUnassignLocation = async (device) => {
+    if (!window.confirm(`Remove the assigned location from ${device.name || device.badgeId}? The device will remain available in Device Management.`)) return
+    setSaving(true)
+    try {
+      const data = await api.put(`/api/devices/${device.id}`, {
+        restroomId: null,
+        floorId: null,
+        zoneId: null,
+        floorPlanPosX: null,
+        floorPlanPosY: null,
+      })
+      const unassigned = {
+        ...device,
+        ...data.device,
+        restroomName: 'Unassigned',
+        zoneName: null,
+        floorName: null,
+        locationName: null,
+      }
+      setDevices((prev) => prev.map((item) => item.id === device.id ? unassigned : item))
+      setSelected((prev) => prev?.id === device.id ? unassigned : prev)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleCreateDevice = async (e) => {
     e.preventDefault()
     setSaving(true)
@@ -230,10 +263,15 @@ export default function DeviceManagement() {
     if (!selected) return
     setDeleting(true)
     try {
-      await api.delete(`/api/devices/${selected.id}`)
+      const data = await api.delete(`/api/devices/${selected.id}`)
       setDevices((prev) => prev.filter((d) => d.id !== selected.id))
       setSelected(null)
       setDeleteOpen(false)
+      if (data.ttnDeleted) {
+        alert('Device deleted from app and TTN successfully')
+      } else {
+        alert(`Device deleted from app.\n\nTTN delete failed: ${data.ttnDeleteError || 'unknown reason'}.\nPlease delete it manually from TTN Console.`)
+      }
     } catch (e) {
       alert(e.message)
     } finally {
@@ -259,9 +297,13 @@ export default function DeviceManagement() {
         deviceEui: selected.deviceEui,
         feedbackType: testForm.feedbackType,
         count: testForm.count,
+        gatewayId: testForm.gatewayId || undefined,
       })
       setTestResult(data)
       await loadDevices()
+      if (data.ttnSimulated) {
+        alert(`TTN simulate successful for ${selected.badgeId}. Check TTN Console Live Data and the Live Feedback page.`)
+      }
     } catch (e) {
       alert(e.message)
     } finally {
@@ -270,7 +312,7 @@ export default function DeviceManagement() {
   }
 
   return (
-    <div className="page">
+    <div className="page management-page">
       <PageHeader
         action={
           canEdit ? (
@@ -317,7 +359,7 @@ export default function DeviceManagement() {
                         <td>{device.name || '—'}</td>
                         <td>{device.deviceType || 'sensor'}</td>
                         <td><code>{device.badgeId}</code></td>
-                        <td>{device.restroomName}</td>
+                         <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
                         <td>
                           <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
                             {device.battery ?? '—'}%
@@ -328,10 +370,13 @@ export default function DeviceManagement() {
                         <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
                         {canEdit && (
                           <td onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
-                              <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); confirmDelete() }}>Delete</button>
-                            </div>
+                             <div style={{ display: 'flex', gap: 6 }}>
+                               {hasAssignedLocation(device) && (
+                                 <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Remove location</button>
+                               )}
+                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
+                               <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); confirmDelete() }}>Delete</button>
+                             </div>
                           </td>
                         )}
                       </tr>
@@ -388,6 +433,9 @@ export default function DeviceManagement() {
               </dl>
               {canEdit && (
                 <div className="btn-group">
+                  {hasAssignedLocation(selected) && (
+                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Remove location</button>
+                  )}
                   {/* <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>
                     Edit
                   </button> */}

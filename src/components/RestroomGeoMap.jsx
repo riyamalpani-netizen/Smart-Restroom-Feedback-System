@@ -65,7 +65,24 @@ function createSiteIcon() {
 }
 
 function zonePositions(zone) {
-  return zone.coordinates?.coordinates?.[0]?.map(([lng, lat]) => [lat, lng]) || []
+  const raw = zone.coordinates
+  if (!raw) return []
+  let ring
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      ring = parsed?.coordinates?.[0]
+    } catch {
+      return []
+    }
+  } else {
+    ring = raw.coordinates?.[0]
+  }
+  if (!ring || !Array.isArray(ring)) return []
+  return ring.map((pt) => {
+    if (Array.isArray(pt) && pt.length >= 2) return [Number(pt[1]), Number(pt[0])]
+    return null
+  }).filter(Boolean)
 }
 
 function FitMapBounds({ bounds, center, zoom }) {

@@ -75,6 +75,10 @@ async function simulateFeedback(req, res) {
       });
     }
 
+    const selectedGateway = gatewayId
+      ? await prisma.gateway.findUnique({ where: { id: gatewayId }, select: { id: true, name: true, gatewayEui: true } })
+      : null;
+
     let ttnSimulated = false;
     let ttnSimulateError = null;
     try {
@@ -89,6 +93,12 @@ async function simulateFeedback(req, res) {
     } catch (ttnError) {
       ttnSimulateError = ttnError.message;
       console.warn(`[TestMode] TTN simulate failed, falling back to local simulation:`, ttnError.message);
+    }
+
+    if (ttnSimulated) {
+      console.log(`[TestMode] SUCCESS: Test uplink sent to TTN for device ${device.badgeId}. Check TTN Console Live Data.`);
+    } else {
+      console.log(`[TestMode] INFO: Using local simulation for device ${device.badgeId}.`);
     }
 
     const results = [];
@@ -125,13 +135,20 @@ async function simulateFeedback(req, res) {
               feedbackType,
               battery: battery ?? device.batteryLevel ?? 100,
               signalStrength: signalStrength ?? -60,
+              gatewayId: selectedGateway?.id || null,
+              gatewayName: selectedGateway?.name || null,
             }),
           },
         });
       }
 
       try {
-        emitToClients("new-feedback", { ...result.data, _testMode: true });
+        emitToClients("new-feedback", {
+          ...result.data,
+          _testMode: true,
+          gatewayId: selectedGateway?.id || result.data.gatewayId || null,
+          gatewayName: selectedGateway?.name || result.data.gatewayName || null,
+        });
       } catch (emitError) {
         console.error("TestMode emit new-feedback error:", emitError);
       }
@@ -156,6 +173,8 @@ async function simulateFeedback(req, res) {
         battery: result.data.battery,
         signalStrength: result.data.signalStrength,
         testMode: true,
+        gatewayId: selectedGateway?.id || null,
+        gatewayName: selectedGateway?.name || null,
         alert: result.alert ? { id: result.alert.id, priority: result.alert.priority, status: result.alert.status } : null,
       });
     }

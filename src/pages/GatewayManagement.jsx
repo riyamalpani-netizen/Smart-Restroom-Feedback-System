@@ -145,6 +145,37 @@ export default function GatewayManagement() {
     }
   }
 
+  const hasAssignedLocation = (gateway) => Boolean(
+    gateway?.locationId || gateway?.floorId || gateway?.zoneId
+  )
+
+  const handleUnassignLocation = async (gateway) => {
+    if (!window.confirm(`Remove the assigned location from ${gateway.name || gateway.gatewayEui}? The gateway will remain available in Gateway Management.`)) return
+    setSaving(true)
+    try {
+      const data = await gatewayAPI.update(gateway.id, {
+        locationId: null,
+        floorId: null,
+        zoneId: null,
+        latitude: null,
+        longitude: null,
+      })
+      const unassigned = {
+        ...gateway,
+        ...data.gateway,
+        site: null,
+        floor: null,
+        zone: null,
+      }
+      setGateways((prev) => prev.map((item) => item.id === gateway.id ? unassigned : item))
+      setSelected((prev) => prev?.id === gateway.id ? unassigned : prev)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleRegisterTTN = async (e) => {
     e.preventDefault()
     if (!selected) return
@@ -237,10 +268,13 @@ export default function GatewayManagement() {
                       <td>{gw.lastSeen ? formatDateTime(gw.lastSeen) : '—'}</td>
                       {canEdit && (
                         <td onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(gw)}>Edit</button>
-                            <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(gw); setDeleteOpen(true) }}>Delete</button>
-                          </div>
+                           <div style={{ display: 'flex', gap: 6 }}>
+                             {hasAssignedLocation(gw) && (
+                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(gw)}>Remove location</button>
+                             )}
+                             <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(gw)}>Edit</button>
+                             <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(gw); setDeleteOpen(true) }}>Delete</button>
+                           </div>
                         </td>
                       )}
                     </tr>
@@ -282,6 +316,9 @@ export default function GatewayManagement() {
             {activeTab === 'overview' && (
               <div>
                 <div className="btn-group">
+                  {hasAssignedLocation(selected) && (
+                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Remove location</button>
+                  )}
                   <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
                   <button type="button" className="btn btn--secondary" onClick={() => { setRegisterForm({ ttnGatewayId: '', frequencyPlanId: selected.frequencyPlanId || 'EU_863_870', latitude: selected.latitude || '', longitude: selected.longitude || '', description: selected.name || '' }); setRegisterOpen(true) }}>Register in TTN</button>
                   <button type="button" className="btn btn--danger" onClick={() => setDeleteOpen(true)}>Delete</button>

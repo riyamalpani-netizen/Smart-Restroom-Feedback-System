@@ -148,7 +148,7 @@ export default function Dashboard() {
     <div className="page dashboard-page">
       <div className="filters card dashboard-filters">
         <div className="dashboard-filters__title">
-          <span style={{ fontWeight: 600, color: '#334155', fontSize: 13 }}>Filters</span>
+          <span style={{ fontWeight: 600, color: 'white', fontSize: 13 }}>Filters</span>
           {hasActiveFilters && (
             <button type="button" className="btn btn--ghost" style={{ padding: '2px 8px', fontSize: 12 }} onClick={clearFilters}>
               Clear

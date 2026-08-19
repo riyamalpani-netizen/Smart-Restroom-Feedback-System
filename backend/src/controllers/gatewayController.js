@@ -1032,13 +1032,32 @@ async function deleteGateway(req, res) {
     const existing = await prisma.gateway.findFirst({ where: whereClause, include: { devices: true } });
     if (!existing) return res.status(404).json({ message: "Gateway not found" });
     if (existing.devices.length > 0) return res.status(400).json({ message: "Cannot delete gateway with connected devices. Reassign devices first." });
-    try {
-      await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined });
-    } catch (ttnError) {
-      console.error("TTN gateway delete error:", ttnError.message);
+    let ttnDeleted = false;
+    let ttnDeleteError = null;
+    const candidateIds = [
+      existing.gatewayId,
+      existing.ttnDeviceId,
+      `gateway-${existing.gatewayEui.toLowerCase()}`,
+      existing.gatewayEui,
+    ].filter(Boolean);
+
+    for (const candidate of candidateIds) {
+      try {
+        await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: candidate });
+        ttnDeleted = true;
+        break;
+      } catch (ttnError) {
+        ttnDeleteError = ttnError.message;
+        console.warn(`[Gateway] TTN delete attempt failed for ${candidate}:`, ttnError.message);
+      }
     }
+
     await prisma.gateway.delete({ where: { id } });
-    res.status(200).json({ message: "Gateway deleted successfully" });
+    res.status(200).json({
+      message: ttnDeleted ? "Gateway deleted successfully from app and TTN" : "Gateway deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
+      ttnDeleted,
+      ttnDeleteError,
+    });
   } catch (error) {
     console.error("Delete gateway error:", error);
     res.status(500).json({ message: "Internal server error" });

@@ -87,12 +87,16 @@ async function getZoneById(req, res) {
 
 async function createZone(req, res) {
   try {
-    const { floorId, name, type, coordinates, restroomId } = req.body;
+    const { floorId, name, type, coordinates, restroomId, latitude, longitude } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
     if (!floorId || !name) {
       return res.status(400).json({ message: "Floor ID and name are required" });
+    }
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return res.status(400).json({ message: "Latitude and longitude are required for zone placement" });
     }
 
     const floor = await prisma.floor.findFirst({
@@ -128,6 +132,8 @@ async function createZone(req, res) {
         name,
         type: zoneType,
         coordinates,
+        latitude: Number(latitude),
+        longitude: Number(longitude),
         restroomId,
       },
       include: {
@@ -149,7 +155,7 @@ async function createZone(req, res) {
 async function updateZone(req, res) {
   try {
     const { id } = req.params;
-    const { name, type, coordinates, restroomId } = req.body;
+    const { name, type, coordinates, restroomId, latitude, longitude } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -176,6 +182,8 @@ async function updateZone(req, res) {
     }
     if (coordinates !== undefined) updateData.coordinates = coordinates;
     if (restroomId !== undefined) updateData.restroomId = restroomId || null;
+    if (latitude !== undefined) updateData.latitude = Number(latitude);
+    if (longitude !== undefined) updateData.longitude = Number(longitude);
 
     const zone = await prisma.zone.update({
       where: { id },

@@ -257,6 +257,7 @@ async function createDevice(req, res) {
       ttnDeviceId = resolvedTtnDeviceId;
       lorawanVersion = resolvedLorawanVersion;
       lorawanPhyVersion = lorawanPhyVersion || null;
+      console.log(`[Device] Device ${resolvedBadgeId} (${resolvedDeviceEui}) registered in TTN as ${resolvedTtnDeviceId}`);
     } catch (error) {
       if (error.message.includes("409")) {
         return res.status(409).json({
@@ -611,15 +612,25 @@ async function deleteDevice(req, res) {
       return res.status(404).json({ message: "Device not found" });
     }
 
+    let ttnDeleted = false;
+    let ttnDeleteError = null;
     try {
       await deleteDeviceFromTTN({
         deviceEui: existing.deviceEui,
         deviceId: `device-${existing.deviceEui.toLowerCase()}`,
       });
+      ttnDeleted = true;
+      console.log(`[Device] Device ${existing.deviceEui} deleted from TTN successfully`);
     } catch (ttnError) {
-      console.error("TTN delete error:", ttnError.message);
+      ttnDeleteError = ttnError.message;
+      console.warn(`[Device] TTN delete failed for ${existing.deviceEui}: ${ttnError.message}`);
     }
 
+    const feedbackIds = await prisma.feedback.findMany({ where: { deviceId: id }, select: { id: true } }).then(f => f.map(x => x.id));
+    const alertIds = await prisma.alert.findMany({ where: { feedbackId: { in: feedbackIds } }, select: { id: true } }).then(a => a.map(x => x.id));
+
+    await prisma.notification.deleteMany({ where: { alertId: { in: alertIds } } });
+    await prisma.alert.deleteMany({ where: { feedbackId: { in: feedbackIds } } });
     await prisma.feedback.deleteMany({ where: { deviceId: id } });
     await prisma.deviceHealthRecord.deleteMany({ where: { deviceId: id } });
 
@@ -636,10 +647,14 @@ async function deleteDevice(req, res) {
 
     await prisma.device.delete({ where: { id } });
 
-    res.status(200).json({ message: "Device deleted successfully" });
+    res.status(200).json({
+      message: ttnDeleted ? "Device deleted successfully from app and TTN" : "Device deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
+      ttnDeleted,
+      ttnDeleteError,
+    });
   } catch (error) {
     console.error("Delete device error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error", error: error.message, stack: error.stack });
   }
 }
 

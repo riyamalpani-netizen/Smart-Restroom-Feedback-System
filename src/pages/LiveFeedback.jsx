@@ -227,10 +227,12 @@ export default function LiveFeedback() {
       const restroomName = entry.restroom?.name || entry.restroomName || ''
       const badgeId = entry.device?.badgeId || entry.badgeId || ''
       const feedbackType = entry.feedbackType || ''
+      const gatewayName = entry.gatewayName || entry.device?.gatewayName || ''
       return (
         restroomName.toLowerCase().includes(searchLower) ||
         badgeId.toLowerCase().includes(searchLower) ||
-        feedbackType.toLowerCase().includes(searchLower)
+        feedbackType.toLowerCase().includes(searchLower) ||
+        gatewayName.toLowerCase().includes(searchLower)
       )
     })
   }, [search, liveEntries, feedback])
@@ -257,6 +259,12 @@ export default function LiveFeedback() {
     if (entry.restroomName) return entry.restroomName
     if (entry.restroom?.name) return entry.restroom.name
     return 'Unknown'
+  }
+
+  const getGatewayName = (entry) => {
+    if (entry.gatewayName) return entry.gatewayName
+    if (entry.device?.gatewayName) return entry.device.gatewayName
+    return '—'
   }
 
   const connectionLabel = {
@@ -343,6 +351,7 @@ export default function LiveFeedback() {
                     <th>Restroom</th>
                     <th>Feedback</th>
                     <th>Badge ID</th>
+                    <th>Gateway</th>
                     <th>Battery</th>
                     <th>Device Status</th>
                   </tr>
@@ -354,6 +363,7 @@ export default function LiveFeedback() {
                       <td>{getRestroomName(entry)}</td>
                       <td><StatusBadge status={entry.feedbackType} variant="feedback" /></td>
                       <td><code>{getBadgeId(entry)}</code></td>
+                      <td><code>{getGatewayName(entry)}</code></td>
                       <td>
                         <span className={`battery battery--${(getBattery(entry) ?? 0) >= 30 ? 'ok' : 'low'}`}>
                           {getBattery(entry) != null ? `${getBattery(entry)}%` : '—'}
@@ -364,7 +374,7 @@ export default function LiveFeedback() {
                   ))}
                   {displayed.length === 0 && (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="7" style={{ textAlign: 'center', color: '#64748b' }}>
                         No feedback found
                       </td>
                     </tr>

@@ -101,7 +101,13 @@ export const zoneAPI = {
   importGeoJson: (data) => request('/api/zones/import', { method: 'POST', body: JSON.stringify(data) }),
 }
 
+export const restroomAPI = {
+  getAll: () => request('/api/restrooms'),
+  getByFloor: (floorId) => request(`/api/restrooms?floorId=${encodeURIComponent(floorId)}`),
+}
+
 export const deviceAPI = {
+  getAll: () => request('/api/devices'),
   getByFloor: (floorId) => request(`/api/devices?floorId=${encodeURIComponent(floorId)}`),
   getByZone: (zoneId) => request(`/api/zones/${encodeURIComponent(zoneId)}/devices`),
   create: (data) => request('/api/devices', { method: 'POST', body: JSON.stringify(data) }),

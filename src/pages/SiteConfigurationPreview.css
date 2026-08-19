@@ -124,6 +124,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   transition: border-color var(--transition);
+  flex-wrap: wrap;
 }
 
 .planner-preview-item:hover {
@@ -188,6 +189,12 @@
   padding: 5px 8px;
   line-height: 1;
   font-size: 14px;
+}
+
+.planner-preview-item .planner-button--ghost {
+  padding: 4px 8px;
+  font-size: 11px;
+  min-width: auto;
 }
 
 .planner-floor-row {
