@@ -142,7 +142,7 @@ function PreviewMap({ center, zoom = 15, site, bounds, planImage, zones = [], he
   const mapCenter = center || DEFAULT_CENTER
   return (
     <div className="planner-preview-map" style={{ height }}>
-      <MapContainer center={mapCenter} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom={false} dragging={false} doubleClickZoom={false} zoomControl={false}>
+      <MapContainer center={mapCenter} zoom={zoom} className="planner-map-container" scrollWheelZoom={false} dragging={false} doubleClickZoom={false} zoomControl={false}>
         <MapFocus center={mapCenter} zoom={zoom} />
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
         {site && <SitePin location={site} />}
@@ -261,7 +261,7 @@ function CenterPicker({ initial, onCancel, onSave }) {
           )}
         </div>
         <div className="planner-picker-map">
-          <MapContainer center={focus} zoom={initial ? 15 : 5} style={{ height: '100%', width: '100%' }}>
+          <MapContainer center={focus} zoom={initial ? 15 : 5} className="planner-map-container">
             <MapFocus center={focus} zoom={15} />
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
             <MapClick onClick={(point) => setSelected([point.lat, point.lng])} />
@@ -1223,7 +1223,7 @@ export default function SiteConfiguration() {
           <section className="planner-step-layout">
             <FloorSidebar floors={floors} floor={floor} onSelect={setFloor} onAdd={() => setAddFloorOpen(true)} onDelete={removeFloor} />
             <main className="planner-step-layout__canvas">
-              <MapContainer center={center} zoom={mapZoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="OpenStreetMap" />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapClick onClick={onMapClick} />
@@ -1306,7 +1306,7 @@ export default function SiteConfiguration() {
               </div>
             </div>
             <div className="planner-map">
-              <MapContainer center={center} zoom={mapZoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapCursor children={(selectedDeviceId && step === 5) || (selectedGatewayId && step === 6) ? 'crosshair' : ''} />
@@ -1448,7 +1448,7 @@ export default function SiteConfiguration() {
                   <select value={selectedDeviceId || ''} onChange={(e) => { setSelectedDeviceId(e.target.value || null); setPlacingType(e.target.value ? 'device' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a device...</option>
                     {allDevices.map((d) => (
-                      <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(on floor ${d.floorId === floor?.id ? 'here' : d.floorId})` : '(unplaced)'}</option>
+                      <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(${d.floorId === floor?.id ? 'here' : `Floor ${d.floorId}`})` : '(unplaced)'}</option>
                     ))}
                   </select>
                    {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
@@ -1480,7 +1480,7 @@ export default function SiteConfiguration() {
                   <select value={selectedGatewayId || ''} onChange={(e) => { setSelectedGatewayId(e.target.value || null); setPlacingType(e.target.value ? 'gateway' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a gateway...</option>
                     {allGateways.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name} {g.floorId ? `(on floor ${g.floorId === floor?.id ? 'here' : g.floorId})` : '(unplaced)'}</option>
+                      <option key={g.id} value={g.id}>{g.name} {g.floorId ? `(${g.floorId === floor?.id ? 'here' : `Floor ${g.floorId}`})` : '(unplaced)'}</option>
                     ))}
                   </select>
                    {selectedGatewayId && <small>Gateway selected. Click on the map to place it.</small>}

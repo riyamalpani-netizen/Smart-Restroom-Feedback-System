@@ -22,7 +22,7 @@
   background: #17192b;
   border-radius: 8px;
   padding: 16px;
-  width: 340px;
+  width: 380px;
   max-width: calc(100% - 32px);
   max-height: calc(100% - 32px);
   overflow-y: auto;
@@ -45,13 +45,30 @@
 }
 .planner-placement select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 32px 10px 12px;
   background: #111225;
   color: #eceef9;
   border: 1px solid #353851;
   border-radius: 6px;
   font: inherit;
   font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949ab1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+}
+.planner-placement select:focus {
+  border-color: #7774f1;
+  outline: none;
+}
+.planner-placement option {
+  padding: 8px 10px;
+  background: #111225;
+  color: #eceef9;
 }
 .planner-placement small {
   color: #38bdf8;
