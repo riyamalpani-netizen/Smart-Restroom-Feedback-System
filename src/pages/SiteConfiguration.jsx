@@ -1410,11 +1410,11 @@ export default function SiteConfiguration() {
                 </div>
               )}
 
-              {step === 4 && (
+               {step === 4 && (
                 <div className="planner-placement">
                   <strong>Zone drawing</strong>
                   <p>Create zones by drawing polygons or rectangles on the map.</p>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <div className="planner-placement__footer">
                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(3)}>Back</button>
                     <button type="button" className="planner-button" onClick={() => setStep(5)}>Save &amp; Continue →</button>
                   </div>
@@ -1451,11 +1451,11 @@ export default function SiteConfiguration() {
                       <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(on floor ${d.floorId === floor?.id ? 'here' : d.floorId})` : '(unplaced)'}</option>
                     ))}
                   </select>
-                  {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(4)}>Back</button>
-                    <button type="button" className="planner-button" onClick={() => setStep(6)}>Save &amp; Continue →</button>
-                  </div>
+                   {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
+                   <div className="planner-placement__footer">
+                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(4)}>Back</button>
+                     <button type="button" className="planner-button" onClick={() => setStep(6)}>Save &amp; Continue →</button>
+                   </div>
                 </div>
               )}
 
@@ -1483,11 +1483,11 @@ export default function SiteConfiguration() {
                       <option key={g.id} value={g.id}>{g.name} {g.floorId ? `(on floor ${g.floorId === floor?.id ? 'here' : g.floorId})` : '(unplaced)'}</option>
                     ))}
                   </select>
-                  {selectedGatewayId && <small>Gateway selected. Click on the map to place it.</small>}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(5)}>Back</button>
-                    <button type="button" className="planner-button" onClick={() => setStep(7)}>Save &amp; Continue →</button>
-                  </div>
+                   {selectedGatewayId && <small>Gateway selected. Click on the map to place it.</small>}
+                   <div className="planner-placement__footer">
+                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(5)}>Back</button>
+                     <button type="button" className="planner-button" onClick={() => setStep(7)}>Save &amp; Continue →</button>
+                   </div>
                 </div>
               )}
             </div>
