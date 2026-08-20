@@ -889,9 +889,13 @@ export default function SiteConfiguration() {
 
   async function updateDevicePlacement(deviceId, point, zone) {
     const zoneId = zone?.id || null
-    const b = plan.geoBounds
-    const x = ((point.lng - b.westLng) / (b.eastLng - b.westLng)) * plan.width
-    const y = ((b.northLat - point.lat) / (b.northLat - b.southLat)) * plan.height
+    let x = null
+    let y = null
+    if (plan?.geoBounds) {
+      const b = plan.geoBounds
+      x = ((point.lng - b.westLng) / (b.eastLng - b.westLng)) * plan.width
+      y = ((b.northLat - point.lat) / (b.northLat - b.southLat)) * plan.height
+    }
     console.log('Updating device placement:', deviceId, 'zone:', zoneId, 'x:', x, 'y:', y)
     setBusy(true)
     try {
@@ -956,8 +960,8 @@ export default function SiteConfiguration() {
       setNotice('Please wait, the system is busy...')
       return
     }
-    if (!plan) {
-      setNotice('Please upload and save a floor plan first before placing devices or gateways.')
+    if (!floor) {
+      setNotice('Please select or create a floor first.')
       return
     }
     console.log('Placing', type, 'at', point.lat, point.lng)
@@ -1098,10 +1102,14 @@ export default function SiteConfiguration() {
   }
 
   async function placeItem(point, type) {
-    if (busy || !plan) return
-    const b = plan.geoBounds
-    const x = ((point.lng - b.westLng) / (b.eastLng - b.westLng)) * plan.width
-    const y = ((b.northLat - point.lat) / (b.northLat - b.southLat)) * plan.height
+    if (busy) return
+    let x = null
+    let y = null
+    if (plan?.geoBounds) {
+      const b = plan.geoBounds
+      x = ((point.lng - b.westLng) / (b.eastLng - b.westLng)) * plan.width
+      y = ((b.northLat - point.lat) / (b.northLat - b.southLat)) * plan.height
+    }
     setBusy(true)
     const token = Math.random().toString(36).slice(2, 8).toUpperCase()
     const zone = zoneAt(point.lat, point.lng)
