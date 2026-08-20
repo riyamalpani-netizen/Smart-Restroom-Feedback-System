@@ -300,6 +300,7 @@ export default function SiteConfiguration() {
   const [siteForm, setSiteForm] = useState({ name: '', type: '', description: '', location: '', latitude: '', longitude: '' })
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState('')
+  const selectedLocationIdRef = useRef('')
   const [floorForm, setFloorForm] = useState({ name: '', number: '' })
   const [zoneForm, setZoneForm] = useState({ name: '', type: 'restroom' })
   const [drawing, setDrawing] = useState(false)
@@ -409,6 +410,9 @@ export default function SiteConfiguration() {
     try {
       const floorData = await floorAPI.getByLocation(locationId)
       const floors = floorData.floors || []
+      
+      if (selectedLocationIdRef.current !== locationId) return
+      
       setFloors(floors)
       
       if (floors.length > 0) {
@@ -422,6 +426,8 @@ export default function SiteConfiguration() {
           deviceAPI.getByFloor(firstFloor.id),
           gatewayAPI.getAll({ floorId: firstFloor.id }),
         ])
+        
+        if (selectedLocationIdRef.current !== locationId) return
         
         const planData = plans.floorPlans?.[0] || null
         setPlan(planData)
@@ -444,6 +450,8 @@ export default function SiteConfiguration() {
         setGateways([])
       }
       
+      if (selectedLocationIdRef.current !== locationId) return
+      
       await loadAllDevices()
       await loadAllGateways()
     } catch (error) {
@@ -455,6 +463,8 @@ export default function SiteConfiguration() {
 
   async function selectExistingSite(locationId) {
     setSelectedLocationId(locationId)
+    selectedLocationIdRef.current = locationId
+    
     if (locationId && locations.length > 0) {
       const loc = locations.find((l) => l.id === locationId)
       if (loc) {
@@ -1149,15 +1159,23 @@ export default function SiteConfiguration() {
         <div className="planner-stage-wrap">
           <section className="planner-form-card">
             <div className="planner-form-layout">
-              <div className="planner-form">
-                <label>Select existing site
-                  <select value={selectedLocationId} onChange={(e) => selectExistingSite(e.target.value)}>
-                    <option value="">-- Select a site to edit, or leave blank to create new --</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>{loc.officeName || loc.city} {loc.latitude && loc.longitude ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : ''}</option>
-                    ))}
-                  </select>
-                </label>
+               <div className="planner-form">
+                {selectedLocationId ? (
+                  <label>
+                    <span>Editing site</span>
+                    <button type="button" className="planner-button planner-button--ghost" onClick={() => selectExistingSite('')}>＋ Create New Site Instead</button>
+                  </label>
+                ) : (
+                  <label>
+                    <span>Create New Site</span>
+                    <select value={selectedLocationId} onChange={(e) => selectExistingSite(e.target.value)}>
+                      <option value="">-- Select an existing site to edit --</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>{loc.officeName || loc.city} {loc.latitude && loc.longitude ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>Site Name <b>*</b><input value={siteForm.name} placeholder="e.g. Chandigarh Site" onChange={(e) => setSiteForm({ ...siteForm, name: e.target.value })} /></label>
                 <label>Site Type <b>*</b><select value={siteForm.type} onChange={(e) => setSiteForm({ ...siteForm, type: e.target.value })}><option value="">Select a site type...</option><option>Office</option><option>Hospital</option><option>School</option><option>Retail</option><option>Home</option></select></label>
                 <label>Location <b>*</b><input value={siteForm.location} placeholder="e.g. Chandigarh, India" onChange={(e) => setSiteForm({ ...siteForm, location: e.target.value })} /></label>
