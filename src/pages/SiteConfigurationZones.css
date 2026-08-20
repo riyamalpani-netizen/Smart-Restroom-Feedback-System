@@ -114,4 +114,36 @@
 .planner-align__footer { display:flex; gap:6px; margin-top:2px; }
 .planner-align__footer button { flex:1; }
 
+.planner-placement__info {
+  background: #111225;
+  border: 1px solid #353851;
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.planner-placement__info strong { color: #e8e9f1; }
+.planner-placement__info span { color: #949ab1; }
+
+.planner-marker__label {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17, 18, 37, 0.9);
+  color: #e8e9f1;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  border: 1px solid #353851;
+}
+
 @media (max-width:800px) { .planner-map { margin:0 10px 10px; height:520px; } .planner-mapbar { padding:0 12px; } .planner-mapbar select { min-width:160px; } .planner-mapbar > div:first-child::before { display:none; } .planner-align { min-width:auto; left:12px; right:12px; transform:none; max-width:none; } }

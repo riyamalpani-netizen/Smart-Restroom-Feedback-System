@@ -341,7 +341,9 @@ export default function DeviceManagement() {
                       <th>Name</th>
                       <th>Type</th>
                       <th>Badge ID</th>
-                      <th>Restroom</th>
+                      <th>Site</th>
+                      <th>Floor</th>
+                      <th>Restroom / Zone</th>
                       <th>Battery</th>
                       <th>Status</th>
                       <th>Health</th>
@@ -359,7 +361,9 @@ export default function DeviceManagement() {
                         <td>{device.name || '—'}</td>
                         <td>{device.deviceType || 'sensor'}</td>
                         <td><code>{device.badgeId}</code></td>
-                         <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
+                        <td>{device.locationName || '—'}</td>
+                        <td>{device.floorName || '—'}</td>
+                        <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
                         <td>
                           <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
                             {device.battery ?? '—'}%
@@ -383,7 +387,7 @@ export default function DeviceManagement() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={canEdit ? "9" : "8"} style={{ textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan={canEdit ? "11" : "10"} style={{ textAlign: 'center', color: '#64748b' }}>
                           No devices found
                         </td>
                       </tr>

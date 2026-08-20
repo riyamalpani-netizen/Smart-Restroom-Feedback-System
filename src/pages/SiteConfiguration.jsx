@@ -34,11 +34,14 @@ const steps = [
   ['Review', 'Review & finalize'],
 ]
 
-function divIcon(type) {
+function divIcon(type, label) {
   const meta = TYPE_META[type] || TYPE_META.device
+  const labelHtml = label ? `<span class="planner-marker__label">${label}</span>` : ''
   return L.divIcon({
-    className: 'planner-marker', iconSize: [34, 34], iconAnchor: [17, 32],
-    html: `<span style="--marker:${meta.color}">${meta.icon}</span>`,
+    className: 'planner-marker',
+    iconSize: [34, 34],
+    iconAnchor: [17, 32],
+    html: `<span style="--marker:${meta.color}">${meta.icon}</span>${labelHtml}`,
   })
 }
 
@@ -173,18 +176,16 @@ function DeleteButton({ onClick, label = 'Remove' }) {
   )
 }
 
-function Stepper({ currentStep, setCurrentStep, ready }) {
+function Stepper({ currentStep, setCurrentStep }) {
   return (
     <nav className="planner-stepper" aria-label="Site planner steps">
       {steps.map(([title, subtitle], index) => {
         const n = index + 1
         const done = n < currentStep
-        const available = n <= currentStep || (n === 2 && ready.site) || (n === 3 && ready.floor) || (n >= 4 && ready.plan)
         return (
           <button
             className={`planner-step ${n === currentStep ? 'is-active' : ''} ${done ? 'is-done' : ''}`}
             key={title}
-            disabled={!available}
             onClick={() => setCurrentStep(n)}
           >
             <span className="planner-step__number">{done ? '✓' : n}</span>
@@ -297,6 +298,8 @@ export default function SiteConfiguration() {
   const [devices, setDevices] = useState([])
   const [gateways, setGateways] = useState([])
   const [siteForm, setSiteForm] = useState({ name: '', type: '', description: '', location: '', latitude: '', longitude: '' })
+  const [locations, setLocations] = useState([])
+  const [selectedLocationId, setSelectedLocationId] = useState('')
   const [floorForm, setFloorForm] = useState({ name: '', number: '' })
   const [zoneForm, setZoneForm] = useState({ name: '', type: 'restroom' })
   const [drawing, setDrawing] = useState(false)
@@ -356,6 +359,16 @@ export default function SiteConfiguration() {
   }, [floor])
 
   useEffect(() => {
+    loadLocations()
+  }, [loadLocations])
+
+  useEffect(() => {
+    if (selectedLocationId) {
+      loadSiteConfiguration(selectedLocationId)
+    }
+  }, [selectedLocationId])
+
+  useEffect(() => {
     setSelectedDeviceId(null)
     setSelectedGatewayId(null)
     setPlacingType(null)
@@ -383,28 +396,136 @@ export default function SiteConfiguration() {
     setPickerOpen(false)
   }
 
+  async function loadLocations() {
+    try {
+      const data = await locationAPI.getAll(user?.organizationId)
+      setLocations(data.locations || [])
+    } catch { }
+  }
+
+  async function loadSiteConfiguration(locationId) {
+    if (!locationId) return
+    setBusy(true)
+    try {
+      const floorData = await floorAPI.getByLocation(locationId)
+      const floors = floorData.floors || []
+      setFloors(floors)
+      
+      if (floors.length > 0) {
+        const firstFloor = floors[0]
+        setFloor(firstFloor)
+        
+        const [plans, zoneData, restroomData, deviceData, gatewayData] = await Promise.all([
+          floorPlanAPI.getByFloor(firstFloor.id),
+          zoneAPI.getByFloor(firstFloor.id),
+          restroomAPI.getByFloor(firstFloor.id),
+          deviceAPI.getByFloor(firstFloor.id),
+          gatewayAPI.getAll({ floorId: firstFloor.id }),
+        ])
+        
+        const planData = plans.floorPlans?.[0] || null
+        setPlan(planData)
+        if (planData) {
+          setPlanRotation(planData.rotation || 0)
+          setPlanScale(planData.scale || 1)
+        } else {
+          setPlanRotation(0)
+          setPlanScale(1)
+        }
+        setZones(zoneData.zones || [])
+        setRestrooms(restroomData.restrooms || [])
+        setDevices(deviceData.devices || [])
+        setGateways(gatewayData.gateways || [])
+      } else {
+        setPlan(null)
+        setZones([])
+        setRestrooms([])
+        setDevices([])
+        setGateways([])
+      }
+      
+      await loadAllDevices()
+      await loadAllGateways()
+    } catch (error) {
+      setNotice('Could not load site configuration.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function selectExistingSite(locationId) {
+    setSelectedLocationId(locationId)
+    if (locationId && locations.length > 0) {
+      const loc = locations.find((l) => l.id === locationId)
+      if (loc) {
+        setSiteForm({
+          name: loc.officeName || '',
+          type: loc.address?.split(' — ')[0] || '',
+          description: loc.address?.split(' — ').slice(1).join(' — ') || '',
+          location: loc.city || '',
+          latitude: String(loc.latitude || ''),
+          longitude: String(loc.longitude || ''),
+        })
+        setSite({
+          id: loc.id,
+          officeName: loc.officeName,
+          city: loc.city,
+          address: loc.address,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        })
+        await loadSiteConfiguration(locationId)
+      }
+    } else {
+      setSiteForm({ name: '', type: '', description: '', location: '', latitude: '', longitude: '' })
+      setSite(null)
+      setFloors([])
+      setFloor(null)
+      setPlan(null)
+      setZones([])
+      setRestrooms([])
+      setDevices([])
+      setGateways([])
+    }
+  }
+
   async function saveSite() {
     const latitude = Number(siteForm.latitude)
     const longitude = Number(siteForm.longitude)
-    if (!siteForm.name.trim() || !siteForm.type || !siteForm.location.trim() || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      setNotice('Enter the site name, type, location and centre coordinates to continue.')
+    const hasExistingSite = Boolean(selectedLocationId && site)
+    
+    if (!hasExistingSite && (!siteForm.name.trim() || !siteForm.type || !siteForm.location.trim() || !Number.isFinite(latitude) || !Number.isFinite(longitude))) {
+      setNotice('Enter the site name, type, location and centre coordinates to continue, or select an existing site.')
       return
     }
+    
     setBusy(true)
     try {
-      const data = await locationAPI.create({
-        organizationId: user?.organizationId,
-        officeName: siteForm.name.trim(),
-        city: siteForm.location.trim(),
-        address: `${siteForm.type}${siteForm.description ? ` — ${siteForm.description}` : ''}`,
-        latitude,
-        longitude,
-      })
+      let data
+      if (selectedLocationId) {
+        data = await locationAPI.update(selectedLocationId, {
+          officeName: siteForm.name.trim(),
+          city: siteForm.location.trim(),
+          address: `${siteForm.type}${siteForm.description ? ` — ${siteForm.description}` : ''}`,
+          latitude,
+          longitude,
+        })
+        setNotice('Site updated. Continue to configure floors.')
+      } else {
+        data = await locationAPI.create({
+          organizationId: user?.organizationId,
+          officeName: siteForm.name.trim(),
+          city: siteForm.location.trim(),
+          address: `${siteForm.type}${siteForm.description ? ` — ${siteForm.description}` : ''}`,
+          latitude,
+          longitude,
+        })
+        setNotice('Site saved. Add the floors that belong to it.')
+      }
       setSite(data.location)
       const floorData = await floorAPI.getByLocation(data.location.id)
       setFloors(floorData.floors || [])
       setStep(2)
-      setNotice('Site saved. Add the floors that belong to it.')
     } catch (error) {
       setNotice(error.message || 'Unable to save site.')
     } finally {
@@ -707,6 +828,12 @@ export default function SiteConfiguration() {
     return [lat / points.length, lng / points.length]
   }
 
+  function getZoneName(zoneId) {
+    if (!zoneId) return null
+    const zone = zones.find((z) => z.id === zoneId)
+    return zone?.name || null
+  }
+
   async function loadAllDevices() {
     try {
       const data = await deviceAPI.getAll()
@@ -786,12 +913,22 @@ export default function SiteConfiguration() {
     if (busy || !plan) return
     const zone = zoneAt(point.lat, point.lng)
     if (type === 'device' && selectedDeviceId) {
+      const existingDevice = allDevices.find((d) => d.id === selectedDeviceId)
+      if (existingDevice?.floorId && existingDevice.floorId !== floor.id) {
+        setNotice(`This device is already placed on a different floor. Remove it from there first.`)
+        return
+      }
       const placed = await updateDevicePlacement(selectedDeviceId, point, zone)
       if (placed) {
         setSelectedDeviceId(null)
         setPlacingType(null)
       }
     } else if (type === 'gateway' && selectedGatewayId) {
+      const existingGateway = allGateways.find((g) => g.id === selectedGatewayId)
+      if (existingGateway?.floorId && existingGateway.floorId !== floor.id) {
+        setNotice(`This gateway is already placed on a different floor. Remove it from there first.`)
+        return
+      }
       const placed = await updateGatewayPlacement(selectedGatewayId, point, zone?.id || null)
       if (placed) {
         setSelectedGatewayId(null)
@@ -803,15 +940,32 @@ export default function SiteConfiguration() {
   async function movePlacedItem(itemId, itemType, point) {
     if (busy || !plan) return
     const zone = zoneAt(point.lat, point.lng)
-    let moved = false
     if (itemType === 'device') {
-      moved = await updateDevicePlacement(itemId, point, zone)
+      const existingDevice = allDevices.find((d) => d.id === itemId)
+      if (existingDevice?.floorId && existingDevice.floorId !== floor.id) {
+        setNotice(`This device is already placed on a different floor. Remove it from there first.`)
+        setMovingItemId(null)
+        setMovingItemType(null)
+        return
+      }
+      const moved = await updateDevicePlacement(itemId, point, zone)
+      if (moved) {
+        setMovingItemId(null)
+        setMovingItemType(null)
+      }
     } else if (itemType === 'gateway') {
-      moved = await updateGatewayPlacement(itemId, point, zone?.id || null)
-    }
-    if (moved) {
-      setMovingItemId(null)
-      setMovingItemType(null)
+      const existingGateway = allGateways.find((g) => g.id === itemId)
+      if (existingGateway?.floorId && existingGateway.floorId !== floor.id) {
+        setNotice(`This gateway is already placed on a different floor. Remove it from there first.`)
+        setMovingItemId(null)
+        setMovingItemType(null)
+        return
+      }
+      const moved = await updateGatewayPlacement(itemId, point, zone?.id || null)
+      if (moved) {
+        setMovingItemId(null)
+        setMovingItemType(null)
+      }
     }
   }
 
@@ -977,7 +1131,7 @@ export default function SiteConfiguration() {
         )}
       </header>
 
-      <Stepper currentStep={step} setCurrentStep={setStep} ready={ready} />
+      <Stepper currentStep={step} setCurrentStep={setStep} />
 
       <div className="planner-progress" aria-hidden="true">
         <div className="planner-progress__bar" style={{ width: `${progress}%` }} />
@@ -996,6 +1150,14 @@ export default function SiteConfiguration() {
           <section className="planner-form-card">
             <div className="planner-form-layout">
               <div className="planner-form">
+                <label>Select existing site
+                  <select value={selectedLocationId} onChange={(e) => selectExistingSite(e.target.value)}>
+                    <option value="">-- Select a site to edit, or leave blank to create new --</option>
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>{loc.officeName || loc.city} {loc.latitude && loc.longitude ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : ''}</option>
+                    ))}
+                  </select>
+                </label>
                 <label>Site Name <b>*</b><input value={siteForm.name} placeholder="e.g. Chandigarh Site" onChange={(e) => setSiteForm({ ...siteForm, name: e.target.value })} /></label>
                 <label>Site Type <b>*</b><select value={siteForm.type} onChange={(e) => setSiteForm({ ...siteForm, type: e.target.value })}><option value="">Select a site type...</option><option>Office</option><option>Hospital</option><option>School</option><option>Retail</option><option>Home</option></select></label>
                 <label>Location <b>*</b><input value={siteForm.location} placeholder="e.g. Chandigarh, India" onChange={(e) => setSiteForm({ ...siteForm, location: e.target.value })} /></label>
@@ -1010,16 +1172,24 @@ export default function SiteConfiguration() {
                   <button type="button" className="planner-button planner-button--dark" onClick={() => setPickerOpen(true)}>⌖ Mark centre on map</button>
                 </div>
               </div>
-              <div className="planner-form-layout__preview">
-                <PreviewPanel title="Site preview" empty={!siteForm.name && !previewCoords ? 'Fill in the form to see a live preview of your site.' : null}>
-                  <div className="planner-preview-grid">
-                    {siteForm.name && <div className="planner-preview-card"><span className="planner-preview-card__label">Name</span><span className="planner-preview-card__value">{siteForm.name}</span></div>}
-                    {siteForm.type && <div className="planner-preview-card"><span className="planner-preview-card__label">Type</span><span className="planner-preview-card__value">{siteForm.type}</span></div>}
-                    {siteForm.location && <div className="planner-preview-card"><span className="planner-preview-card__label">Location</span><span className="planner-preview-card__value">{siteForm.location}</span></div>}
-                    {previewCoords && <div className="planner-preview-card" style={{ gridColumn: '1 / -1' }}><span className="planner-preview-card__label">Map</span><PreviewMap center={previewCoords} site={{ latitude: previewCoords[0], longitude: previewCoords[1] }} /></div>}
-                  </div>
-                </PreviewPanel>
-              </div>
+               <div className="planner-form-layout__preview">
+                 <PreviewPanel title="Site preview" empty={!siteForm.name && !previewCoords ? 'Fill in the form to see a live preview of your site.' : null}>
+                   <div className="planner-preview-grid">
+                     {siteForm.name && <div className="planner-preview-card"><span className="planner-preview-card__label">Name</span><span className="planner-preview-card__value">{siteForm.name}</span></div>}
+                     {siteForm.type && <div className="planner-preview-card"><span className="planner-preview-card__label">Type</span><span className="planner-preview-card__value">{siteForm.type}</span></div>}
+                     {siteForm.location && <div className="planner-preview-card"><span className="planner-preview-card__label">Location</span><span className="planner-preview-card__value">{siteForm.location}</span></div>}
+                     {selectedLocationId && (
+                       <>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Floors</span><span className="planner-preview-card__value">{floors.length}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Zones</span><span className="planner-preview-card__value">{zones.length}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Devices</span><span className="planner-preview-card__value">{devices.length}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Gateways</span><span className="planner-preview-card__value">{gateways.length}</span></div>
+                       </>
+                     )}
+                     {previewCoords && <div className="planner-preview-card" style={{ gridColumn: '1 / -1' }}><span className="planner-preview-card__label">Map</span><PreviewMap center={previewCoords} site={{ latitude: previewCoords[0], longitude: previewCoords[1] }} /></div>}
+                   </div>
+                 </PreviewPanel>
+               </div>
             </div>
             <footer style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
               <button type="button" className="planner-button planner-button--ghost" onClick={() => navigate('/dashboard')}>← Back to Dashboard</button>
@@ -1052,7 +1222,7 @@ export default function SiteConfiguration() {
             </main>
             <footer className="planner-step-layout__footer">
               <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(1)}>Back</button>
-              <button type="button" className="planner-button" disabled={!floor} onClick={() => setStep(3)}>Continue →</button>
+              <button type="button" className="planner-button" onClick={() => setStep(3)}>Continue →</button>
             </footer>
           </section>
           <PreviewPanel title="Floors & site preview" empty={!site ? 'Save the site first.' : null}>
@@ -1147,8 +1317,8 @@ export default function SiteConfiguration() {
                 {drawing && !editingZoneId && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}
                 {(selectedDeviceId && step === 5) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="device" />}
                 {(selectedGatewayId && step === 6) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="gateway" />}
-                {devices.map((item) => { const position = devicePosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon(item.deviceType)} /> : null })}
-                {gateways.map((item) => { const position = gatewayPosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon('gateway')} /> : null })}
+                {devices.map((item) => { const position = devicePosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon(item.deviceType, item.badgeId || item.name)} title={item.badgeId || item.name} /> : null })}
+                {gateways.map((item) => { const position = gatewayPosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon('gateway', item.name)} title={item.name} /> : null })}
               </MapContainer>
 
               {step === 3 && plan && (
@@ -1237,6 +1407,20 @@ export default function SiteConfiguration() {
                 <div className="planner-placement">
                   <strong>Device placement</strong>
                   <p>Select an existing device from Device Management and click on the map to place it. Restrooms saved in the previous step are listed below.</p>
+                   {selectedDeviceId && (() => {
+                    const device = allDevices.find((d) => d.id === selectedDeviceId)
+                    if (!device) return null
+                    return (
+                      <div className="planner-placement__info">
+                        <strong>Selected device:</strong>
+                        <span>Name: {device.name || device.badgeId}</span>
+                        <span>Type: {device.deviceType || 'sensor'}</span>
+                        <span>EUI: {device.deviceEui || '—'}</span>
+                        {device.zoneId && <span style={{ color: '#38bdf8' }}>Zone: {getZoneName(device.zoneId)}</span>}
+                        {device.floorId && <span style={{ color: '#f59e0b' }}>Floor: {device.floorId === floor?.id ? 'Current floor' : device.floorId}</span>}
+                      </div>
+                    )
+                  })()}
                   <div className="planner-placement__restrooms">
                     <small>Saved restrooms ({restrooms.length})</small>
                     {restrooms.length ? (
@@ -1261,6 +1445,20 @@ export default function SiteConfiguration() {
                 <div className="planner-placement">
                   <strong>Gateway placement</strong>
                   <p>Select an existing gateway from Gateway Management and click on the map to place it.</p>
+                   {selectedGatewayId && (() => {
+                    const gateway = allGateways.find((g) => g.id === selectedGatewayId)
+                    if (!gateway) return null
+                    return (
+                      <div className="planner-placement__info">
+                        <strong>Selected gateway:</strong>
+                        <span>Name: {gateway.name}</span>
+                        <span>EUI: {gateway.gatewayEui}</span>
+                        <span>Status: {gateway.status || 'offline'}</span>
+                        {gateway.zoneId && <span style={{ color: '#38bdf8' }}>Zone: {getZoneName(gateway.zoneId)}</span>}
+                        {gateway.floorId && <span style={{ color: '#f59e0b' }}>Floor: {gateway.floorId === floor?.id ? 'Current floor' : gateway.floorId}</span>}
+                      </div>
+                    )
+                  })()}
                   <select value={selectedGatewayId || ''} onChange={(e) => { setSelectedGatewayId(e.target.value || null); setPlacingType(e.target.value ? 'gateway' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a gateway...</option>
                     {allGateways.map((g) => (
@@ -1324,7 +1522,7 @@ export default function SiteConfiguration() {
                       <span className="planner-preview-item__icon" style={{ background: TYPE_META[device.deviceType]?.color || TYPE_META.device.color }}>{TYPE_META[device.deviceType]?.icon || '▣'}</span>
                       <div className="planner-preview-item__info">
                         <strong>{device.badgeId || device.name}</strong>
-                        <small>{TYPE_META[device.deviceType]?.label || 'Device'} · {device.latitude?.toFixed(5)}, {device.longitude?.toFixed(5)}</small>
+                        <small>{device.name || 'Device'} · {getZoneName(device.zoneId) || 'No zone'} · {device.latitude?.toFixed(5)}, {device.longitude?.toFixed(5)}</small>
                       </div>
                       <button type="button" className="planner-button planner-button--ghost" onClick={() => { setMovingItemId(device.id); setMovingItemType('device'); setSelectedDeviceId(null); setPlacingType(null); setNotice('Click the map to move this device.') }}>✎ Move</button>
                       <DeleteButton label={`Delete ${device.name}`} onClick={() => removeDevice(device.id)} />
@@ -1345,7 +1543,7 @@ export default function SiteConfiguration() {
                       <span className="planner-preview-item__icon" style={{ background: TYPE_META.gateway.color }}>{TYPE_META.gateway.icon}</span>
                       <div className="planner-preview-item__info">
                         <strong>{gateway.name}</strong>
-                        <small>{gateway.gatewayEui} · {gateway.latitude?.toFixed(5)}, {gateway.longitude?.toFixed(5)}</small>
+                        <small>{gateway.gatewayEui} · {getZoneName(gateway.zoneId) || 'No zone'} · {gateway.latitude?.toFixed(5)}, {gateway.longitude?.toFixed(5)}</small>
                       </div>
                       <button type="button" className="planner-button planner-button--ghost" onClick={() => { setMovingItemId(gateway.id); setMovingItemType('gateway'); setSelectedGatewayId(null); setPlacingType(null); setNotice('Click the map to move this gateway.') }}>✎ Move</button>
                       <DeleteButton label={`Delete ${gateway.name}`} onClick={() => removeGateway(gateway.id)} />
