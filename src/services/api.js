@@ -111,6 +111,7 @@ export const deviceAPI = {
   getByFloor: (floorId) => request(`/api/devices?floorId=${encodeURIComponent(floorId)}`),
   getByZone: (zoneId) => request(`/api/zones/${encodeURIComponent(zoneId)}/devices`),
   create: (data) => request('/api/devices', { method: 'POST', body: JSON.stringify(data) }),
+  bulkCreate: (items) => request('/api/devices/bulk', { method: 'POST', body: JSON.stringify({ items }) }),
   update: (id, data) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
@@ -128,6 +129,7 @@ export const gatewayAPI = {
   },
   getById: (id) => request(`/api/gateway/${encodeURIComponent(id)}`),
   create: (data) => request('/api/gateway', { method: 'POST', body: JSON.stringify(data) }),
+  bulkCreate: (items) => request('/api/gateway/bulk', { method: 'POST', body: JSON.stringify({ items }) }),
   update: (id, data) => request(`/api/gateway/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/api/gateway/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   registerTTN: (id, data) => request(`/api/gateway/${encodeURIComponent(id)}/register-ttn`, { method: 'POST', body: JSON.stringify(data) }),

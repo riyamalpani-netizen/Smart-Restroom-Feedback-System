@@ -1,6 +1,6 @@
 const express = require("express");
 const {
-  getGateways, getGatewayById, createGateway, updateGateway, deleteGateway, registerGatewayInTTN,
+  getGateways, getGatewayById, createGateway, bulkCreateGateways, updateGateway, deleteGateway, registerGatewayInTTN,
   getGatewayDevices, getGatewayUplinks, getGatewayEvents,
   getGatewayStatus, updateGatewayStatus, getNetworkStatus, getOfflineDevices, getIncidentLog,
   getRecoveryStatus, manualCloseIncident, getAuditLog, getServerStatus, createAuditLog,
@@ -11,6 +11,7 @@ const router = express.Router();
 
 router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getGateways);
 router.post("/", authenticate, authorize("super_admin", "vendor_admin"), createGateway);
+router.post("/bulk", authenticate, authorize("super_admin", "vendor_admin"), bulkCreateGateways);
 
 router.get("/gateway-status", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getGatewayStatus);
 router.post("/gateway-status", authenticate, authorize("super_admin", "vendor_admin"), updateGatewayStatus);

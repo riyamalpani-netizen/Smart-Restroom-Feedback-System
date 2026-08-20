@@ -223,9 +223,13 @@ async function deleteZone(req, res) {
       return res.status(403).json({ message: "You can only delete zones in your organization" });
     }
 
-    await prisma.zone.delete({
-      where: { id },
-    });
+    // Keep inventory records when a zone is removed, but remove the stale
+    // placement links so the items immediately become available again.
+    await prisma.$transaction([
+      prisma.device.updateMany({ where: { zoneId: id }, data: { zoneId: null, restroomId: null, floorId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } }),
+      prisma.gateway.updateMany({ where: { zoneId: id }, data: { zoneId: null, floorId: null, locationId: null, latitude: null, longitude: null } }),
+      prisma.zone.delete({ where: { id } }),
+    ]);
 
     res.status(200).json({
       message: "Zone deleted successfully",
@@ -276,6 +280,10 @@ async function importGeoJson(req, res) {
         type: geomType,
         coordinates: coords,
       };
+      const ring = geomType === "Polygon" ? coords[0] : null;
+      if (!Array.isArray(ring) || ring.length < 3) continue;
+      const latitude = ring.reduce((sum, point) => sum + Number(point[1]), 0) / ring.length;
+      const longitude = ring.reduce((sum, point) => sum + Number(point[0]), 0) / ring.length;
 
       const zone = await prisma.zone.create({
         data: {
@@ -283,6 +291,8 @@ async function importGeoJson(req, res) {
           name: zoneName,
           type: ZONE_TYPES.includes(zoneType) ? zoneType : "other",
           coordinates,
+          latitude,
+          longitude,
         },
       });
 

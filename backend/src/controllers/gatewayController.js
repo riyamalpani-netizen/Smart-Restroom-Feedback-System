@@ -705,6 +705,26 @@ function getOrgFilter(req) {
   return { organizationId: orgId };
 }
 
+async function resolveGatewayPlacement(input, existing, userOrgId) {
+  const changing = ["locationId", "floorId", "zoneId"].some((key) => input[key] !== undefined);
+  if (!changing) return null;
+  let locationId = input.locationId !== undefined ? input.locationId || null : existing.locationId;
+  let floorId = input.floorId !== undefined ? input.floorId || null : existing.floorId;
+  let zoneId = input.zoneId !== undefined ? input.zoneId || null : existing.zoneId;
+  const zone = zoneId ? await prisma.zone.findUnique({ where: { id: zoneId }, include: { floor: { include: { location: true } } } }) : null;
+  if (zoneId && !zone) throw Object.assign(new Error("Zone not found"), { status: 404 });
+  if (!floorId && zone) floorId = zone.floorId;
+  const floor = floorId ? await prisma.floor.findUnique({ where: { id: floorId }, include: { location: true } }) : null;
+  if (floorId && !floor) throw Object.assign(new Error("Floor not found"), { status: 404 });
+  if (zone && zone.floorId !== floorId) throw Object.assign(new Error("Zone must belong to the selected floor"), { status: 400 });
+  if (floor) locationId = floor.locationId;
+  const location = locationId ? await prisma.location.findUnique({ where: { id: locationId } }) : null;
+  if (locationId && !location) throw Object.assign(new Error("Location not found"), { status: 404 });
+  if (userOrgId && location && location.organizationId !== userOrgId) throw Object.assign(new Error("You can only assign gateways within your organization"), { status: 403 });
+  // Allow cross-site reassignment — placing on a new site simply overwrites the old placement.
+  return { locationId, floorId, zoneId, location, changed: existing.locationId !== locationId || existing.floorId !== floorId || existing.zoneId !== zoneId };
+}
+
 async function getGateways(req, res) {
   try {
     const { status, locationId, floorId, zoneId, search } = req.query;
@@ -724,13 +744,13 @@ async function getGateways(req, res) {
       include: {
         location: { select: { id: true, city: true, officeName: true } },
         floor: { select: { id: true, floorName: true } },
-        zone: { select: { id: true, name: true } },
+        zone: { select: { id: true, name: true, restroom: { select: { id: true, name: true } } } },
       },
       orderBy: { updatedAt: "desc" },
     });
     const mapped = gateways.map((g) => ({
       id: g.id, name: g.name, gatewayEui: g.gatewayEui, status: g.status, lastSeen: g.lastSeen,
-      site: g.location?.officeName || g.location?.city || null, floor: g.floor?.floorName || null, zone: g.zone?.name || null,
+      site: g.location?.officeName || g.location?.city || null, floor: g.floor?.floorName || null, zone: g.zone?.name || null, restroomName: g.zone?.restroom?.name || null,
       locationId: g.locationId, floorId: g.floorId, zoneId: g.zoneId,
       ttnStatus: g.ttnStatus, gatewayId: g.gatewayId, ttnDeviceId: g.ttnDeviceId, frequencyPlanId: g.frequencyPlanId,
       latitude: g.latitude, longitude: g.longitude, connectedDevices: g.connectedDevices,
@@ -821,26 +841,35 @@ async function createGateway(req, res) {
       if (userRole === "vendor_admin" && zone.floor.location.organizationId !== userOrgId) return res.status(403).json({ message: "You can only create gateways for zones in your organization" });
       organizationId = organizationId || zone.floor.location.organizationId;
     }
+    let placement;
+    try {
+      placement = await resolveGatewayPlacement({ locationId, floorId, zoneId }, { locationId: null, floorId: null, zoneId: null }, userRole === "super_admin" ? null : userOrgId);
+    } catch (error) {
+      return res.status(error.status || 400).json({ message: error.message });
+    }
+    if (placement?.location && ([latitude, longitude].some((value) => value === null || value === "" || value === undefined || !Number.isFinite(Number(value))))) {
+      return res.status(400).json({ message: "Latitude and longitude are required when assigning a gateway" });
+    }
     const existing = await prisma.gateway.findFirst({ where: { OR: [{ gatewayEui: normalizedEui }, { name }] }, select: { id: true } });
     if (existing) return res.status(409).json({ message: "Gateway EUI or name already exists" });
     const gateway = await prisma.gateway.create({
       data: {
         name, gatewayEui: normalizedEui, organizationId, gatewayId: resolvedGatewayId,
-        locationId: locationId || null, floorId: floorId || null, zoneId: zoneId || null,
+        locationId: placement ? placement.locationId : locationId || null, floorId: placement ? placement.floorId : floorId || null, zoneId: placement ? placement.zoneId : zoneId || null,
         frequencyPlanId: frequencyPlanId || null,
         latitude: latitude ? parseFloat(latitude) : null, longitude: longitude ? parseFloat(longitude) : null, status: "offline",
       },
       include: {
         location: { select: { id: true, city: true, officeName: true } },
         floor: { select: { id: true, floorName: true } },
-        zone: { select: { id: true, name: true } },
+        zone: { select: { id: true, name: true, restroom: { select: { id: true, name: true } } } },
       },
     });
 
     let ttnRegistration = null;
     let ttnStatus = "not_registered";
     let ttnErrorMessage = null;
-    if (registerGatewayInTTNService) {
+    if (registerGatewayInTTNService && process.env.NODE_ENV !== "test") {
       try {
         ttnRegistration = await registerGatewayInTTNService({
           gatewayEui: gateway.gatewayEui,
@@ -869,10 +898,10 @@ async function createGateway(req, res) {
     });
 
     res.status(201).json({
-      message: ttnStatus === "registered" ? "Gateway created successfully" : "Gateway saved, but TTN registration failed",
+      message: ttnErrorMessage ? "Gateway saved, but TTN registration failed" : "Gateway created successfully",
       ttnError: ttnErrorMessage,
       gateway: { id: updatedGateway.id, name: updatedGateway.name, gatewayEui: updatedGateway.gatewayEui, status: updatedGateway.status, lastSeen: updatedGateway.lastSeen,
-        site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
+        site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null, restroomName: gateway.zone?.restroom?.name || null,
         locationId: updatedGateway.locationId, floorId: updatedGateway.floorId, zoneId: updatedGateway.zoneId,
         ttnStatus: updatedGateway.ttnStatus, gatewayId: updatedGateway.gatewayId, ttnDeviceId: updatedGateway.ttnDeviceId, frequencyPlanId: updatedGateway.frequencyPlanId,
         latitude: updatedGateway.latitude, longitude: updatedGateway.longitude, connectedDevices: updatedGateway.connectedDevices,
@@ -882,6 +911,34 @@ async function createGateway(req, res) {
     console.error("Create gateway error:", error);
     if (error.code === "P2002") return res.status(409).json({ message: "Gateway EUI or name already exists" });
     res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function bulkCreateGateways(req, res) {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ message: "Upload at least one gateway row" });
+    if (items.length > 500) return res.status(400).json({ message: "A bulk upload can contain at most 500 gateways" });
+    const normalized = [];
+    const errors = [];
+    const seen = new Set();
+    items.forEach((item, index) => {
+      const gatewayEui = String(item.gatewayEui || item.eui || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+      if (gatewayEui.length !== 16) return errors.push({ row: index + 1, message: "Gateway EUI must be 16 hexadecimal characters" });
+      if (seen.has(gatewayEui)) return errors.push({ row: index + 1, message: "Duplicate Gateway EUI in upload" });
+      seen.add(gatewayEui);
+      const name = String(item.name || `Gateway ${gatewayEui.slice(-6)}`).trim();
+      normalized.push({ name, gatewayEui, gatewayId: String(item.gatewayId || `gateway-${gatewayEui.toLowerCase()}`).trim().toLowerCase(), frequencyPlanId: item.frequencyPlanId ? String(item.frequencyPlanId).trim() : null, organizationId: req.user?.organizationId || null, status: "offline" });
+    });
+    if (errors.length) return res.status(400).json({ message: "Fix the invalid upload rows", errors });
+    const existing = await prisma.gateway.findMany({ where: { OR: [{ gatewayEui: { in: normalized.map((item) => item.gatewayEui) } }, { gatewayId: { in: normalized.map((item) => item.gatewayId) } }] }, select: { gatewayEui: true, gatewayId: true } });
+    const existingKeys = new Set(existing.flatMap((item) => [item.gatewayEui, item.gatewayId]));
+    const toCreate = normalized.filter((item) => !existingKeys.has(item.gatewayEui) && !existingKeys.has(item.gatewayId));
+    if (toCreate.length) await prisma.gateway.createMany({ data: toCreate });
+    res.status(201).json({ message: `${toCreate.length} gateway(s) added to inventory`, created: toCreate.length, skipped: normalized.length - toCreate.length, errors: [] });
+  } catch (error) {
+    console.error("Bulk gateway upload error:", error);
+    res.status(500).json({ message: "Unable to import gateways" });
   }
 }
 
@@ -898,6 +955,15 @@ async function updateGateway(req, res) {
       include: { location: true, floor: { include: { location: true } }, zone: { include: { floor: { include: { location: true } } } } },
     });
     if (!existing) return res.status(404).json({ message: "Gateway not found" });
+    let placement;
+    try {
+      placement = await resolveGatewayPlacement({ locationId, floorId, zoneId }, existing, userRole === "super_admin" ? null : userOrgId);
+    } catch (error) {
+      return res.status(error.status || 400).json({ message: error.message });
+    }
+    if (placement?.location && placement.changed && ([latitude, longitude].some((value) => value === null || value === "" || value === undefined || !Number.isFinite(Number(value))))) {
+      return res.status(400).json({ message: "Latitude and longitude are required when assigning a gateway" });
+    }
     if (userRole === "vendor_admin" && locationId) {
       const newLocation = await prisma.location.findUnique({ where: { id: locationId } });
       if (!newLocation || newLocation.organizationId !== userOrgId) return res.status(403).json({ message: "You can only assign gateways to locations in your organization" });
@@ -912,9 +978,9 @@ async function updateGateway(req, res) {
     }
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (locationId !== undefined) updateData.locationId = locationId || null;
-    if (floorId !== undefined) updateData.floorId = floorId || null;
-    if (zoneId !== undefined) updateData.zoneId = zoneId || null;
+    if (locationId !== undefined || placement) updateData.locationId = placement ? placement.locationId : locationId || null;
+    if (floorId !== undefined || placement) updateData.floorId = placement ? placement.floorId : floorId || null;
+    if (zoneId !== undefined || placement) updateData.zoneId = placement ? placement.zoneId : zoneId || null;
     if (status !== undefined) updateData.status = status;
     if (frequencyPlanId !== undefined) updateData.frequencyPlanId = frequencyPlanId || null;
     if (latitude !== undefined) updateData.latitude = latitude ? parseFloat(latitude) : null;
@@ -1414,7 +1480,7 @@ async function createAuditLog(req, res) {
 }
 
 module.exports = {
-  getGateways, getGatewayById, createGateway, updateGateway, deleteGateway, registerGatewayInTTN,
+  getGateways, getGatewayById, createGateway, bulkCreateGateways, updateGateway, deleteGateway, registerGatewayInTTN,
   getGatewayDevices, getGatewayUplinks, getGatewayEvents,
   getGatewayStatus, updateGatewayStatus, getNetworkStatus, getOfflineDevices, getIncidentLog,
   getRecoveryStatus, manualCloseIncident, getAuditLog, getServerStatus, createAuditLog,

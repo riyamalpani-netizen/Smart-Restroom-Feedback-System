@@ -1,11 +1,12 @@
 const express = require("express");
-const { getDevices, getDeviceById, createDevice, updateDevice, getDeviceHealth, getOfflineDevices, registerDeviceInTTN, deleteDevice } = require("../controllers/deviceController");
+const { getDevices, getDeviceById, createDevice, bulkCreateDevices, updateDevice, getDeviceHealth, getOfflineDevices, registerDeviceInTTN, deleteDevice } = require("../controllers/deviceController");
 const { authenticate, authorize } = require("../auth/authMiddleware");
 
 const router = express.Router();
 
 router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDevices);
 router.post("/", authenticate, authorize("super_admin", "vendor_admin"), createDevice);
+router.post("/bulk", authenticate, authorize("super_admin", "vendor_admin"), bulkCreateDevices);
 
 router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getOfflineDevices);
 router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceHealth);

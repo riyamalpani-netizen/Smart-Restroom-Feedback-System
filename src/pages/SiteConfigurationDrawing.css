@@ -16,3 +16,9 @@
   fill: var(--primary) !important;
   fill-opacity: .2 !important;
 }
+
+.planner-map .planner-map-container,
+.planner-map .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+}

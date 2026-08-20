@@ -4,7 +4,7 @@ import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import { formatDateTime } from '../utils/formatters'
-import api, { gatewayAPI, testModeAPI } from '../services/api'
+import api, { deviceAPI, gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
@@ -28,15 +28,31 @@ export default function DeviceManagement() {
   const [testResult, setTestResult] = useState(null)
   const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
-  const [editForm, setEditForm] = useState({ name: '', deviceType: 'sensor', restroomId: '', floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '' })
-  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '' })
+  const [editForm, setEditForm] = useState({ name: '', deviceType: 'sensor', restroomId: '', floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '', latitude: '', longitude: '' })
+  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', latitude: '', longitude: '' })
   const canEdit = user?.role !== 'viewer'
 
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
   const [gateways, setGateways] = useState([])
   const [actionDeviceId, setActionDeviceId] = useState(null)
+  const [bulkResult, setBulkResult] = useState(null)   // { created, skipped, errors: [{row,message}] }
   const socketRef = useRef(null)
+  const bulkFileRef = useRef(null)
+
+  function downloadSampleCSV() {
+    const headers = 'name,deviceEui,appKey,joinEui,deviceType,batteryLevel,lorawanVersion'
+    const rows = [
+      'Sensor 01,AA000000000000001,A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1,0000000000000000,sensor,100,MAC_V1_0_3',
+      'Badge 01,AA000000000000002,B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2,0000000000000000,badge,100,MAC_V1_0_3',
+    ]
+    const csv = [headers, ...rows].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = 'devices_sample.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
 
   const loadDevices = useCallback(async () => {
     try {
@@ -160,7 +176,8 @@ export default function DeviceManagement() {
   }
 
   const hasAssignedLocation = (device) => Boolean(
-    device?.locationName || device?.floorId || device?.restroomId || device?.zoneId
+    device?.locationName || device?.floorId || device?.restroomId || device?.zoneId ||
+    device?.latitude != null || device?.longitude != null
   )
 
   const handleUnassignLocation = async (device) => {
@@ -173,6 +190,8 @@ export default function DeviceManagement() {
         zoneId: null,
         floorPlanPosX: null,
         floorPlanPosY: null,
+        latitude: null,
+        longitude: null,
       })
       const unassigned = {
         ...device,
@@ -204,8 +223,10 @@ export default function DeviceManagement() {
         appKey: newDevice.appKey || undefined,
         lorawanVersion: newDevice.lorawanVersion || undefined,
         lorawanPhyVersion: newDevice.lorawanPhyVersion || undefined,
+        latitude: newDevice.latitude || undefined,
+        longitude: newDevice.longitude || undefined,
       })
-      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '' })
+      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadDevices()
     } catch (e) {
@@ -215,17 +236,37 @@ export default function DeviceManagement() {
     }
   }
 
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const rows = (await file.text()).trim().split(/\r?\n/).filter(Boolean)
+      const headers = rows.shift()?.split(',').map((value) => value.trim()) || []
+      const items = rows.map((row) => Object.fromEntries(row.split(',').map((value, index) => [headers[index], value.trim()])))
+      const result = await deviceAPI.bulkCreate(items)
+      setBulkResult({ created: result.created, skipped: result.skipped, errors: result.errors || [] })
+      await loadDevices()
+    } catch (error) {
+      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Ensure CSV has: name, deviceEui, appKey, joinEui, deviceType, batteryLevel, lorawanVersion columns.' }] })
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   const openEdit = (device) => {
     setSelected(device)
     setEditForm({
       name: device.name || '',
       deviceType: device.deviceType || 'sensor',
+      locationId: device.locationId || '',
       restroomId: device.restroomId || '',
       floorId: device.floorId || '',
       batteryLevel: device.battery ?? '',
       deviceEui: device.deviceEui || '',
       appKey: device.appKey || '',
       gatewayId: device.gatewayId || '',
+      latitude: device.latitude ?? '',
+      longitude: device.longitude ?? '',
     })
     setEditOpen(true)
   }
@@ -240,10 +281,13 @@ export default function DeviceManagement() {
         deviceType: editForm.deviceType,
         restroomId: editForm.restroomId || null,
         floorId: editForm.floorId || null,
+        zoneId: null,
         batteryLevel: editForm.batteryLevel ? Number(editForm.batteryLevel) : undefined,
         deviceEui: editForm.deviceEui || undefined,
         appKey: editForm.appKey || undefined,
         gatewayId: editForm.gatewayId || null,
+        latitude: editForm.latitude === '' ? null : Number(editForm.latitude),
+        longitude: editForm.longitude === '' ? null : Number(editForm.longitude),
       })
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
@@ -316,9 +360,12 @@ export default function DeviceManagement() {
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>
-              Add Device
-            </button>
+            <div className="btn-group">
+              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
+              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()}>Bulk Upload CSV</button>
+              <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>Add Device</button>
+              <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+            </div>
           ) : null
         }
       />
@@ -344,6 +391,9 @@ export default function DeviceManagement() {
                       <th>Site</th>
                       <th>Floor</th>
                       <th>Restroom / Zone</th>
+                      <th>Latitude</th>
+                      <th>Longitude</th>
+                      <th>Assignment</th>
                       <th>Battery</th>
                       <th>Status</th>
                       <th>Health</th>
@@ -364,6 +414,14 @@ export default function DeviceManagement() {
                         <td>{device.locationName || '—'}</td>
                         <td>{device.floorName || '—'}</td>
                         <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
+                        <td>{device.latitude ?? '—'}</td>
+                        <td>{device.longitude ?? '—'}</td>
+                        <td>
+                          {hasAssignedLocation(device)
+                            ? <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>Placed</span>
+                            : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', fontSize: 12 }}>Available</span>
+                          }
+                        </td>
                         <td>
                           <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
                             {device.battery ?? '—'}%
@@ -376,7 +434,7 @@ export default function DeviceManagement() {
                           <td onClick={(e) => e.stopPropagation()}>
                              <div style={{ display: 'flex', gap: 6 }}>
                                {hasAssignedLocation(device) && (
-                                 <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Remove location</button>
+                                 <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Unplace</button>
                                )}
                                <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
                                <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); confirmDelete() }}>Delete</button>
@@ -387,7 +445,7 @@ export default function DeviceManagement() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={canEdit ? "11" : "10"} style={{ textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan={canEdit ? "14" : "13"} style={{ textAlign: 'center', color: '#64748b' }}>
                           No devices found
                         </td>
                       </tr>
@@ -420,6 +478,8 @@ export default function DeviceManagement() {
                <dd>{selected.lorawanPhyVersion || '—'}</dd>
                <dt>Restroom</dt>
                <dd>{selected.restroomName}</dd>
+               <dt>Zone</dt>
+               <dd>{selected.zoneName || '—'}</dd>
                <dt>Floor</dt>
                <dd>{selected.floorName || '—'}</dd>
                <dt>Location</dt>
@@ -434,15 +494,19 @@ export default function DeviceManagement() {
                 <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
                 <dt>Gateway</dt>
                 <dd>{selected.gatewayName || '—'}</dd>
+                <dt>Latitude</dt>
+                <dd>{selected.latitude ?? '—'}</dd>
+                <dt>Longitude</dt>
+                <dd>{selected.longitude ?? '—'}</dd>
+                <dt>Assignment</dt>
+                <dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
               </dl>
               {canEdit && (
                 <div className="btn-group">
                   {hasAssignedLocation(selected) && (
-                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Remove location</button>
+                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
                   )}
-                  {/* <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>
-                    Edit
-                  </button> */}
+                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
                   <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
                     Replace Badge
                   </button>
@@ -658,6 +722,16 @@ export default function DeviceManagement() {
               </label>
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setEditOpen(false)}>Cancel</button>
+                {selected && hasAssignedLocation(selected) && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    disabled={saving}
+                    onClick={() => { setEditOpen(false); handleUnassignLocation(selected) }}
+                  >
+                    Unplace
+                  </button>
+                )}
                 <button type="submit" className="btn btn--primary" disabled={saving}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -756,6 +830,46 @@ export default function DeviceManagement() {
           </div>
         </div>
       )}
-    </div>
+
+      {bulkResult && (
+        <div className="modal-overlay" onClick={() => setBulkResult(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <h3>Bulk Upload Result</h3>
+            <div style={{ display: 'flex', gap: 16, margin: '12px 0', fontSize: 14 }}>
+              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✓ Created: {bulkResult.created}</span>
+              <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>⟳ Skipped: {bulkResult.skipped}</span>
+              {bulkResult.errors.length > 0 && (
+                <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✕ Errors: {bulkResult.errors.length}</span>
+              )}
+            </div>
+            {bulkResult.errors.length > 0 && (
+              <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 6 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#fee2e2' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Row</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkResult.errors.map((err, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #fecaca' }}>
+                        <td style={{ padding: '6px 10px', color: '#b91c1c', whiteSpace: 'nowrap' }}>Row {err.row}</td>
+                        <td style={{ padding: '6px 10px', color: '#374151' }}>{err.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {bulkResult.errors.length === 0 && (
+              <p style={{ color: '#166534', fontSize: 14 }}>All rows processed successfully.</p>
+            )}
+            <div className="btn-group" style={{ marginTop: 16 }}>
+              <button type="button" className="btn btn--primary" onClick={() => setBulkResult(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
   )
 }

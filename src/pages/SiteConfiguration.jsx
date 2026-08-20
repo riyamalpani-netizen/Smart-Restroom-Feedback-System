@@ -359,8 +359,6 @@ export default function SiteConfiguration() {
       restroomAPI.getByFloor(floor.id),
       deviceAPI.getByFloor(floor.id),
       gatewayAPI.getAll({ floorId: floor.id }),
-      loadAllDevices(),
-      loadAllGateways(),
     ])
       .then(([plans, zoneData, restroomData, deviceData, gatewayData]) => {
         const planData = plans.floorPlans?.[0] || null
@@ -376,6 +374,9 @@ export default function SiteConfiguration() {
         setRestrooms(restroomData.restrooms || [])
         setDevices(deviceData.devices || [])
         setGateways(gatewayData.gateways || [])
+        // Load all devices/gateways separately so a failure doesn't break the floor load
+        loadAllDevices()
+        loadAllGateways()
       })
       .catch(() => setNotice('Could not load the saved spatial configuration.'))
   }, [floor])
@@ -704,6 +705,19 @@ export default function SiteConfiguration() {
   }
 
   async function rotatePlan(angle) {
+    if (!plan?.geoBounds) return
+    const b = plan.geoBounds
+    const centerLat = (b.northLat + b.southLat) / 2
+    const centerLng = (b.eastLng + b.westLng) / 2
+    const halfLat = (b.northLat - b.southLat) / 2
+    const halfLng = (b.eastLng - b.westLng) / 2
+    const next = {
+      northLat: centerLat + halfLng,
+      southLat: centerLat - halfLng,
+      eastLng: centerLng + halfLat,
+      westLng: centerLng - halfLat,
+    }
+    setPlan({ ...plan, geoBounds: next })
     setPlanRotation((prev) => prev + angle)
   }
 
@@ -767,7 +781,6 @@ export default function SiteConfiguration() {
   }
 
   function onMapClick(point) {
-    console.log('Map clicked:', point.lat, point.lng, 'step:', step, 'placingType:', placingType, 'selectedDeviceId:', selectedDeviceId, 'selectedGatewayId:', selectedGatewayId, 'busy:', busy, 'plan:', !!plan)
     if ((step === 2 || step === 3) && plan) {
       const currentBounds = plan.geoBounds
       const halfLat = (currentBounds.northLat - currentBounds.southLat) / 2
@@ -798,11 +811,11 @@ export default function SiteConfiguration() {
       movePlacedItem(movingItemId, movingItemType, point)
       return
     }
-    if (placingType === 'device' && selectedDeviceId && step === 5) {
+    if (step === 5 && selectedDeviceId) {
       placeExistingItem(point, 'device')
       return
     }
-    if (placingType === 'gateway' && selectedGatewayId && step === 6) {
+    if (step === 6 && selectedGatewayId) {
       placeExistingItem(point, 'gateway')
       return
     }
@@ -896,7 +909,6 @@ export default function SiteConfiguration() {
       x = ((point.lng - b.westLng) / (b.eastLng - b.westLng)) * plan.width
       y = ((b.northLat - point.lat) / (b.northLat - b.southLat)) * plan.height
     }
-    console.log('Updating device placement:', deviceId, 'zone:', zoneId, 'x:', x, 'y:', y)
     setBusy(true)
     try {
       const data = await deviceAPI.update(deviceId, {
@@ -908,7 +920,6 @@ export default function SiteConfiguration() {
         latitude: point.lat,
         longitude: point.lng,
       })
-      console.log('Device update response:', data)
       const placedDevice = { ...data.device, floorPlanPosX: x, floorPlanPosY: y, latitude: point.lat, longitude: point.lng }
       setDevices((prev) => {
         const exists = prev.some((device) => device.id === deviceId)
@@ -920,7 +931,6 @@ export default function SiteConfiguration() {
       setNotice(`Device placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zoneId ? ` in zone` : ''}.`)
       return true
     } catch (error) {
-      console.error('Device placement error:', error)
       setNotice(error.message || 'Unable to place device.')
       return false
     } finally {
@@ -964,18 +974,18 @@ export default function SiteConfiguration() {
       setNotice('Please select or create a floor first.')
       return
     }
-    console.log('Placing', type, 'at', point.lat, point.lng)
+    if (floor.locationId && site?.id && floor.locationId !== site.id) {
+      setNotice('This floor belongs to a different site. Switch to that site first.')
+      return
+    }
     const zone = zoneAt(point.lat, point.lng)
-    console.log('Zone found:', zone?.id, zone?.name)
     if (type === 'device' && selectedDeviceId) {
       const existingDevice = allDevices.find((d) => d.id === selectedDeviceId)
-      console.log('Existing device:', existingDevice?.id, existingDevice?.floorId, 'current floor:', floor?.id)
-      if (existingDevice?.floorId && existingDevice.floorId !== floor.id) {
-        setNotice(`This device is already placed on a different floor. Remove it from there first.`)
+      if (existingDevice?.locationId && site?.id && existingDevice.locationId !== site.id) {
+        setNotice(`This device belongs to a different site. Remove it from there first.`)
         return
       }
       const placed = await updateDevicePlacement(selectedDeviceId, point, zone)
-      console.log('Placement result:', placed)
       if (placed) {
         setSelectedDeviceId(null)
         setPlacingType(null)
@@ -983,13 +993,11 @@ export default function SiteConfiguration() {
       }
     } else if (type === 'gateway' && selectedGatewayId) {
       const existingGateway = allGateways.find((g) => g.id === selectedGatewayId)
-      console.log('Existing gateway:', existingGateway?.id, existingGateway?.floorId, 'current floor:', floor?.id)
-      if (existingGateway?.floorId && existingGateway.floorId !== floor.id) {
-        setNotice(`This gateway is already placed on a different floor. Remove it from there first.`)
+      if (existingGateway?.locationId && site?.id && existingGateway.locationId !== site.id) {
+        setNotice(`This gateway belongs to a different site. Remove it from there first.`)
         return
       }
       const placed = await updateGatewayPlacement(selectedGatewayId, point, zone?.id || null)
-      console.log('Placement result:', placed)
       if (placed) {
         setSelectedGatewayId(null)
         setPlacingType(null)
@@ -999,12 +1007,12 @@ export default function SiteConfiguration() {
   }
 
   async function movePlacedItem(itemId, itemType, point) {
-    if (busy || !plan) return
+    if (busy) return
     const zone = zoneAt(point.lat, point.lng)
     if (itemType === 'device') {
       const existingDevice = allDevices.find((d) => d.id === itemId)
-      if (existingDevice?.floorId && existingDevice.floorId !== floor.id) {
-        setNotice(`This device is already placed on a different floor. Remove it from there first.`)
+      if (existingDevice?.locationId && site?.id && existingDevice.locationId !== site.id) {
+        setNotice(`This device belongs to a different site. Remove it from there first.`)
         setMovingItemId(null)
         setMovingItemType(null)
         return
@@ -1016,8 +1024,8 @@ export default function SiteConfiguration() {
       }
     } else if (itemType === 'gateway') {
       const existingGateway = allGateways.find((g) => g.id === itemId)
-      if (existingGateway?.floorId && existingGateway.floorId !== floor.id) {
-        setNotice(`This gateway is already placed on a different floor. Remove it from there first.`)
+      if (existingGateway?.locationId && site?.id && existingGateway.locationId !== site.id) {
+        setNotice(`This gateway belongs to a different site. Remove it from there first.`)
         setMovingItemId(null)
         setMovingItemType(null)
         return
@@ -1077,8 +1085,8 @@ export default function SiteConfiguration() {
     if (!window.confirm('Remove this device from the floor plan? It will remain in Device Management.')) return
     setBusy(true)
     try {
-      await deviceAPI.update(deviceId, { floorId: null, zoneId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null })
-      setDevices((prev) => prev.map((d) => d.id === deviceId ? { ...d, floorId: null, zoneId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } : d))
+      await deviceAPI.update(deviceId, { restroomId: null, floorId: null, zoneId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null })
+      setDevices((prev) => prev.map((d) => d.id === deviceId ? { ...d, restroomId: null, floorId: null, zoneId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } : d))
       setNotice('Device unlinked from floor plan.')
     } catch (error) {
       setNotice(error.message || 'Unable to unlink device.')
@@ -1091,8 +1099,8 @@ export default function SiteConfiguration() {
     if (!window.confirm('Remove this gateway from the floor plan? It will remain in Gateway Management.')) return
     setBusy(true)
     try {
-      await gatewayAPI.update(gatewayId, { floorId: null, zoneId: null, latitude: null, longitude: null })
-      setGateways((prev) => prev.map((g) => g.id === gatewayId ? { ...g, floorId: null, zoneId: null, latitude: null, longitude: null } : g))
+      await gatewayAPI.update(gatewayId, { locationId: null, floorId: null, zoneId: null, latitude: null, longitude: null })
+      setGateways((prev) => prev.map((g) => g.id === gatewayId ? { ...g, locationId: null, floorId: null, zoneId: null, latitude: null, longitude: null } : g))
       setNotice('Gateway unlinked from floor plan.')
     } catch (error) {
       setNotice(error.message || 'Unable to unlink gateway.')
@@ -1120,7 +1128,7 @@ export default function SiteConfiguration() {
         setGateways((all) => [...all, data.gateway])
         setNotice(`${TYPE_META[type].label} placed${zone ? ` in ${zone.name}` : ''}.`)
       } else {
-        const data = await deviceAPI.create({ name: `${TYPE_META[type].label} ${token}`, floorId: floor.id, zoneId: zone?.id || null, deviceType: type, batteryLevel: 90, floorPlanPosX: x, floorPlanPosY: y, isLayoutAsset: true })
+        const data = await deviceAPI.create({ name: `${TYPE_META[type].label} ${token}`, floorId: floor.id, zoneId: zone?.id || null, restroomId: zone?.restroomId || null, deviceType: type, batteryLevel: 90, floorPlanPosX: x, floorPlanPosY: y, latitude: point.lat, longitude: point.lng, isLayoutAsset: true })
         setDevices((all) => [...all, data.device])
         setNotice(`${TYPE_META[type].label} placed${zone ? ` in ${zone.name}` : ''}.`)
       }
@@ -1174,8 +1182,16 @@ export default function SiteConfiguration() {
       return null
     }).filter(Boolean)
   }
-  const devicePosition = (device) => plan && Number.isFinite(device.floorPlanPosX) && Number.isFinite(device.floorPlanPosY) ? [plan.geoBounds.northLat - (device.floorPlanPosY / plan.height) * (plan.geoBounds.northLat - plan.geoBounds.southLat), plan.geoBounds.westLng + (device.floorPlanPosX / plan.width) * (plan.geoBounds.eastLng - plan.geoBounds.westLng)] : null
-  const gatewayPosition = (gateway) => gateway.latitude && gateway.longitude ? [gateway.latitude, gateway.longitude] : null
+  const devicePosition = (device) => {
+    if (plan && Number.isFinite(device.floorPlanPosX) && Number.isFinite(device.floorPlanPosY)) {
+      return [plan.geoBounds.northLat - (device.floorPlanPosY / plan.height) * (plan.geoBounds.northLat - plan.geoBounds.southLat), plan.geoBounds.westLng + (device.floorPlanPosX / plan.width) * (plan.geoBounds.eastLng - plan.geoBounds.westLng)]
+    }
+    if (Number.isFinite(device.latitude) && Number.isFinite(device.longitude)) {
+      return [device.latitude, device.longitude]
+    }
+    return null
+  }
+  const gatewayPosition = (gateway) => Number.isFinite(gateway.latitude) && Number.isFinite(gateway.longitude) ? [gateway.latitude, gateway.longitude] : null
 
   const previewCoords = siteForm.latitude && siteForm.longitude
     ? [Number(siteForm.latitude), Number(siteForm.longitude)]
@@ -1390,8 +1406,60 @@ export default function SiteConfiguration() {
                 {drawing && !editingZoneId && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}
                 {(selectedDeviceId && step === 5) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="device" />}
                 {(selectedGatewayId && step === 6) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="gateway" />}
-                {devices.map((item) => { const position = devicePosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon(item.deviceType, item.badgeId || item.name)} title={item.badgeId || item.name} /> : null })}
-                {gateways.map((item) => { const position = gatewayPosition(item); return position ? <Marker key={item.id} position={position} icon={divIcon('gateway', item.name)} title={item.name} /> : null })}
+                {devices.map((item) => {
+                  const position = devicePosition(item)
+                  if (!position) return null
+                  const isMoving = movingItemId === item.id
+                  return (
+                    <Marker
+                      key={item.id}
+                      position={position}
+                      icon={divIcon(item.deviceType, item.badgeId || item.name)}
+                      title={item.badgeId || item.name}
+                      draggable
+                      eventHandlers={{
+                        dragstart: () => {
+                          setMovingItemId(item.id)
+                          setMovingItemType('device')
+                          setSelectedDeviceId(null)
+                          setPlacingType(null)
+                        },
+                        dragend: (e) => {
+                          const pos = e.target.getLatLng()
+                          movePlacedItem(item.id, 'device', pos)
+                        },
+                      }}
+                      opacity={isMoving ? 0.5 : 1}
+                    />
+                  )
+                })}
+                {gateways.map((item) => {
+                  const position = gatewayPosition(item)
+                  if (!position) return null
+                  const isMoving = movingItemId === item.id
+                  return (
+                    <Marker
+                      key={item.id}
+                      position={position}
+                      icon={divIcon('gateway', item.name)}
+                      title={item.name}
+                      draggable
+                      eventHandlers={{
+                        dragstart: () => {
+                          setMovingItemId(item.id)
+                          setMovingItemType('gateway')
+                          setSelectedGatewayId(null)
+                          setPlacingType(null)
+                        },
+                        dragend: (e) => {
+                          const pos = e.target.getLatLng()
+                          movePlacedItem(item.id, 'gateway', pos)
+                        },
+                      }}
+                      opacity={isMoving ? 0.5 : 1}
+                    />
+                  )
+                })}
               </MapContainer>
 
               {step === 3 && plan && (
@@ -1480,31 +1548,39 @@ export default function SiteConfiguration() {
                 <div className="planner-placement">
                   <strong>Device placement</strong>
                   <p>Select an existing device from Device Management and click on the map to place it. Restrooms saved in the previous step are listed below.</p>
-                   {selectedDeviceId && (() => {
-                    const device = allDevices.find((d) => d.id === selectedDeviceId)
-                    if (!device) return null
-                    return (
-                      <div className="planner-placement__info">
-                        <strong>Selected device:</strong>
-                        <span>Name: {device.name || device.badgeId}</span>
-                        <span>Type: {device.deviceType || 'sensor'}</span>
-                        <span>EUI: {device.deviceEui || '—'}</span>
-                        {device.zoneId && <span style={{ color: '#38bdf8' }}>Zone: {getZoneName(device.zoneId)}</span>}
-                        {device.floorId && <span style={{ color: '#f59e0b' }}>Floor: {device.floorId === floor?.id ? 'Current floor' : device.floorId}</span>}
-                      </div>
-                    )
-                  })()}
+                    {selectedDeviceId && (() => {
+                     const device = allDevices.find((d) => d.id === selectedDeviceId)
+                     if (!device) return null
+                     return (
+                       <div className="planner-placement__info">
+                         <strong>Selected device:</strong>
+                         <span>Name: {device.name || device.badgeId}</span>
+                         <span>Type: {device.deviceType || 'sensor'}</span>
+                         <span>EUI: {device.deviceEui || '—'}</span>
+                         {device.zoneId && <span style={{ color: '#38bdf8' }}>Zone: {getZoneName(device.zoneId)}</span>}
+                         {device.restroomName && device.restroomName !== 'Unassigned' && <span style={{ color: '#0ea5e9' }}>Restroom: {device.restroomName}</span>}
+                         {device.floorId && <span style={{ color: '#f59e0b' }}>Floor: {device.floorId === floor?.id ? 'Current floor' : device.floorId}</span>}
+                       </div>
+                     )
+                   })()}
                   <div className="planner-placement__restrooms">
                     <small>Saved restrooms ({restrooms.length})</small>
                     {restrooms.length ? (
                       <div>{restrooms.map((restroom) => <span key={restroom.id} className="planner-placement__restroom">{restroom.name}</span>)}</div>
                     ) : <small>No restrooms have been saved on this floor yet.</small>}
                   </div>
-                  <select value={selectedDeviceId || ''} onChange={(e) => { console.log('Device selected:', e.target.value); setSelectedDeviceId(e.target.value || null); setPlacingType(e.target.value ? 'device' : null); setMovingItemId(null); setMovingItemType(null) }}>
+                   <select value={selectedDeviceId || ''} onChange={(e) => { setSelectedDeviceId(e.target.value || null); setPlacingType(e.target.value ? 'device' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a device...</option>
-                    {allDevices.map((d) => (
-                      <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(F${d.floorId === floor?.id ? 'here' : d.floorId})` : '(unplaced)'}</option>
-                    ))}
+                    {allDevices
+                      .filter((d) => !d.locationId || !site?.id || d.locationId === site.id)
+                      .map((d) => {
+                        const placed = d.floorId === floor?.id ? '✓ this floor' : d.floorId ? '↩ other floor' : 'unplaced'
+                        return (
+                          <option key={d.id} value={d.id}>
+                            {d.badgeId || d.name} ({placed})
+                          </option>
+                        )
+                      })}
                   </select>
                    {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
                    <div className="planner-placement__footer">
@@ -1532,11 +1608,18 @@ export default function SiteConfiguration() {
                       </div>
                     )
                   })()}
-                  <select value={selectedGatewayId || ''} onChange={(e) => { console.log('Gateway selected:', e.target.value); setSelectedGatewayId(e.target.value || null); setPlacingType(e.target.value ? 'gateway' : null); setMovingItemId(null); setMovingItemType(null) }}>
+                   <select value={selectedGatewayId || ''} onChange={(e) => { setSelectedGatewayId(e.target.value || null); setPlacingType(e.target.value ? 'gateway' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a gateway...</option>
-                    {allGateways.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name} {g.floorId ? `(${g.floorId === floor?.id ? 'here' : `Floor ${g.floorId}`})` : '(unplaced)'}</option>
-                    ))}
+                    {allGateways
+                      .filter((g) => !g.locationId || !site?.id || g.locationId === site.id)
+                      .map((g) => {
+                        const placed = g.floorId === floor?.id ? '✓ this floor' : g.floorId ? '↩ other floor' : 'unplaced'
+                        return (
+                          <option key={g.id} value={g.id}>
+                            {g.name} ({placed})
+                          </option>
+                        )
+                      })}
                   </select>
                    {selectedGatewayId && <small>Gateway selected. Click on the map to place it.</small>}
                    <div className="planner-placement__footer">
@@ -1593,10 +1676,10 @@ export default function SiteConfiguration() {
                   return (
                     <div key={device.id} className="planner-preview-item">
                       <span className="planner-preview-item__icon" style={{ background: TYPE_META[device.deviceType]?.color || TYPE_META.device.color }}>{TYPE_META[device.deviceType]?.icon || '▣'}</span>
-                      <div className="planner-preview-item__info">
-                        <strong>{device.badgeId || device.name}</strong>
-                        <small>{device.name || 'Device'} · {getZoneName(device.zoneId) || 'No zone'} · {device.latitude?.toFixed(5)}, {device.longitude?.toFixed(5)}</small>
-                      </div>
+                       <div className="planner-preview-item__info">
+                         <strong>{device.badgeId || device.name}</strong>
+                         <small>{device.name || 'Device'} · {device.restroomName && device.restroomName !== 'Unassigned' ? device.restroomName : 'No restroom'} · {getZoneName(device.zoneId) || 'No zone'} · {device.latitude?.toFixed(5)}, {device.longitude?.toFixed(5)}</small>
+                       </div>
                       <button type="button" className="planner-button planner-button--ghost" onClick={() => { setMovingItemId(device.id); setMovingItemType('device'); setSelectedDeviceId(null); setPlacingType(null); setNotice('Click the map to move this device.') }}>✎ Move</button>
                       <DeleteButton label={`Delete ${device.name}`} onClick={() => removeDevice(device.id)} />
                     </div>

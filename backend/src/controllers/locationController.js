@@ -104,13 +104,16 @@ async function createLocation(req, res) {
     if (!organizationId || !city || !officeName) {
       return res.status(400).json({ message: "Organization ID, city, and office name are required" });
     }
+    if (![latitude, longitude].every((value) => value !== null && value !== "" && value !== undefined && Number.isFinite(Number(value)))) {
+      return res.status(400).json({ message: "Latitude and longitude are required" });
+    }
 
     if (userRole === "vendor_admin" && organizationId !== userOrgId) {
       return res.status(403).json({ message: "You can only create locations in your own organization" });
     }
 
     const location = await prisma.location.create({
-      data: { organizationId, city, officeName, address, latitude, longitude },
+      data: { organizationId, city, officeName, address, latitude: Number(latitude), longitude: Number(longitude) },
     });
 
     res.status(201).json({ message: "Location created successfully", location });
@@ -134,10 +137,13 @@ async function updateLocation(req, res) {
     if (!existing) {
       return res.status(404).json({ message: "Location not found" });
     }
+    if ((latitude !== undefined || longitude !== undefined) && ![latitude, longitude].every((value) => value !== null && value !== "" && value !== undefined && Number.isFinite(Number(value)))) {
+      return res.status(400).json({ message: "Latitude and longitude are required" });
+    }
 
     const location = await prisma.location.update({
       where: { id },
-      data: { city, officeName, address, latitude, longitude },
+      data: { city, officeName, address, latitude: latitude === undefined ? existing.latitude : Number(latitude), longitude: longitude === undefined ? existing.longitude : Number(longitude) },
     });
 
     res.status(200).json({ message: "Location updated successfully", location });
@@ -161,7 +167,26 @@ async function deleteLocation(req, res) {
       return res.status(404).json({ message: "Location not found" });
     }
 
-    await prisma.location.delete({ where: { id } });
+    const floors = await prisma.floor.findMany({ where: { locationId: id }, select: { id: true } });
+    const floorIds = floors.map((item) => item.id);
+    const [restrooms, zones] = await Promise.all([
+      prisma.restroom.findMany({ where: { floorId: { in: floorIds } }, select: { id: true } }),
+      prisma.zone.findMany({ where: { floorId: { in: floorIds } }, select: { id: true } }),
+    ]);
+    const restroomIds = restrooms.map((item) => item.id);
+    const zoneIds = zones.map((item) => item.id);
+    await prisma.$transaction([
+      prisma.device.updateMany({ where: { OR: [{ floorId: { in: floorIds } }, { restroomId: { in: restroomIds } }, { zoneId: { in: zoneIds } }] }, data: { restroomId: null, zoneId: null, floorId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } }),
+      prisma.gateway.updateMany({ where: { OR: [{ locationId: id }, { floorId: { in: floorIds } }, { zoneId: { in: zoneIds } }] }, data: { locationId: null, floorId: null, zoneId: null, latitude: null, longitude: null } }),
+      prisma.notification.deleteMany({ where: { alert: { restroomId: { in: restroomIds } } } }),
+      prisma.alert.deleteMany({ where: { restroomId: { in: restroomIds } } }),
+      prisma.feedback.deleteMany({ where: { restroomId: { in: restroomIds } } }),
+      prisma.zone.deleteMany({ where: { floorId: { in: floorIds } } }),
+      prisma.restroom.deleteMany({ where: { floorId: { in: floorIds } } }),
+      prisma.floorPlan.deleteMany({ where: { floorId: { in: floorIds } } }),
+      prisma.floor.deleteMany({ where: { locationId: id } }),
+      prisma.location.delete({ where: { id } }),
+    ]);
 
     res.status(200).json({ message: "Location deleted successfully" });
   } catch (error) {

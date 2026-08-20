@@ -131,7 +131,14 @@ async function deleteRestroom(req, res) {
       return res.status(404).json({ message: "Restroom not found" });
     }
 
-    await prisma.restroom.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.device.updateMany({ where: { restroomId: id }, data: { restroomId: null, zoneId: null, floorId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } }),
+      prisma.zone.updateMany({ where: { restroomId: id }, data: { restroomId: null } }),
+      prisma.notification.deleteMany({ where: { alert: { restroomId: id } } }),
+      prisma.alert.deleteMany({ where: { restroomId: id } }),
+      prisma.feedback.deleteMany({ where: { restroomId: id } }),
+      prisma.restroom.delete({ where: { id } }),
+    ]);
 
     res.status(200).json({ message: "Restroom deleted successfully" });
   } catch (error) {

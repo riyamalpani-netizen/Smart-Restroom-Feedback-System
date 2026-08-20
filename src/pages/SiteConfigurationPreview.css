@@ -97,6 +97,16 @@
   height: 220px;
 }
 
+.planner-preview-map .planner-map-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.planner-preview-map .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+
 .planner-preview-thumb {
   width: 100%;
   max-width: 200px;
@@ -255,6 +265,12 @@
   background: #e8e4de;
   overflow: hidden;
   min-height: 520px;
+}
+
+.planner-step-layout__canvas .planner-map-container,
+.planner-step-layout__canvas .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
 }
 
 .planner-step-layout__footer {

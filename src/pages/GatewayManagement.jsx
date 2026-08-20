@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
@@ -35,7 +35,23 @@ export default function GatewayManagement() {
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
   const [zones, setZones] = useState([])
+  const [bulkResult, setBulkResult] = useState(null)
+  const bulkFileRef = useRef(null)
   const canEdit = user?.role !== 'viewer'
+
+  function downloadSampleCSV() {
+    const headers = 'name,gatewayEui,gatewayId,frequencyPlanId'
+    const rows = [
+      'Gateway 01,BB000000000000001,gateway-bb000000000000001,EU_863_870',
+      'Gateway 02,BB000000000000002,gateway-bb000000000000002,EU_863_870',
+    ]
+    const csv = [headers, ...rows].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = 'gateways_sample.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
 
   const [form, setForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
   const [editForm, setEditForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', status: 'offline', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
@@ -106,6 +122,23 @@ export default function GatewayManagement() {
       alert(e.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const rows = (await file.text()).trim().split(/\r?\n/).filter(Boolean)
+      const headers = rows.shift()?.split(',').map((value) => value.trim()) || []
+      const items = rows.map((row) => Object.fromEntries(row.split(',').map((value, index) => [headers[index], value.trim()])))
+      const result = await gatewayAPI.bulkCreate(items)
+      setBulkResult({ created: result.created, skipped: result.skipped, errors: result.errors || [] })
+      await loadGateways()
+    } catch (error) {
+      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Ensure CSV has: name, gatewayEui, gatewayId, frequencyPlanId columns.' }] })
+    } finally {
+      event.target.value = ''
     }
   }
 
@@ -224,9 +257,12 @@ export default function GatewayManagement() {
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>
-              Add Gateway
-            </button>
+            <div className="btn-group">
+              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
+              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()}>Bulk Upload CSV</button>
+              <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>Add Gateway</button>
+              <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+            </div>
           ) : null
         }
       />
@@ -247,6 +283,10 @@ export default function GatewayManagement() {
                     <th>Site</th>
                     <th>Floor</th>
                     <th>Zone</th>
+                    <th>Restroom</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>Assignment</th>
                     <th>Status</th>
                     <th>TTN Status</th>
                     <th>Connected Devices</th>
@@ -262,6 +302,10 @@ export default function GatewayManagement() {
                       <td>{gw.site || '—'}</td>
                       <td>{gw.floor || '—'}</td>
                       <td>{gw.zone || '—'}</td>
+                      <td>{gw.restroomName || '—'}</td>
+                      <td>{gw.latitude ?? '—'}</td>
+                      <td>{gw.longitude ?? '—'}</td>
+                      <td>{hasAssignedLocation(gw) ? 'Assigned' : 'Available'}</td>
                       <td><StatusBadge status={gw.status || 'offline'} variant="device" /></td>
                       <td><StatusBadge status={gw.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></td>
                       <td>{gw.connectedDevices ?? 0}</td>
@@ -270,7 +314,7 @@ export default function GatewayManagement() {
                         <td onClick={(e) => e.stopPropagation()}>
                            <div style={{ display: 'flex', gap: 6 }}>
                              {hasAssignedLocation(gw) && (
-                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(gw)}>Remove location</button>
+                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(gw)}>Unplace</button>
                              )}
                              <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(gw)}>Edit</button>
                              <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(gw); setDeleteOpen(true) }}>Delete</button>
@@ -280,7 +324,7 @@ export default function GatewayManagement() {
                     </tr>
                   ))}
                   {pageItems.length === 0 && (
-                    <tr><td colSpan={canEdit ? "10" : "9"} style={{ textAlign: 'center', color: '#64748b' }}>No gateways found</td></tr>
+                    <tr><td colSpan={canEdit ? "14" : "13"} style={{ textAlign: 'center', color: '#64748b' }}>No gateways found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -301,12 +345,14 @@ export default function GatewayManagement() {
               <dt>Site</dt><dd>{selected.site || '—'}</dd>
               <dt>Floor</dt><dd>{selected.floor || '—'}</dd>
               <dt>Zone</dt><dd>{selected.zone || '—'}</dd>
+              <dt>Restroom</dt><dd>{selected.restroomName || '—'}</dd>
               <dt>Last Seen</dt><dd>{selected.lastSeen ? formatDateTime(selected.lastSeen) : '—'}</dd>
               <dt>Connected Devices</dt><dd>{selected.connectedDevices ?? 0}</dd>
               <dt>TTN Device ID</dt><dd><code>{selected.ttnDeviceId || '—'}</code></dd>
               <dt>Frequency Plan</dt><dd>{selected.frequencyPlanId || '—'}</dd>
               <dt>Latitude</dt><dd>{selected.latitude ?? '—'}</dd>
               <dt>Longitude</dt><dd>{selected.longitude ?? '—'}</dd>
+              <dt>Assignment</dt><dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
             </dl>
             <div className="tabs" style={{ marginTop: 16, marginBottom: 12 }}>
               {TABS.map((tab) => (
@@ -317,7 +363,7 @@ export default function GatewayManagement() {
               <div>
                 <div className="btn-group">
                   {hasAssignedLocation(selected) && (
-                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Remove location</button>
+                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
                   )}
                   <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
                   <button type="button" className="btn btn--secondary" onClick={() => { setRegisterForm({ ttnGatewayId: '', frequencyPlanId: selected.frequencyPlanId || 'EU_863_870', latitude: selected.latitude || '', longitude: selected.longitude || '', description: selected.name || '' }); setRegisterOpen(true) }}>Register in TTN</button>
@@ -408,6 +454,9 @@ export default function GatewayManagement() {
               <label>Longitude<input type="text" value={editForm.longitude} onChange={(e) => setEditForm((f) => ({ ...f, longitude: e.target.value }))} /></label>
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setEditOpen(false)}>Cancel</button>
+                {selected && hasAssignedLocation(selected) && (
+                  <button type="button" className="btn btn--secondary" disabled={saving} onClick={() => { setEditOpen(false); handleUnassignLocation(selected) }}>Unplace</button>
+                )}
                 <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
               </div>
             </form>
@@ -444,6 +493,47 @@ export default function GatewayManagement() {
             <div className="btn-group">
               <button type="button" className="btn btn--secondary" onClick={() => setDeleteOpen(false)}>Cancel</button>
               <button type="button" className="btn btn--danger" disabled={deleting} onClick={handleDelete}>{deleting ? 'Deleting...' : 'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkResult && (
+        <div className="modal-overlay" onClick={() => setBulkResult(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <h3>Bulk Upload Result</h3>
+            <div style={{ display: 'flex', gap: 16, margin: '12px 0', fontSize: 14 }}>
+              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✓ Created: {bulkResult.created}</span>
+              <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>⟳ Skipped: {bulkResult.skipped}</span>
+              {bulkResult.errors.length > 0 && (
+                <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✕ Errors: {bulkResult.errors.length}</span>
+              )}
+            </div>
+            {bulkResult.errors.length > 0 && (
+              <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 6 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#fee2e2' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Row</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkResult.errors.map((err, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #fecaca' }}>
+                        <td style={{ padding: '6px 10px', color: '#b91c1c', whiteSpace: 'nowrap' }}>Row {err.row}</td>
+                        <td style={{ padding: '6px 10px', color: '#374151' }}>{err.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {bulkResult.errors.length === 0 && (
+              <p style={{ color: '#166534', fontSize: 14 }}>All rows processed successfully.</p>
+            )}
+            <div className="btn-group" style={{ marginTop: 16 }}>
+              <button type="button" className="btn btn--primary" onClick={() => setBulkResult(null)}>Close</button>
             </div>
           </div>
         </div>

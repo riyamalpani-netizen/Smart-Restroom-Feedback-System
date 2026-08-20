@@ -86,6 +86,7 @@ model FloorPlan {
   posX        Int      @default(0)
   posY        Int      @default(0)
   rotation    Int      @default(0)
+  scale       Float    @default(1)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   geoBounds   Json?
@@ -149,6 +150,8 @@ model Device {
   updatedAt         DateTime             @updatedAt
   floorPlanPosX     Float?
   floorPlanPosY     Float?
+  latitude          Float?
+  longitude         Float?
   floorId           String?
   deviceType        String?              @default("sensor")
   zoneId            String?

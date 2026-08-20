@@ -90,7 +90,7 @@ async function getFloorPlanById(req, res) {
 
 async function createFloorPlan(req, res) {
   try {
-    const { floorId, name, imageData, width, height, posX, posY, rotation, geoBounds, geoJsonData } = req.body;
+    const { floorId, name, imageData, width, height, posX, posY, rotation, scale, geoBounds, geoJsonData } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -121,6 +121,7 @@ async function createFloorPlan(req, res) {
         posX: posX ?? 0,
         posY: posY ?? 0,
         rotation: rotation ?? 0,
+        scale: scale ?? 1,
         geoBounds: geoBounds ?? undefined,
         geoJsonData: geoJsonData ?? undefined,
       },
@@ -146,7 +147,7 @@ async function createFloorPlan(req, res) {
 async function updateFloorPlan(req, res) {
   try {
     const { id } = req.params;
-    const { name, imageData, width, height, posX, posY, rotation, geoBounds, geoJsonData } = req.body;
+    const { name, imageData, width, height, posX, posY, rotation, scale, geoBounds, geoJsonData } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -179,6 +180,7 @@ async function updateFloorPlan(req, res) {
         posX: posX ?? existing.posX,
         posY: posY ?? existing.posY,
         rotation: rotation ?? existing.rotation,
+        scale: scale ?? existing.scale,
         geoBounds: geoBounds ?? existing.geoBounds,
         geoJsonData: geoJsonData ?? existing.geoJsonData,
       },

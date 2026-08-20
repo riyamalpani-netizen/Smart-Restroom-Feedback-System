@@ -133,7 +133,25 @@ async function deleteFloor(req, res) {
       return res.status(404).json({ message: "Floor not found" });
     }
 
-    await prisma.floor.delete({ where: { id } });
+    const [restrooms, zones] = await Promise.all([
+      prisma.restroom.findMany({ where: { floorId: id }, select: { id: true } }),
+      prisma.zone.findMany({ where: { floorId: id }, select: { id: true } }),
+    ]);
+    const restroomIds = restrooms.map((item) => item.id);
+    const zoneIds = zones.map((item) => item.id);
+    // Deleting a floor removes its layout, not its physical inventory.  Clear
+    // assignments first so devices and gateways can be placed elsewhere.
+    await prisma.$transaction([
+      prisma.device.updateMany({ where: { OR: [{ floorId: id }, { restroomId: { in: restroomIds } }, { zoneId: { in: zoneIds } }] }, data: { restroomId: null, zoneId: null, floorId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } }),
+      prisma.gateway.updateMany({ where: { OR: [{ floorId: id }, { zoneId: { in: zoneIds } }] }, data: { locationId: null, floorId: null, zoneId: null, latitude: null, longitude: null } }),
+      prisma.notification.deleteMany({ where: { alert: { restroomId: { in: restroomIds } } } }),
+      prisma.alert.deleteMany({ where: { restroomId: { in: restroomIds } } }),
+      prisma.feedback.deleteMany({ where: { restroomId: { in: restroomIds } } }),
+      prisma.zone.deleteMany({ where: { floorId: id } }),
+      prisma.restroom.deleteMany({ where: { floorId: id } }),
+      prisma.floorPlan.deleteMany({ where: { floorId: id } }),
+      prisma.floor.delete({ where: { id } }),
+    ]);
 
     res.status(200).json({ message: "Floor deleted successfully" });
   } catch (error) {
