@@ -47,9 +47,18 @@ function divIcon(type, label) {
 
 function MapZoomControl({ onZoomIn, onZoomOut }) {
   const map = useMap()
+  const [zoom, setZoom] = useState(map.getZoom())
+  
+  useEffect(() => {
+    const updateZoom = () => setZoom(map.getZoom())
+    map.on('zoomend', updateZoom)
+    return () => { map.off('zoomend', updateZoom) }
+  }, [map])
+  
   return (
     <div className="planner-map-zoom">
       <button type="button" className="planner-zoom-btn" onClick={onZoomIn ?? (() => map.zoomIn())} title="Zoom in">＋</button>
+      <span className="planner-zoom-level">{zoom}</span>
       <button type="button" className="planner-zoom-btn" onClick={onZoomOut ?? (() => map.zoomOut())} title="Zoom out">−</button>
     </div>
   )
@@ -119,9 +128,21 @@ function PlacementPreview({ position, type }) {
   )
 }
 
-function SitePin({ location }) {
+function SitePin({ location, onLocationChange }) {
   if (!Number.isFinite(location?.latitude) || !Number.isFinite(location?.longitude)) return null
-  return <Marker position={[location.latitude, location.longitude]} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [40, 48], iconAnchor: [20, 48], html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="40" height="48"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>' }) } />
+  return (
+    <Marker
+      position={[location.latitude, location.longitude]}
+      icon={L.divIcon({ className: 'planner-site-pin', iconSize: [40, 48], iconAnchor: [20, 48], html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="40" height="48"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>' }) }
+      draggable
+      eventHandlers={{
+        dragend: (e) => {
+          const pos = e.target.getLatLng()
+          onLocationChange?.(pos.lat, pos.lng)
+        },
+      }}
+    />
+  )
 }
 
 function PreviewPanel({ title, children, empty }) {
@@ -395,6 +416,13 @@ export default function SiteConfiguration() {
   function setCoords(coords) {
     setSiteForm((v) => ({ ...v, latitude: String(coords[0]), longitude: String(coords[1]) }))
     setPickerOpen(false)
+  }
+
+  function handleSitePinMove(lat, lng) {
+    setSiteForm((v) => ({ ...v, latitude: String(lat), longitude: String(lng) }))
+    if (site) {
+      setSite({ ...site, latitude: lat, longitude: lng })
+    }
   }
 
   async function loadLocations() {
@@ -713,7 +741,7 @@ export default function SiteConfiguration() {
   }
 
   function zoomMap(delta) {
-    setMapZoom((prev) => Math.max(1, Math.min(22, prev + delta)))
+    setMapZoom((prev) => Math.max(1, Math.min(23, prev + delta)))
   }
 
   function fitPlan() {
@@ -1223,12 +1251,12 @@ export default function SiteConfiguration() {
           <section className="planner-step-layout">
             <FloorSidebar floors={floors} floor={floor} onSelect={setFloor} onAdd={() => setAddFloorOpen(true)} onDelete={removeFloor} />
             <main className="planner-step-layout__canvas">
-              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={23} minZoom={2}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="OpenStreetMap" />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapClick onClick={onMapClick} />
-                <SitePin location={site} />
-                <MapZoomControl onZoomIn={() => zoomMap(2)} onZoomOut={() => zoomMap(-2)} />
+                <SitePin location={site} onLocationChange={handleSitePinMove} />
+                <MapZoomControl onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)} />
                 {bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}
               </MapContainer>
               {floor && (
@@ -1306,14 +1334,14 @@ export default function SiteConfiguration() {
               </div>
             </div>
             <div className="planner-map">
-              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={23} minZoom={2}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapCursor children={(selectedDeviceId && step === 5) || (selectedGatewayId && step === 6) ? 'crosshair' : ''} />
                 <MapMouseTracker onMouseMove={setMousePos} />
                 <MapClick onClick={onMapClick} />
-                <SitePin location={site} />
-                <MapZoomControl onZoomIn={() => zoomMap(2)} onZoomOut={() => zoomMap(-2)} />
+                <SitePin location={site} onLocationChange={handleSitePinMove} />
+                <MapZoomControl onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)} />
                 {bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}
                 {zones.map((zone) => {
                   const positions = zonePositions(zone)
@@ -1381,8 +1409,8 @@ export default function SiteConfiguration() {
 
                   <div className="planner-map-actions">
                     <strong>Map actions</strong>
-                    <button type="button" className="planner-button" onClick={() => zoomMap(2)}>＋ Zoom in</button>
-                    <button type="button" className="planner-button" onClick={() => zoomMap(-2)}>− Zoom out</button>
+                    <button type="button" className="planner-button" onClick={() => zoomMap(1)}>＋ Zoom in</button>
+                    <button type="button" className="planner-button" onClick={() => zoomMap(-1)}>− Zoom out</button>
                     <button type="button" className="planner-button planner-button--ghost" onClick={() => { setZones([]); setRestrooms([]); setDevices([]); setGateways([]); setPlanRotation(0); setPlanScale(1); setNotice('Map data cleared.'); }}>🗑 Delete map data</button>
                     <button type="button" className="planner-button" onClick={() => setMapZoom((prev) => prev + 1)}>↻ Rotate view</button>
                     <button type="button" className="planner-button" onClick={() => setMapZoom(17)}>⤢ Reset view</button>
@@ -1448,7 +1476,7 @@ export default function SiteConfiguration() {
                   <select value={selectedDeviceId || ''} onChange={(e) => { setSelectedDeviceId(e.target.value || null); setPlacingType(e.target.value ? 'device' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a device...</option>
                     {allDevices.map((d) => (
-                      <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(${d.floorId === floor?.id ? 'here' : `Floor ${d.floorId}`})` : '(unplaced)'}</option>
+                      <option key={d.id} value={d.id}>{d.badgeId || d.name} {d.floorId ? `(F${d.floorId === floor?.id ? 'here' : d.floorId})` : '(unplaced)'}</option>
                     ))}
                   </select>
                    {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
