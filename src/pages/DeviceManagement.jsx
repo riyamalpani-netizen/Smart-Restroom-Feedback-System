@@ -3,11 +3,43 @@ import { io } from 'socket.io-client'
 import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
+import BulkUploadModal from '../components/common/BulkUploadModal'
 import { formatDateTime } from '../utils/formatters'
 import api, { deviceAPI, gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
+/**
+ * Parse a CSV string (RFC 4180 — handles quoted fields with commas/newlines).
+ * Returns an array of objects keyed by the header row.
+ */
+function parseCSV(text) {
+  const lines = []
+  let cur = ''
+  let inQuote = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '"') {
+      if (inQuote && text[i + 1] === '"') { cur += '"'; i++ }
+      else inQuote = !inQuote
+    } else if ((ch === '\n' || ch === '\r') && !inQuote) {
+      if (ch === '\r' && text[i + 1] === '\n') i++
+      if (cur.trim()) lines.push(cur)
+      cur = ''
+    } else {
+      cur += ch
+    }
+  }
+  if (cur.trim()) lines.push(cur)
+
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map((h) => h.trim())
+  return lines.slice(1).map((line) => {
+    const cols = line.split(',')
+    return Object.fromEntries(headers.map((h, i) => [h, (cols[i] ?? '').trim()]))
+  })
+}
 
 export default function DeviceManagement() {
   const { user } = useAuth()
@@ -28,32 +60,45 @@ export default function DeviceManagement() {
   const [testResult, setTestResult] = useState(null)
   const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
-  const [editForm, setEditForm] = useState({ name: '', deviceType: 'sensor', restroomId: '', floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '', latitude: '', longitude: '' })
-  const [newDevice, setNewDevice] = useState({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', latitude: '', longitude: '' })
+  const [editForm, setEditForm] = useState({
+    name: '', deviceType: 'sensor', locationId: '', restroomId: '',
+    floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '',
+    latitude: '', longitude: '',
+  })
+  const [newDevice, setNewDevice] = useState({
+    name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '',
+    lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '',
+    latitude: '', longitude: '',
+  })
   const canEdit = user?.role !== 'viewer'
 
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
   const [gateways, setGateways] = useState([])
-  const [actionDeviceId, setActionDeviceId] = useState(null)
+  // bulk upload state
+  const [bulkUploading, setBulkUploading] = useState(false)
   const [bulkResult, setBulkResult] = useState(null)   // { created, skipped, errors: [{row,message}] }
+
   const socketRef = useRef(null)
   const bulkFileRef = useRef(null)
 
+  // ── Sample CSV download ──────────────────────────────────────────────────
   function downloadSampleCSV() {
-    const headers = 'name,deviceEui,appKey,joinEui,deviceType,batteryLevel,lorawanVersion'
-    const rows = [
+    const lines = [
+      'name,deviceEui,appKey,joinEui,deviceType,batteryLevel,lorawanVersion',
       'Sensor 01,AA00000000000001,A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1,0000000000000000,sensor,100,MAC_V1_0_3',
       'Badge 01,AA00000000000002,B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2,0000000000000000,badge,100,MAC_V1_0_3',
+      'Sensor 03,AA00000000000003,C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3,0000000000000000,sensor,95,MAC_V1_0_3',
     ]
-    const csv = [headers, ...rows].join('\n')
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(blob)
     a.download = 'devices_sample.csv'
     a.click()
     URL.revokeObjectURL(a.href)
   }
 
+  // ── Data loading ─────────────────────────────────────────────────────────
   const loadDevices = useCallback(async () => {
     try {
       const data = await api.get('/api/devices')
@@ -92,26 +137,16 @@ export default function DeviceManagement() {
   }, [loadDevices, loadRestrooms])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      loadDevices()
-    }, 30000)
+    const timer = setInterval(loadDevices, 30000)
     return () => clearInterval(timer)
-   }, [loadDevices])
+  }, [loadDevices])
 
   useEffect(() => {
     const token = localStorage.getItem('srfs_token')
     if (!token) return
-
-    const socket = io(API_URL, {
-      auth: { token },
-      transports: ['websocket'],
-    })
+    const socket = io(API_URL, { auth: { token }, transports: ['websocket'] })
     socketRef.current = socket
-
-    socket.on('connect', () => {
-      socket.on('new-feedback', () => loadDevices())
-    })
-
+    socket.on('connect', () => { socket.on('new-feedback', loadDevices) })
     return () => {
       socket.off('new-feedback')
       socket.disconnect()
@@ -119,6 +154,63 @@ export default function DeviceManagement() {
     }
   }, [loadDevices])
 
+  // ── Bulk upload ──────────────────────────────────────────────────────────
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    event.target.value = ''   // reset input so same file can be re-selected
+
+    setBulkUploading(true)
+    setBulkResult(null)
+
+    try {
+      const text = await file.text()
+      const items = parseCSV(text)
+
+      if (items.length === 0) {
+        setBulkResult({
+          created: 0, skipped: 0,
+          errors: [{ row: '—', message: 'The file is empty or contains only a header row.' }],
+        })
+        return
+      }
+
+      // Client-side guard: require deviceEui column
+      const firstRow = items[0]
+      if (!('deviceEui' in firstRow) && !('devEui' in firstRow)) {
+        setBulkResult({
+          created: 0, skipped: 0,
+          errors: [{
+            row: '—',
+            message: 'CSV is missing the required "deviceEui" column. Download the sample CSV to see the correct format.',
+          }],
+        })
+        return
+      }
+
+      const result = await deviceAPI.bulkCreate(items)
+      setBulkResult({
+        created: result.created ?? 0,
+        skipped: result.skipped ?? 0,
+        errors: result.errors || [],
+      })
+      await loadDevices()
+    } catch (err) {
+      // The API returns { errors } on partial failures (status 201) — those are
+      // handled above.  We only land here on a hard network / server error.
+      setBulkResult({
+        created: 0, skipped: 0,
+        errors: [{
+          row: '—',
+          message: err.message || 'Upload failed. Check your file and try again.',
+        }],
+      })
+    } finally {
+      setBulkUploading(false)
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const filtered = devices.filter(
     (d) =>
       !search ||
@@ -126,6 +218,12 @@ export default function DeviceManagement() {
       d.restroomName?.toLowerCase().includes(search.toLowerCase()),
   )
 
+  const hasAssignedLocation = (device) => Boolean(
+    device?.locationName || device?.floorId || device?.restroomId ||
+    device?.zoneId || device?.latitude != null || device?.longitude != null,
+  )
+
+  // ── Single-device CRUD ───────────────────────────────────────────────────
   const openReplace = (device) => {
     setSelected(device)
     setForm({ badgeId: device.badgeId || '', deviceEui: device.deviceEui || '', restroomId: device.restroomId || '' })
@@ -143,10 +241,7 @@ export default function DeviceManagement() {
     if (!selected) return
     setSaving(true)
     try {
-      const data = await api.put(`/api/devices/${selected.id}`, {
-        badgeId: form.badgeId,
-        deviceEui: form.deviceEui,
-      })
+      const data = await api.put(`/api/devices/${selected.id}`, { badgeId: form.badgeId, deviceEui: form.deviceEui })
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
       setReplaceOpen(false)
@@ -162,9 +257,7 @@ export default function DeviceManagement() {
     if (!selected) return
     setSaving(true)
     try {
-      const data = await api.put(`/api/devices/${selected.id}`, {
-        restroomId: form.restroomId || null,
-      })
+      const data = await api.put(`/api/devices/${selected.id}`, { restroomId: form.restroomId || null })
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
       setMapOpen(false)
@@ -175,32 +268,15 @@ export default function DeviceManagement() {
     }
   }
 
-  const hasAssignedLocation = (device) => Boolean(
-    device?.locationName || device?.floorId || device?.restroomId || device?.zoneId ||
-    device?.latitude != null || device?.longitude != null
-  )
-
   const handleUnassignLocation = async (device) => {
     if (!window.confirm(`Remove the assigned location from ${device.name || device.badgeId}? The device will remain available in Device Management.`)) return
     setSaving(true)
     try {
       const data = await api.put(`/api/devices/${device.id}`, {
-        restroomId: null,
-        floorId: null,
-        zoneId: null,
-        floorPlanPosX: null,
-        floorPlanPosY: null,
-        latitude: null,
-        longitude: null,
+        restroomId: null, floorId: null, zoneId: null,
+        floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null,
       })
-      const unassigned = {
-        ...device,
-        ...data.device,
-        restroomName: 'Unassigned',
-        zoneName: null,
-        floorName: null,
-        locationName: null,
-      }
+      const unassigned = { ...device, ...data.device, restroomName: 'Unassigned', zoneName: null, floorName: null, locationName: null }
       setDevices((prev) => prev.map((item) => item.id === device.id ? unassigned : item))
       setSelected((prev) => prev?.id === device.id ? unassigned : prev)
     } catch (e) {
@@ -233,27 +309,6 @@ export default function DeviceManagement() {
       alert(e.message)
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleBulkUpload = async (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    try {
-      const rows = (await file.text()).trim().split(/\r?\n/).filter(Boolean)
-      const headers = rows.shift()?.split(',').map((value) => value.trim()) || []
-      if (!headers.includes('deviceEui')) {
-        setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: 'CSV missing required column: deviceEui. Download the sample CSV to see the correct format.' }] })
-        return
-      }
-      const items = rows.map((row) => Object.fromEntries(row.split(',').map((value, index) => [headers[index], value.trim()])))
-      const result = await deviceAPI.bulkCreate(items)
-      setBulkResult({ created: result.created, skipped: result.skipped, errors: result.errors || [] })
-      await loadDevices()
-    } catch (error) {
-      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Download the sample CSV to see the required columns: name, deviceEui, appKey, joinEui, deviceType, batteryLevel, lorawanVersion' }] })
-    } finally {
-      event.target.value = ''
     }
   }
 
@@ -303,10 +358,6 @@ export default function DeviceManagement() {
     }
   }
 
-  const confirmDelete = () => {
-    setDeleteOpen(true)
-  }
-
   const handleDelete = async () => {
     if (!selected) return
     setDeleting(true)
@@ -315,23 +366,16 @@ export default function DeviceManagement() {
       setDevices((prev) => prev.filter((d) => d.id !== selected.id))
       setSelected(null)
       setDeleteOpen(false)
-      if (data.ttnDeleted) {
+      if (data?.ttnDeleted) {
         alert('Device deleted from app and TTN successfully')
       } else {
-        alert(`Device deleted from app.\n\nTTN delete failed: ${data.ttnDeleteError || 'unknown reason'}.\nPlease delete it manually from TTN Console.`)
+        alert(`Device deleted from app.\n\nTTN delete failed: ${data?.ttnDeleteError || 'unknown reason'}.\nPlease delete it manually from TTN Console.`)
       }
     } catch (e) {
       alert(e.message)
     } finally {
       setDeleting(false)
     }
-  }
-
-  const openTest = () => {
-    setSelected((prev) => prev || null)
-    setTestForm({ feedbackType: 'happy', count: 1 })
-    setTestResult(null)
-    setTestOpen(true)
   }
 
   const handleSimulate = async (e) => {
@@ -345,7 +389,6 @@ export default function DeviceManagement() {
         deviceEui: selected.deviceEui,
         feedbackType: testForm.feedbackType,
         count: testForm.count,
-        gatewayId: testForm.gatewayId || undefined,
       })
       setTestResult(data)
       await loadDevices()
@@ -359,222 +402,213 @@ export default function DeviceManagement() {
     }
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="page management-page">
       <PageHeader
         action={
           canEdit ? (
             <div className="btn-group">
-              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
-              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()}>Bulk Upload CSV</button>
-              <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>Add Device</button>
+              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>
+                Download Sample CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => bulkFileRef.current?.click()}
+                disabled={bulkUploading}
+              >
+                {bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}
+              </button>
+              <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>
+                Add Device
+              </button>
               <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
             </div>
           ) : null
         }
       />
 
-      <SearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search devices..."
-      />
+      <SearchBar value={search} onChange={setSearch} placeholder="Search devices…" />
 
       <div className="device-layout">
+        {/* ── Device table ── */}
         <div className="card">
           {loading ? (
             <div className="loader-wrap"><div className="loader" /></div>
           ) : (
             <div className="table-wrapper">
               <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Type</th>
-                      <th>Badge ID</th>
-                      <th>Site</th>
-                      <th>Floor</th>
-                      <th>Restroom / Zone</th>
-                      <th>Latitude</th>
-                      <th>Longitude</th>
-                      <th>Assignment</th>
-                      <th>Battery</th>
-                      <th>Status</th>
-                      <th>Health</th>
-                      <th>Last Communication</th>
-                      {canEdit && <th>Actions</th>}
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Badge ID</th>
+                    <th>Site</th>
+                    <th>Floor</th>
+                    <th>Restroom / Zone</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>Assignment</th>
+                    <th>Battery</th>
+                    <th>Status</th>
+                    <th>Health</th>
+                    <th>Last Communication</th>
+                    {canEdit && <th>Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((device) => (
+                    <tr
+                      key={device.id}
+                      className={selected?.id === device.id ? 'data-table__row--selected' : ''}
+                      onClick={() => setSelected(device)}
+                    >
+                      <td>{device.name || '—'}</td>
+                      <td>{device.deviceType || 'sensor'}</td>
+                      <td><code>{device.badgeId}</code></td>
+                      <td>{device.locationName || '—'}</td>
+                      <td>{device.floorName || '—'}</td>
+                      <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
+                      <td>{device.latitude ?? '—'}</td>
+                      <td>{device.longitude ?? '—'}</td>
+                      <td>
+                        {hasAssignedLocation(device)
+                          ? <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>Placed</span>
+                          : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', fontSize: 12 }}>Available</span>
+                        }
+                      </td>
+                      <td>
+                        <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
+                          {device.battery ?? '—'}%
+                        </span>
+                      </td>
+                      <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
+                      <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
+                      <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                      {canEdit && (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {hasAssignedLocation(device) && (
+                              <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Unplace</button>
+                            )}
+                            <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
+                            <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); setDeleteOpen(true) }}>Delete</button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((device) => (
-                      <tr
-                        key={device.id}
-                        className={selected?.id === device.id ? 'data-table__row--selected' : ''}
-                        onClick={() => setSelected(device)}
-                      >
-                        <td>{device.name || '—'}</td>
-                        <td>{device.deviceType || 'sensor'}</td>
-                        <td><code>{device.badgeId}</code></td>
-                        <td>{device.locationName || '—'}</td>
-                        <td>{device.floorName || '—'}</td>
-                        <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
-                        <td>{device.latitude ?? '—'}</td>
-                        <td>{device.longitude ?? '—'}</td>
-                        <td>
-                          {hasAssignedLocation(device)
-                            ? <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>Placed</span>
-                            : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', fontSize: 12 }}>Available</span>
-                          }
-                        </td>
-                        <td>
-                          <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
-                            {device.battery ?? '—'}%
-                          </span>
-                        </td>
-                        <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
-                        <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
-                        <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
-                        {canEdit && (
-                          <td onClick={(e) => e.stopPropagation()}>
-                             <div style={{ display: 'flex', gap: 6 }}>
-                               {hasAssignedLocation(device) && (
-                                 <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Unplace</button>
-                               )}
-                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
-                               <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); confirmDelete() }}>Delete</button>
-                             </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    {filtered.length === 0 && (
-                      <tr>
-                        <td colSpan={canEdit ? "14" : "13"} style={{ textAlign: 'center', color: '#64748b' }}>
-                          No devices found
-                        </td>
-                      </tr>
-                    )}
-                 </tbody>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={canEdit ? 14 : 13} style={{ textAlign: 'center', color: '#64748b' }}>
+                        No devices found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
               </table>
             </div>
           )}
         </div>
 
+        {/* ── Device detail panel ── */}
         {selected && (
           <aside className="card device-detail">
             <h3>Device Details</h3>
-             <dl>
-               <dt>Name</dt>
-               <dd>{selected.name || '—'}</dd>
-               <dt>Type</dt>
-               <dd>{selected.deviceType || 'sensor'}</dd>
-               <dt>Badge ID</dt>
-               <dd><code>{selected.badgeId}</code></dd>
-               <dt>Device EUI</dt>
-               <dd><code>{selected.deviceEui || '—'}</code></dd>
-               <dt>Join EUI</dt>
-               <dd><code>{selected.joinEui || '—'}</code></dd>
-               <dt>App Key</dt>
-               <dd><code>{selected.appKey || '—'}</code></dd>
-               <dt>LoRaWAN Version</dt>
-               <dd>{selected.lorawanVersion || '—'}</dd>
-               <dt>PHY Version</dt>
-               <dd>{selected.lorawanPhyVersion || '—'}</dd>
-               <dt>Restroom</dt>
-               <dd>{selected.restroomName}</dd>
-               <dt>Zone</dt>
-               <dd>{selected.zoneName || '—'}</dd>
-               <dt>Floor</dt>
-               <dd>{selected.floorName || '—'}</dd>
-               <dt>Location</dt>
-               <dd>{selected.locationName || '—'}</dd>
-               <dt>Battery</dt>
-               <dd>{selected.battery ?? '—'}%</dd>
-               <dt>Status</dt>
-               <dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
-               <dt>Health</dt>
-               <dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
-                <dt>Last Communication</dt>
-                <dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
-                <dt>Gateway</dt>
-                <dd>{selected.gatewayName || '—'}</dd>
-                <dt>Latitude</dt>
-                <dd>{selected.latitude ?? '—'}</dd>
-                <dt>Longitude</dt>
-                <dd>{selected.longitude ?? '—'}</dd>
-                <dt>Assignment</dt>
-                <dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
-              </dl>
-              {canEdit && (
-                <div className="btn-group">
-                  {hasAssignedLocation(selected) && (
-                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
-                  )}
-                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
-                  <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>
-                    Replace Badge
-                  </button>
-                  <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>
-                    Map Badge
-                  </button>
-                  <button type="button" className="btn btn--primary" onClick={openTest}>
-                    Test Device
-                  </button>
-                  {/* <button type="button" className="btn btn--danger" onClick={confirmDelete}>
-                    Delete
-                  </button> */}
-                </div>
-              )}
+            <dl>
+              <dt>Name</dt><dd>{selected.name || '—'}</dd>
+              <dt>Type</dt><dd>{selected.deviceType || 'sensor'}</dd>
+              <dt>Badge ID</dt><dd><code>{selected.badgeId}</code></dd>
+              <dt>Device EUI</dt><dd><code>{selected.deviceEui || '—'}</code></dd>
+              <dt>Join EUI</dt><dd><code>{selected.joinEui || '—'}</code></dd>
+              <dt>App Key</dt><dd><code>{selected.appKey || '—'}</code></dd>
+              <dt>LoRaWAN Version</dt><dd>{selected.lorawanVersion || '—'}</dd>
+              <dt>PHY Version</dt><dd>{selected.lorawanPhyVersion || '—'}</dd>
+              <dt>Restroom</dt><dd>{selected.restroomName}</dd>
+              <dt>Zone</dt><dd>{selected.zoneName || '—'}</dd>
+              <dt>Floor</dt><dd>{selected.floorName || '—'}</dd>
+              <dt>Location</dt><dd>{selected.locationName || '—'}</dd>
+              <dt>Battery</dt><dd>{selected.battery ?? '—'}%</dd>
+              <dt>Status</dt><dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
+              <dt>Health</dt><dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
+              <dt>Last Communication</dt><dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
+              <dt>Gateway</dt><dd>{selected.gatewayName || '—'}</dd>
+              <dt>Latitude</dt><dd>{selected.latitude ?? '—'}</dd>
+              <dt>Longitude</dt><dd>{selected.longitude ?? '—'}</dd>
+              <dt>Assignment</dt><dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
+            </dl>
+            {canEdit && (
+              <div className="btn-group">
+                {hasAssignedLocation(selected) && (
+                  <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
+                )}
+                <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
+                <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>Replace Badge</button>
+                <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>Map Badge</button>
+                <button type="button" className="btn btn--primary" onClick={() => { setTestForm({ feedbackType: 'happy', count: 1 }); setTestResult(null); setTestOpen(true) }}>Test Device</button>
+              </div>
+            )}
           </aside>
         )}
       </div>
 
+      {/* ── Bulk upload modal (spinner + result) ── */}
+      <BulkUploadModal
+        uploading={bulkUploading}
+        result={bulkResult}
+        onClose={() => setBulkResult(null)}
+        entityName="Device"
+      />
+
+      {/* ── Replace badge modal ── */}
       {replaceOpen && (
         <div className="modal-overlay" onClick={() => setReplaceOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Replace Badge</h3>
             <form onSubmit={handleSaveReplace}>
-              <label>
-                Badge ID
-                <input
-                  type="text"
-                  value={form.badgeId}
-                  onChange={(e) => setForm((f) => ({ ...f, badgeId: e.target.value }))}
-                  required
-                />
-              </label>
-              <label>
-                Device EUI
-                <input
-                  type="text"
-                  value={form.deviceEui}
-                  onChange={(e) => setForm((f) => ({ ...f, deviceEui: e.target.value }))}
-                  required
-                />
-              </label>
+              <label>Badge ID<input type="text" value={form.badgeId} onChange={(e) => setForm((f) => ({ ...f, badgeId: e.target.value }))} required /></label>
+              <label>Device EUI<input type="text" value={form.deviceEui} onChange={(e) => setForm((f) => ({ ...f, deviceEui: e.target.value }))} required /></label>
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setReplaceOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn--primary" disabled={saving}>
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* ── Map badge modal ── */}
+      {mapOpen && (
+        <div className="modal-overlay" onClick={() => setMapOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Map Badge</h3>
+            <form onSubmit={handleSaveMap}>
+              <label>Badge ID<input type="text" value={form.badgeId} disabled /></label>
+              <label>
+                Restroom
+                <select value={form.restroomId} onChange={(e) => setForm((f) => ({ ...f, restroomId: e.target.value }))}>
+                  <option value="">Unassigned</option>
+                  {restrooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </label>
+              <div className="btn-group">
+                <button type="button" className="btn btn--secondary" onClick={() => setMapOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add device modal ── */}
       {addOpen && (
         <div className="modal-overlay" onClick={() => setAddOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Add Device</h3>
-              <p style={{ color: '#64748b', fontSize: 13, marginTop: -8 }}>
-                Enter the Details
-              </p>
+            <p style={{ color: '#64748b', fontSize: 13, marginTop: -8 }}>Enter device details to register it in TTN and add it to inventory.</p>
             <form onSubmit={handleCreateDevice}>
-              <label>
-                Device Name *
-                <input type="text" value={newDevice.name} onChange={(e) => setNewDevice((d) => ({ ...d, name: e.target.value }))} placeholder="e.g. Men's Room Sensor 1" required />
-              </label>
+              <label>Device Name *<input type="text" value={newDevice.name} onChange={(e) => setNewDevice((d) => ({ ...d, name: e.target.value }))} placeholder="e.g. Men's Room Sensor 1" required /></label>
               <label>
                 Device Type *
                 <select value={newDevice.deviceType} onChange={(e) => setNewDevice((d) => ({ ...d, deviceType: e.target.value }))}>
@@ -594,9 +628,7 @@ export default function DeviceManagement() {
                 Floor
                 <select value={newDevice.floorId} onChange={(e) => setNewDevice((d) => ({ ...d, floorId: e.target.value, restroomId: '' }))} disabled={!newDevice.locationId}>
                   <option value="">Unassigned</option>
-                  {floors.filter((f) => !newDevice.locationId || f.locationId === newDevice.locationId).map((floor) => (
-                    <option key={floor.id} value={floor.id}>{floor.floorName}</option>
-                  ))}
+                  {floors.filter((f) => !newDevice.locationId || f.locationId === newDevice.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}
                 </select>
               </label>
               <label>
@@ -606,72 +638,26 @@ export default function DeviceManagement() {
                   {restrooms.filter((r) => !newDevice.floorId || r.floorId === newDevice.floorId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </label>
-              <label>
-                Device EUI *
-                <input type="text" value={newDevice.deviceEui} onChange={(e) => setNewDevice((d) => ({ ...d, deviceEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" required />
-              </label>
-              <label>
-                App Key *
-                <input type="text" value={newDevice.appKey} onChange={(e) => setNewDevice((d) => ({ ...d, appKey: e.target.value }))} placeholder="e.g. A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6" required />
-              </label>
-              <label>
-                LoRaWAN Version
-                <input type="text" value={newDevice.lorawanVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanVersion: e.target.value }))} placeholder="MAC_V1_0_3" />
-              </label>
-              <label>
-                PHY Version <span style={{ color: '#64748b' }}>(optional)</span>
-                <input type="text" value={newDevice.lorawanPhyVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanPhyVersion: e.target.value }))} placeholder="e.g. PHY_V1_0_3" />
-              </label>
+              <label>Device EUI *<input type="text" value={newDevice.deviceEui} onChange={(e) => setNewDevice((d) => ({ ...d, deviceEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" required /></label>
+              <label>App Key *<input type="text" value={newDevice.appKey} onChange={(e) => setNewDevice((d) => ({ ...d, appKey: e.target.value }))} placeholder="32 hex chars" required /></label>
+              <label>LoRaWAN Version<input type="text" value={newDevice.lorawanVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanVersion: e.target.value }))} placeholder="MAC_V1_0_3" /></label>
+              <label>PHY Version <span style={{ color: '#64748b' }}>(optional)</span><input type="text" value={newDevice.lorawanPhyVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanPhyVersion: e.target.value }))} placeholder="e.g. PHY_V1_0_3" /></label>
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setAddOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering in TTN...' : 'Add Device'}</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering in TTN…' : 'Add Device'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {mapOpen && (
-        <div className="modal-overlay" onClick={() => setMapOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Map Badge</h3>
-            <form onSubmit={handleSaveMap}>
-              <label>
-                Badge ID
-                <input type="text" value={form.badgeId} disabled />
-              </label>
-              <label>
-                Restroom
-                <select
-                  value={form.restroomId}
-                  onChange={(e) => setForm((f) => ({ ...f, restroomId: e.target.value }))}
-                >
-                  <option value="">Unassigned</option>
-                  {restrooms.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="btn-group">
-                <button type="button" className="btn btn--secondary" onClick={() => setMapOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn--primary" disabled={saving}>
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* ── Edit device modal ── */}
       {editOpen && (
         <div className="modal-overlay" onClick={() => setEditOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Edit Device</h3>
             <form onSubmit={handleSaveEdit}>
-              <label>
-                Device Name
-                <input type="text" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
-              </label>
+              <label>Device Name<input type="text" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} /></label>
               <label>
                 Device Type
                 <select value={editForm.deviceType} onChange={(e) => setEditForm((f) => ({ ...f, deviceType: e.target.value }))}>
@@ -691,32 +677,19 @@ export default function DeviceManagement() {
                 Floor
                 <select value={editForm.floorId} onChange={(e) => setEditForm((f) => ({ ...f, floorId: e.target.value, restroomId: '' }))} disabled={!editForm.locationId}>
                   <option value="">Select floor</option>
-                  {floors.filter((f) => !editForm.locationId || f.locationId === editForm.locationId).map((floor) => (
-                    <option key={floor.id} value={floor.id}>{floor.floorName}</option>
-                  ))}
+                  {floors.filter((f) => !editForm.locationId || f.locationId === editForm.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}
                 </select>
               </label>
               <label>
                 Restroom
                 <select value={editForm.restroomId} onChange={(e) => setEditForm((f) => ({ ...f, restroomId: e.target.value }))} disabled={!editForm.floorId}>
                   <option value="">Unassigned</option>
-                  {restrooms.filter((r) => !editForm.floorId || r.floorId === editForm.floorId).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
+                  {restrooms.filter((r) => !editForm.floorId || r.floorId === editForm.floorId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </label>
-              <label>
-                Battery Level
-                <input type="number" min="0" max="100" value={editForm.batteryLevel} onChange={(e) => setEditForm((f) => ({ ...f, batteryLevel: e.target.value }))} />
-              </label>
-              <label>
-                Device EUI
-                <input type="text" value={editForm.deviceEui} onChange={(e) => setEditForm((f) => ({ ...f, deviceEui: e.target.value }))} />
-              </label>
-              <label>
-                App Key
-                <input type="text" value={editForm.appKey} onChange={(e) => setEditForm((f) => ({ ...f, appKey: e.target.value }))} />
-              </label>
+              <label>Battery Level<input type="number" min="0" max="100" value={editForm.batteryLevel} onChange={(e) => setEditForm((f) => ({ ...f, batteryLevel: e.target.value }))} /></label>
+              <label>Device EUI<input type="text" value={editForm.deviceEui} onChange={(e) => setEditForm((f) => ({ ...f, deviceEui: e.target.value }))} /></label>
+              <label>App Key<input type="text" value={editForm.appKey} onChange={(e) => setEditForm((f) => ({ ...f, appKey: e.target.value }))} /></label>
               <label>
                 Gateway
                 <select value={editForm.gatewayId} onChange={(e) => setEditForm((f) => ({ ...f, gatewayId: e.target.value }))}>
@@ -727,24 +700,16 @@ export default function DeviceManagement() {
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setEditOpen(false)}>Cancel</button>
                 {selected && hasAssignedLocation(selected) && (
-                  <button
-                    type="button"
-                    className="btn btn--secondary"
-                    disabled={saving}
-                    onClick={() => { setEditOpen(false); handleUnassignLocation(selected) }}
-                  >
-                    Unplace
-                  </button>
+                  <button type="button" className="btn btn--secondary" disabled={saving} onClick={() => { setEditOpen(false); handleUnassignLocation(selected) }}>Unplace</button>
                 )}
-                <button type="submit" className="btn btn--primary" disabled={saving}>
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* ── Delete confirmation modal ── */}
       {deleteOpen && (
         <div className="modal-overlay" onClick={() => setDeleteOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -754,14 +719,13 @@ export default function DeviceManagement() {
             </p>
             <div className="btn-group">
               <button type="button" className="btn btn--secondary" onClick={() => setDeleteOpen(false)}>Cancel</button>
-              <button type="button" className="btn btn--danger" disabled={deleting} onClick={handleDelete}>
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+              <button type="button" className="btn btn--danger" disabled={deleting} onClick={handleDelete}>{deleting ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Test mode modal ── */}
       {testOpen && selected && (
         <div className="modal-overlay" onClick={() => setTestOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -769,7 +733,6 @@ export default function DeviceManagement() {
             <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
               Simulate device feedback without pressing the physical button. Test data is separated from live data.
             </p>
-
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
                 <div><strong>Device:</strong> <code>{selected.badgeId || selected.deviceEui}</code></div>
@@ -780,16 +743,8 @@ export default function DeviceManagement() {
                 <div><strong>Status:</strong> <StatusBadge status={selected.status || 'offline'} variant="device" /></div>
               </div>
             </div>
-
             {testResult && (
-              <div style={{
-                background: testResult.testMode ? '#dcfce7' : '#fee2e2',
-                border: `1px solid ${testResult.testMode ? '#86efac' : '#fca5a5'}`,
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 16,
-                fontSize: 13,
-              }}>
+              <div style={{ background: testResult.testMode ? '#dcfce7' : '#fee2e2', border: `1px solid ${testResult.testMode ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
                 <strong>{testResult.testMode ? 'Test Event Generated' : 'Error'}</strong>
                 <p style={{ margin: '4px 0 0' }}>
                   {testResult.testMode
@@ -798,80 +753,25 @@ export default function DeviceManagement() {
                 </p>
               </div>
             )}
-
             <form onSubmit={handleSimulate}>
               <label>
                 Feedback Type
-                <select
-                  value={testForm.feedbackType}
-                  onChange={(e) => setTestForm((f) => ({ ...f, feedbackType: e.target.value }))}
-                >
+                <select value={testForm.feedbackType} onChange={(e) => setTestForm((f) => ({ ...f, feedbackType: e.target.value }))}>
                   <option value="happy">Happy</option>
                   <option value="average">Average</option>
                   <option value="needs_cleaning">Needs Cleaning</option>
                   <option value="emergency">Emergency</option>
                 </select>
               </label>
-
               <label>
-                Count (1-100)
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={testForm.count}
-                  onChange={(e) => setTestForm((f) => ({ ...f, count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))}
-                />
+                Count (1–100)
+                <input type="number" min="1" max="100" value={testForm.count} onChange={(e) => setTestForm((f) => ({ ...f, count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))} />
               </label>
-
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setTestOpen(false)}>Close</button>
-                <button type="submit" className="btn btn--primary" disabled={testing}>
-                  {testing ? 'Simulating...' : 'Generate Test Event'}
-                </button>
+                <button type="submit" className="btn btn--primary" disabled={testing}>{testing ? 'Simulating…' : 'Generate Test Event'}</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {bulkResult && (
-        <div className="modal-overlay" onClick={() => setBulkResult(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h3>Bulk Upload Result</h3>
-            <div style={{ display: 'flex', gap: 16, margin: '12px 0', fontSize: 14 }}>
-              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✓ Created: {bulkResult.created}</span>
-              <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>⟳ Skipped: {bulkResult.skipped}</span>
-              {bulkResult.errors.length > 0 && (
-                <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✕ Errors: {bulkResult.errors.length}</span>
-              )}
-            </div>
-            {bulkResult.errors.length > 0 && (
-              <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 6 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: '#fee2e2' }}>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Row</th>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bulkResult.errors.map((err, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid #fecaca' }}>
-                        <td style={{ padding: '6px 10px', color: '#b91c1c', whiteSpace: 'nowrap' }}>Row {err.row}</td>
-                        <td style={{ padding: '6px 10px', color: '#374151' }}>{err.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {bulkResult.errors.length === 0 && (
-              <p style={{ color: '#166534', fontSize: 14 }}>All rows processed successfully.</p>
-            )}
-            <div className="btn-group" style={{ marginTop: 16 }}>
-              <button type="button" className="btn btn--primary" onClick={() => setBulkResult(null)}>Close</button>
-            </div>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import Pagination from '../components/common/Pagination'
+import BulkUploadModal from '../components/common/BulkUploadModal'
 import { formatDateTime } from '../utils/formatters'
 import { gatewayAPI, locationAPI, floorAPI, zoneAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
@@ -36,21 +37,50 @@ export default function GatewayManagement() {
   const [floors, setFloors] = useState([])
   const [zones, setZones] = useState([])
   const [bulkResult, setBulkResult] = useState(null)
+  const [bulkUploading, setBulkUploading] = useState(false)
   const bulkFileRef = useRef(null)
   const canEdit = user?.role !== 'viewer'
 
   function downloadSampleCSV() {
-    const headers = 'name,gatewayEui,gatewayId,frequencyPlanId'
-    const rows = [
+    const lines = [
+      'name,gatewayEui,gatewayId,frequencyPlanId',
       'Gateway 01,BB000000000000001,gateway-bb000000000000001,EU_863_870',
       'Gateway 02,BB000000000000002,gateway-bb000000000000002,EU_863_870',
+      'Gateway 03,BB000000000000003,gateway-bb000000000000003,EU_863_870',
     ]
-    const csv = [headers, ...rows].join('\n')
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(blob)
     a.download = 'gateways_sample.csv'
     a.click()
     URL.revokeObjectURL(a.href)
+  }
+
+  /** Parse RFC 4180 CSV — handles quoted fields containing commas */
+  function parseCSV(text) {
+    const lines = []
+    let cur = ''
+    let inQuote = false
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]
+      if (ch === '"') {
+        if (inQuote && text[i + 1] === '"') { cur += '"'; i++ }
+        else inQuote = !inQuote
+      } else if ((ch === '\n' || ch === '\r') && !inQuote) {
+        if (ch === '\r' && text[i + 1] === '\n') i++
+        if (cur.trim()) lines.push(cur)
+        cur = ''
+      } else {
+        cur += ch
+      }
+    }
+    if (cur.trim()) lines.push(cur)
+    if (lines.length < 2) return []
+    const headers = lines[0].split(',').map((h) => h.trim())
+    return lines.slice(1).map((line) => {
+      const cols = line.split(',')
+      return Object.fromEntries(headers.map((h, i) => [h, (cols[i] ?? '').trim()]))
+    })
   }
 
   const [form, setForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
@@ -128,17 +158,50 @@ export default function GatewayManagement() {
   const handleBulkUpload = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
+    event.target.value = ''   // allow re-selecting the same file
+
+    setBulkUploading(true)
+    setBulkResult(null)
+
     try {
-      const rows = (await file.text()).trim().split(/\r?\n/).filter(Boolean)
-      const headers = rows.shift()?.split(',').map((value) => value.trim()) || []
-      const items = rows.map((row) => Object.fromEntries(row.split(',').map((value, index) => [headers[index], value.trim()])))
+      const text = await file.text()
+      const items = parseCSV(text)
+
+      if (items.length === 0) {
+        setBulkResult({
+          created: 0, skipped: 0,
+          errors: [{ row: '—', message: 'The file is empty or contains only a header row.' }],
+        })
+        return
+      }
+
+      // Client-side guard: require gatewayEui column
+      const firstRow = items[0]
+      if (!('gatewayEui' in firstRow) && !('eui' in firstRow)) {
+        setBulkResult({
+          created: 0, skipped: 0,
+          errors: [{
+            row: '—',
+            message: 'CSV is missing the required "gatewayEui" column. Download the sample CSV to see the correct format.',
+          }],
+        })
+        return
+      }
+
       const result = await gatewayAPI.bulkCreate(items)
-      setBulkResult({ created: result.created, skipped: result.skipped, errors: result.errors || [] })
+      setBulkResult({
+        created: result.created ?? 0,
+        skipped: result.skipped ?? 0,
+        errors: result.errors || [],
+      })
       await loadGateways()
-    } catch (error) {
-      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Ensure CSV has: name, gatewayEui, gatewayId, frequencyPlanId columns.' }] })
+    } catch (err) {
+      setBulkResult({
+        created: 0, skipped: 0,
+        errors: [{ row: '—', message: err.message || 'Upload failed. Check your file and try again.' }],
+      })
     } finally {
-      event.target.value = ''
+      setBulkUploading(false)
     }
   }
 
@@ -259,7 +322,7 @@ export default function GatewayManagement() {
           canEdit ? (
             <div className="btn-group">
               <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
-              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()}>Bulk Upload CSV</button>
+              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()} disabled={bulkUploading}>{bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}</button>
               <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>Add Gateway</button>
               <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
             </div>
@@ -498,46 +561,13 @@ export default function GatewayManagement() {
         </div>
       )}
 
-      {bulkResult && (
-        <div className="modal-overlay" onClick={() => setBulkResult(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h3>Bulk Upload Result</h3>
-            <div style={{ display: 'flex', gap: 16, margin: '12px 0', fontSize: 14 }}>
-              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✓ Created: {bulkResult.created}</span>
-              <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>⟳ Skipped: {bulkResult.skipped}</span>
-              {bulkResult.errors.length > 0 && (
-                <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '4px 12px', fontWeight: 600 }}>✕ Errors: {bulkResult.errors.length}</span>
-              )}
-            </div>
-            {bulkResult.errors.length > 0 && (
-              <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 6 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: '#fee2e2' }}>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Row</th>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bulkResult.errors.map((err, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid #fecaca' }}>
-                        <td style={{ padding: '6px 10px', color: '#b91c1c', whiteSpace: 'nowrap' }}>Row {err.row}</td>
-                        <td style={{ padding: '6px 10px', color: '#374151' }}>{err.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {bulkResult.errors.length === 0 && (
-              <p style={{ color: '#166534', fontSize: 14 }}>All rows processed successfully.</p>
-            )}
-            <div className="btn-group" style={{ marginTop: 16 }}>
-              <button type="button" className="btn btn--primary" onClick={() => setBulkResult(null)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Bulk upload modal (spinner + result) ── */}
+      <BulkUploadModal
+        uploading={bulkUploading}
+        result={bulkResult}
+        onClose={() => setBulkResult(null)}
+        entityName="Gateway"
+      />
     </div>
   )
 }

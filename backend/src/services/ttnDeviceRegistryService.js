@@ -190,6 +190,7 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
   const resolvedAppKey = normalizeHex(appKey, 32, "App Key");
   const resolvedDeviceId = makeDeviceId(devEui, deviceId);
   const resolvedLorawanVersion = lorawanVersion || TTN_LORAWAN_VERSION || "MAC_V1_0_3";
+  const resolvedLorawanPhyVersion = lorawanPhyVersion || TTN_LORAWAN_PHY_VERSION || "PHY_V1_0_3_REV_A";
 
   const ids = {
     device_id: resolvedDeviceId,
@@ -249,7 +250,7 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
     );
     createdSteps.push("js");
 
-    if (lorawanPhyVersion) {
+    if (resolvedLorawanPhyVersion) {
       const nsPaths = [
         "supports_join",
         "lorawan_version",
@@ -264,7 +265,7 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
         lorawan_version: resolvedLorawanVersion,
         ids,
         frequency_plan_id: TTN_FREQUENCY_PLAN_ID,
-        lorawan_phy_version: lorawanPhyVersion,
+        lorawan_phy_version: resolvedLorawanPhyVersion,
       };
       await ttnRequest(
         `${apiBaseUrl}/api/v3/ns/applications/${encodeURIComponent(applicationId)}/devices/${encodeURIComponent(resolvedDeviceId)}`,
@@ -298,7 +299,7 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
     throw new Error(`TTN registration failed at step "${createdSteps[createdSteps.length - 1] || "is"}": ${error.message}`);
   }
 
-  return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui, clusterHost };
+  return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui, clusterHost, lorawanPhyVersion: resolvedLorawanPhyVersion };
 }
 
 async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion }) {

@@ -23,6 +23,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
 const gatewayRoutes = require("./routes/gatewayRoutes");
 const testModeRoutes = require("./routes/testModeRoutes");
+const auditLogRoutes = require("./routes/auditLogRoutes");
 const { JWT_SECRET, NODE_ENV } = require("./config/env");
 const logger = require("./middleware/logger");
 const http = require("http");
@@ -590,6 +591,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/gateway", gatewayRoutes);
 app.use("/api/test-mode", testModeRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

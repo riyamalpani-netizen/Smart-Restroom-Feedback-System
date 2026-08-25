@@ -930,12 +930,22 @@ async function bulkCreateGateways(req, res) {
       const name = String(item.name || `Gateway ${gatewayEui.slice(-6)}`).trim();
       normalized.push({ name, gatewayEui, gatewayId: String(item.gatewayId || `gateway-${gatewayEui.toLowerCase()}`).trim().toLowerCase(), frequencyPlanId: item.frequencyPlanId ? String(item.frequencyPlanId).trim() : null, organizationId: req.user?.organizationId || null, status: "offline" });
     });
-    if (errors.length) return res.status(400).json({ message: "Fix the invalid upload rows", errors });
-    const existing = await prisma.gateway.findMany({ where: { OR: [{ gatewayEui: { in: normalized.map((item) => item.gatewayEui) } }, { gatewayId: { in: normalized.map((item) => item.gatewayId) } }] }, select: { gatewayEui: true, gatewayId: true } });
+    // Don't abort on validation errors — create valid rows and report invalid ones
+    const existing = normalized.length
+      ? await prisma.gateway.findMany({
+          where: { OR: [{ gatewayEui: { in: normalized.map((item) => item.gatewayEui) } }, { gatewayId: { in: normalized.map((item) => item.gatewayId) } }] },
+          select: { gatewayEui: true, gatewayId: true },
+        })
+      : [];
     const existingKeys = new Set(existing.flatMap((item) => [item.gatewayEui, item.gatewayId]));
     const toCreate = normalized.filter((item) => !existingKeys.has(item.gatewayEui) && !existingKeys.has(item.gatewayId));
     if (toCreate.length) await prisma.gateway.createMany({ data: toCreate });
-    res.status(201).json({ message: `${toCreate.length} gateway(s) added to inventory`, created: toCreate.length, skipped: normalized.length - toCreate.length, errors: [] });
+    res.status(201).json({
+      message: `${toCreate.length} gateway(s) added to inventory`,
+      created: toCreate.length,
+      skipped: normalized.length - toCreate.length,
+      errors,
+    });
   } catch (error) {
     console.error("Bulk gateway upload error:", error);
     res.status(500).json({ message: "Unable to import gateways" });
@@ -1010,7 +1020,9 @@ async function updateGateway(req, res) {
     let resolvedGatewayId = gateway.gatewayId;
     let ttnStatus = existing.ttnStatus;
     let ttnErrorMessage = null;
+    let ttnAutoRegistered = false;
     if (registerGatewayInTTNService) {
+      const wasGatewayUnplaced = !existing.locationId && !existing.floorId && !existing.zoneId;
       if (gatewayEui !== undefined && existing.gatewayEui !== gateway.gatewayEui) {
         if (existing.ttnStatus === "registered") {
           try {
@@ -1038,6 +1050,31 @@ async function updateGateway(req, res) {
           ttnStatus = "not_registered";
           ttnErrorMessage = ttnError.message;
           resolvedGatewayId = null;
+        }
+      } else if (placement?.changed && wasGatewayUnplaced && existing.ttnStatus !== "registered") {
+        try {
+          const ttnRegistration = await registerGatewayInTTNService({
+            gatewayEui: gateway.gatewayEui,
+            gatewayId: gateway.gatewayId || `gateway-${gateway.gatewayEui.toLowerCase()}`,
+            frequencyPlanId: gateway.frequencyPlanId || undefined,
+            latitude: gateway.latitude || undefined,
+            longitude: gateway.longitude || undefined,
+            description: gateway.name,
+          });
+          ttnStatus = "registered";
+          resolvedGatewayId = ttnRegistration.gatewayId;
+          ttnAutoRegistered = true;
+          if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
+            await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
+          }
+        } catch (ttnError) {
+          console.error("TTN gateway registration on placement failed:", ttnError.message);
+          ttnErrorMessage = ttnError.message;
+          if (ttnError.message.includes("409") || ttnError.message.includes("already registered")) {
+            ttnStatus = "registered";
+          } else {
+            ttnStatus = "not_registered";
+          }
         }
       } else if (frequencyPlanId !== undefined || latitude !== undefined || longitude !== undefined || name !== undefined) {
         try {
@@ -1074,6 +1111,7 @@ async function updateGateway(req, res) {
     res.status(200).json({
       message: ttnErrorMessage ? "Gateway updated, but TTN sync failed" : "Gateway updated successfully",
       ttnError: ttnErrorMessage,
+      ttnRegistration: (placement?.changed && !existing.locationId && !existing.floorId && !existing.zoneId && existing.ttnStatus !== "registered") ? { registered: ttnAutoRegistered, error: ttnErrorMessage } : undefined,
       gateway: { id: finalGateway.id, name: finalGateway.name, gatewayEui: finalGateway.gatewayEui, status: finalGateway.status, lastSeen: finalGateway.lastSeen,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
         locationId: finalGateway.locationId, floorId: finalGateway.floorId, zoneId: finalGateway.zoneId,

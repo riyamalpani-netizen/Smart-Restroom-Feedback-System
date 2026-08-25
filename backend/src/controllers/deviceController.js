@@ -1233,6 +1233,30 @@ async function updateDevice(req, res) {
     const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
     const isOnline = lastSeen && lastSeen > fiveMinutesAgo && device.healthStatus === "healthy";
 
+    let ttnAutoRegistered = false;
+    let ttnAutoError = null;
+    const wasUnplaced = !existing.floorId && !existing.restroomId && !existing.zoneId;
+    const isBeingPlaced = placement?.changed && wasUnplaced;
+    if (isBeingPlaced && device.deviceEui && device.appKey) {
+      try {
+        await registerOtanDevice({
+          deviceEui: device.deviceEui,
+          deviceId: `device-${device.deviceEui.toLowerCase()}`,
+          joinEui: device.joinEui || "0000000000000000",
+          appKey: device.appKey,
+          lorawanVersion: device.lorawanVersion || undefined,
+          lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+        });
+        ttnAutoRegistered = true;
+        console.log(`[Device] Auto-registered ${device.deviceEui} in TTN on placement`);
+      } catch (ttnErr) {
+        if (!ttnErr.message.includes("409")) {
+          ttnAutoError = ttnErr.message;
+          console.warn(`[Device] TTN auto-registration skipped for ${device.deviceEui}: ${ttnErr.message}`);
+        }
+      }
+    }
+
     const mappedDevice = {
       id: device.id,
       name: device.name,
@@ -1263,7 +1287,11 @@ async function updateDevice(req, res) {
       lorawanPhyVersion: device.lorawanPhyVersion || null,
     };
 
-    res.status(200).json({ message: "Device updated successfully", device: mappedDevice });
+    res.status(200).json({
+      message: "Device updated successfully",
+      device: mappedDevice,
+      ttnRegistration: isBeingPlaced ? { registered: ttnAutoRegistered, error: ttnAutoError } : undefined,
+    });
   } catch (error) {
     console.error("Update device error:", error);
     if (error.code === "P2002") {

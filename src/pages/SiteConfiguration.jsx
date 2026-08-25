@@ -131,9 +131,9 @@ function rotatePt(lat, lng, cLat, cLng, angleDeg) {
 function cornerIcon(label) {
   return L.divIcon({
     className: '',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-    html: `<div style="width:20px;height:20px;background:#0891b2;border:2.5px solid #fff;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.55);cursor:nwse-resize">${label}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: `<div style="width:24px;height:24px;background:#0891b2;border:2.5px solid #fff;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.55);cursor:nwse-resize;pointer-events:auto;touch-action:none">${label}</div>`,
   })
 }
 
@@ -146,18 +146,16 @@ function centerDragIcon() {
   })
 }
 
-function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanDrag, onDragStart, imgRef }) {
+function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onTransformEnd, imgRef }) {
   const map           = useMap()
   const boundsRef     = useRef(geoBounds)
   const rotRef        = useRef(rotation)
   const onChangeRef   = useRef(onBoundsChange)
-  const onPlanDragRef = useRef(onPlanDrag)
-  const onDragStartRef = useRef(onDragStart)
+  const onTransformEndRef = useRef(onTransformEnd)
   useEffect(() => { boundsRef.current   = geoBounds     }, [geoBounds])
   useEffect(() => { rotRef.current      = rotation      }, [rotation])
   useEffect(() => { onChangeRef.current = onBoundsChange }, [onBoundsChange])
-  useEffect(() => { onPlanDragRef.current = onPlanDrag }, [onPlanDrag])
-  useEffect(() => { onDragStartRef.current = onDragStart }, [onDragStart])
+  useEffect(() => { onTransformEndRef.current = onTransformEnd }, [onTransformEnd])
 
   // ── Stable image drag (mousedown on the <img> itself) ─────────
   useEffect(() => {
@@ -172,8 +170,7 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanD
       e.stopPropagation()
       map.dragging.disable()
       const b = boundsRef.current
-      onDragStartRef.current?.()
-      dragStart = { mouseX: e.clientX, mouseY: e.clientY, origBounds: { ...b } }
+      dragStart = { mouseX: e.clientX, mouseY: e.clientY, origBounds: { ...b }, lastBounds: { ...b } }
 
       function onMouseMove(me) {
         if (!dragStart) return
@@ -188,16 +185,17 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanD
         const dLat = endLatLng.lat - startLatLng.lat
         const dLng = endLatLng.lng - startLatLng.lng
         const ob = dragStart.origBounds
-        onChangeRef.current({
+        dragStart.lastBounds = {
           northLat: ob.northLat + dLat,
           southLat: ob.southLat + dLat,
           eastLng:  ob.eastLng  + dLng,
           westLng:  ob.westLng  + dLng,
-        })
-        onPlanDragRef.current?.({ dLat, dLng })
+        }
+        onChangeRef.current(dragStart.lastBounds)
       }
 
       function onMouseUp() {
+        if (dragStart) onTransformEndRef.current?.(dragStart.lastBounds)
         dragStart = null
         map.dragging.enable()
         window.removeEventListener('mousemove', onMouseMove)
@@ -240,10 +238,10 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanD
   }
 
   const onCornerDragRef = useRef(null)
-  onCornerDragRef.current = (corner, e) => {
+  onCornerDragRef.current = (corner, latLng) => {
     const b    = boundsRef.current
     const rot  = rotRef.current
-    const { lat: vLat, lng: vLng } = e.target.getLatLng()
+    const { lat: vLat, lng: vLng } = latLng
     const cLat2 = (b.northLat + b.southLat) / 2
     const cLng2 = (b.eastLng  + b.westLng)  / 2
     // Un-rotate the dragged visual position back to axis-aligned space
@@ -263,21 +261,39 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanD
       else next.westLng = b.eastLng - 0.00005
     }
     onChangeRef.current(next)
+    return next
   }
 
-  // Stable event handler objects so Leaflet doesn't re-register during drag
-  const centerHandlers = useMemo(() => ({
-    dragstart: () => onDragStartRef.current?.(),
-    drag:    (e) => onCenterDragRef.current(e),
-    dragend: (e) => onCenterDragRef.current(e),
-  }), [])
-
+  // Resize using the same four markers, but manage pointer movement ourselves.
+  // This avoids Leaflet treating a handle drag as a map/image drag.
   const cornerHandlers = useMemo(() => ({
-    NW: { drag: (e) => onCornerDragRef.current('NW', e), dragend: (e) => onCornerDragRef.current('NW', e) },
-    NE: { drag: (e) => onCornerDragRef.current('NE', e), dragend: (e) => onCornerDragRef.current('NE', e) },
-    SW: { drag: (e) => onCornerDragRef.current('SW', e), dragend: (e) => onCornerDragRef.current('SW', e) },
-    SE: { drag: (e) => onCornerDragRef.current('SE', e), dragend: (e) => onCornerDragRef.current('SE', e) },
-  }), [])
+    NW: { mousedown: (e) => startCornerResize('NW', e) },
+    NE: { mousedown: (e) => startCornerResize('NE', e) },
+    SW: { mousedown: (e) => startCornerResize('SW', e) },
+    SE: { mousedown: (e) => startCornerResize('SE', e) },
+  }), [map])
+
+  function startCornerResize(corner, event) {
+    const originalEvent = event.originalEvent
+    originalEvent?.preventDefault()
+    originalEvent?.stopPropagation()
+    map.dragging.disable()
+    let lastBounds = null
+
+    function move(mouseEvent) {
+      lastBounds = onCornerDragRef.current(corner, map.mouseEventToLatLng(mouseEvent))
+    }
+
+    function end() {
+      map.dragging.enable()
+      if (lastBounds) onTransformEndRef.current?.(lastBounds)
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', end)
+    }
+
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', end)
+  }
 
   if (!geoBounds) return null
 
@@ -296,19 +312,14 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanD
   return (
     <>
       {/* Centre drag handle */}
-      <Marker
-        position={[cLat, cLng]}
-        icon={centerDragIcon()}
-        draggable
-        eventHandlers={centerHandlers}
-      />
       {/* Corner resize handles — placed at visual (rotated) corner positions */}
       {corners.map((c) => (
         <Marker
           key={c.id}
           position={[c.lat, c.lng]}
           icon={cornerIcon(c.id)}
-          draggable
+          zIndexOffset={1000}
+          draggable={false}
           eventHandlers={cornerHandlers[c.id]}
         />
       ))}
@@ -674,6 +685,7 @@ export default function SiteConfiguration() {
       setPlans(cached.plans)
       setPlan(cached.plans[0] || null)
       if (cached.plans[0]) {
+        syncLocationMarkerToPlan(cached.plans[0])
         setPlanRotation(cached.plans[0].rotation || 0)
         setPlanScale(cached.plans[0].scale || 1)
       } else {
@@ -733,6 +745,7 @@ export default function SiteConfiguration() {
       setPlans(allPlans)
       setPlan(planData)
       if (planData) {
+        syncLocationMarkerToPlan(planData)
         setPlanRotation(planData.rotation || 0)
         setPlanScale(planData.scale || 1)
       } else {
@@ -839,6 +852,37 @@ export default function SiteConfiguration() {
     }
   }
 
+  function syncLocationMarkerToPlan(planData) {
+    const b = planData?.geoBounds
+    if (!b) return
+    handleSitePinMove(
+      (b.northLat + b.southLat) / 2,
+      (b.eastLng + b.westLng) / 2,
+    )
+  }
+
+  function handlePlanLocationPinMove(lat, lng) {
+    const previousLocation = siteRef.current
+    if (previousLocation && plan?.geoBounds) {
+      const dLat = lat - previousLocation.latitude
+      const dLng = lng - previousLocation.longitude
+      setPlan((currentPlan) => {
+        if (!currentPlan?.geoBounds) return currentPlan
+        const b = currentPlan.geoBounds
+        return {
+          ...currentPlan,
+          geoBounds: {
+            northLat: b.northLat + dLat,
+            southLat: b.southLat + dLat,
+            eastLng: b.eastLng + dLng,
+            westLng: b.westLng + dLng,
+          },
+        }
+      })
+    }
+    handleSitePinMove(lat, lng)
+  }
+
   function handlePlanDrag({ dLat, dLng }) {
     // dLat/dLng is the absolute delta from the drag-start position
     // Use the original site position captured at drag start
@@ -850,6 +894,19 @@ export default function SiteConfiguration() {
     siteRef.current = next
     setSite(next)
     setSiteForm((v) => ({ ...v, latitude: String(newLat), longitude: String(newLng) }))
+  }
+
+  function handlePlanBoundsChange(nextBounds) {
+    setPlan((currentPlan) => currentPlan ? { ...currentPlan, geoBounds: nextBounds } : currentPlan)
+  }
+
+  function handlePlanTransformEnd(nextBounds) {
+    if (!nextBounds) return
+    // Move the location pin only after a resize/move completes; doing it during
+    // each drag event recentres Leaflet and prevents the corner handle dragging.
+    const latitude = (nextBounds.northLat + nextBounds.southLat) / 2
+    const longitude = (nextBounds.eastLng + nextBounds.westLng) / 2
+    handleSitePinMove(latitude, longitude)
   }
 
   async function loadLocations() {
@@ -913,6 +970,7 @@ export default function SiteConfiguration() {
         const planData = allPlans[0] || null
         setPlan(planData)
         if (planData) {
+          syncLocationMarkerToPlan(planData)
           setPlanRotation(planData.rotation || 0)
           setPlanScale(planData.scale || 1)
         } else {
@@ -1233,13 +1291,32 @@ export default function SiteConfiguration() {
   }
 
   async function savePlan() {
+    if (!plan) return
+    setBusy(true)
     try {
       await floorPlanAPI.update(plan.id, { geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale })
       setPlans((prev) => prev.map((p) => p.id === plan.id ? { ...p, geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale } : p))
+
+      // The location pin can move the plan, so persist its final position too.
+      const latitude = Number(site?.latitude)
+      const longitude = Number(site?.longitude)
+      if (site?.id && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        const locationData = await locationAPI.update(site.id, {
+          officeName: siteForm.name.trim(),
+          city: siteForm.location.trim(),
+          address: `${siteForm.type}${siteForm.description ? ` â€” ${siteForm.description}` : ''}`,
+          latitude,
+          longitude,
+        })
+        if (locationData.location) setSite(locationData.location)
+      }
+
       setStep(3)
       setNotice('Floor plan geographically aligned. Draw zones on top of it.')
     } catch (error) {
       setNotice(error.message || 'Unable to save alignment.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -1887,7 +1964,7 @@ export default function SiteConfiguration() {
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" maxNativeZoom={19} maxZoom={22} />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapClick onClick={onMapClick} />
-                <SitePin location={site} onLocationChange={handleSitePinMove} />
+                <SitePin location={site} onLocationChange={handlePlanLocationPinMove} />
                 <MapZoomControl onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)} />
                 {bounds && <RotatableImageOverlay bounds={bounds} url={plan.imageData} opacity={planOpacity} rotation={planRotation} imgRef={planImgRef} />}
                 {bounds && plan && (
@@ -1895,9 +1972,8 @@ export default function SiteConfiguration() {
                     geoBounds={plan.geoBounds}
                     rotation={planRotation}
                     imgRef={planImgRef}
-                    onBoundsChange={(next) => setPlan({ ...plan, geoBounds: next })}
-                    onPlanDrag={handlePlanDrag}
-                    onDragStart={() => { origSiteRef.current = siteRef.current ? { ...siteRef.current } : null }}
+                    onBoundsChange={handlePlanBoundsChange}
+                    onTransformEnd={handlePlanTransformEnd}
                   />
                 )}
               </MapContainer>

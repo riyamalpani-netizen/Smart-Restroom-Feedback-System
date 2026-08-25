@@ -168,6 +168,24 @@ function ScrollWheelToggle() {
   return null
 }
 
+function MapSizeSync() {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    const refreshSize = () => map.invalidateSize({ animate: false })
+    const frame = requestAnimationFrame(refreshSize)
+    const observer = new ResizeObserver(refreshSize)
+    observer.observe(container)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [map])
+
+  return null
+}
+
 function FitMapBounds({ bounds, center, zoom, fitKey }) {
   const map = useMap()
   const fittedRef = useRef(null)
@@ -399,6 +417,7 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
           scrollWheelZoom={false}
           zoomControl={true}
         >
+          <MapSizeSync />
           <ScrollWheelToggle />
           <FitMapBounds bounds={bounds} center={center} zoom={16} fitKey={config.locations.map((l) => l.id).join(',') + (selectedFloorId || '')} />
           <TileLayer
