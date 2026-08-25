@@ -104,6 +104,7 @@ export const zoneAPI = {
 export const restroomAPI = {
   getAll: () => request('/api/restrooms'),
   getByFloor: (floorId) => request(`/api/restrooms?floorId=${encodeURIComponent(floorId)}`),
+  update: (id, data) => request(`/api/restrooms/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
 }
 
 export const deviceAPI = {
@@ -157,4 +158,5 @@ export const alertAPI = {
   getUnhappyAggregated: () => request('/api/alerts/unhappy-aggregated'),
   acknowledgeGroup: (data) => request('/api/alerts/acknowledge-group', { method: 'POST', body: JSON.stringify(data) }),
   resolveGroup: (data) => request('/api/alerts/resolve-group', { method: 'POST', body: JSON.stringify(data) }),
+  addNote: (data) => request('/api/alerts/add-note-group', { method: 'POST', body: JSON.stringify(data) }),
 }

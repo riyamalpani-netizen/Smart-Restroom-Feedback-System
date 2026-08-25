@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -14,6 +14,73 @@ import 'leaflet/dist/leaflet.css'
 
 const DEFAULT_CENTER = [20.5937, 78.9629]
 
+/**
+ * RotatedFloorPlan — same technique as SiteConfiguration.
+ * Appends an <img> to Leaflet's overlayPane, positions via latLngToLayerPoint,
+ * applies CSS rotate() so the plan matches its saved alignment.
+ */
+function RotatedFloorPlan({ bounds, url, opacity = 0.42, rotation = 0 }) {
+  const map        = useMap()
+  const imgRef     = useRef(null)
+  const boundsRef  = useRef(bounds)
+  const rotRef     = useRef(rotation)
+  const opacityRef = useRef(opacity)
+
+  boundsRef.current  = bounds
+  rotRef.current     = rotation
+  opacityRef.current = opacity
+
+  const update = useCallback(() => {
+    if (!boundsRef.current || !map || !imgRef.current) return
+    const [[n, w], [s, e]] = boundsRef.current
+    const nwPx = map.latLngToLayerPoint([n, w])
+    const sePx = map.latLngToLayerPoint([s, e])
+    const wPx = Math.abs(sePx.x - nwPx.x)
+    const hPx = Math.abs(sePx.y - nwPx.y)
+    const img = imgRef.current
+    img.style.left            = `${nwPx.x}px`
+    img.style.top             = `${nwPx.y}px`
+    img.style.width           = `${wPx}px`
+    img.style.height          = `${hPx}px`
+    img.style.transformOrigin = '50% 50%'
+    img.style.transform       = `rotate(${rotRef.current}deg)`
+    img.style.opacity         = String(opacityRef.current)
+    img.style.display         = 'block'
+  }, [map])
+
+  const onZoom = useCallback(() => requestAnimationFrame(update), [update])
+
+  useEffect(() => {
+    if (!map || !url) return
+    const pane = map.getPanes().overlayPane
+    pane.style.overflow = 'visible'
+    const img = document.createElement('img')
+    img.src             = url
+    img.style.position  = 'absolute'
+    img.style.display   = 'none'
+    img.style.pointerEvents = 'none'
+    pane.appendChild(img)
+    imgRef.current = img
+    img.onload = update
+    update()
+    map.on('move',    update)
+    map.on('zoom',    onZoom)
+    map.on('moveend', update)
+    map.on('zoomend', update)
+    return () => {
+      map.off('move',    update)
+      map.off('zoom',    onZoom)
+      map.off('moveend', update)
+      map.off('zoomend', update)
+      if (img.parentNode) img.parentNode.removeChild(img)
+      imgRef.current = null
+    }
+  }, [map, url, update, onZoom])
+
+  useEffect(() => { update() }, [bounds, rotation, opacity, update])
+
+  return null
+}
 const ZONE_COLORS = {
   restroom: '#0ea5e9',
   corridor: '#64748b',
@@ -85,18 +152,39 @@ function zonePositions(zone) {
   }).filter(Boolean)
 }
 
-function FitMapBounds({ bounds, center, zoom }) {
+function ScrollWheelToggle() {
   const map = useMap()
+  useEffect(() => {
+    function enable() { map.scrollWheelZoom.enable() }
+    function disable() { map.scrollWheelZoom.disable() }
+    const container = map.getContainer()
+    container.addEventListener('mouseenter', enable)
+    container.addEventListener('mouseleave', disable)
+    return () => {
+      container.removeEventListener('mouseenter', enable)
+      container.removeEventListener('mouseleave', disable)
+    }
+  }, [map])
+  return null
+}
+
+function FitMapBounds({ bounds, center, zoom, fitKey }) {
+  const map = useMap()
+  const fittedRef = useRef(null)
 
   useEffect(() => {
+    // Only re-fit when the set of locations changes (fitKey changes), not on every zoom/pan
+    if (fittedRef.current === fitKey) return
+    fittedRef.current = fitKey
+
     if (bounds && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 21 })
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 18 })
       return
     }
     if (center) {
       map.setView(center, zoom || 15)
     }
-  }, [map, bounds, center, zoom])
+  }, [map, bounds, center, zoom, fitKey])
 
   return null
 }
@@ -306,22 +394,25 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
           center={center}
           zoom={16}
           maxZoom={22}
-          minZoom={3}
+          minZoom={1}
           style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom
-          zoomControl
+          scrollWheelZoom={false}
+          zoomControl={true}
         >
-          <FitMapBounds bounds={bounds} center={center} zoom={16} />
+          <ScrollWheelToggle />
+          <FitMapBounds bounds={bounds} center={center} zoom={16} fitKey={config.locations.map((l) => l.id).join(',') + (selectedFloorId || '')} />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="© OpenStreetMap"
+            maxNativeZoom={19}
+            maxZoom={22}
           />
 
           {visibleFloorPlans.map((plan) => {
             const b = plan.geoBounds
             if (!b) return null
             return (
-              <ImageOverlay
+              <RotatedFloorPlan
                 key={plan.id}
                 bounds={[
                   [b.northLat, b.westLng],
@@ -329,6 +420,7 @@ export default function RestroomGeoMap({ restrooms = [], mapConfig = null }) {
                 ]}
                 url={plan.imageData}
                 opacity={0.42}
+                rotation={plan.rotation || 0}
               />
             )
           })}

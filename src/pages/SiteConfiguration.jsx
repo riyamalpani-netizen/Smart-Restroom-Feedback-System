@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ImageOverlay, MapContainer, Marker, Polygon, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
@@ -16,6 +16,307 @@ import './SiteConfigurationPreview.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const DEFAULT_CENTER = [30.7333, 76.7794]
+
+/**
+ * RotatableImageOverlay
+ *
+ * Appends an <img> into Leaflet's overlayPane, positions it using
+ * latLngToLayerPoint, and applies CSS rotate() around the geo-centre.
+ * Uses refs so the single stable `update` function always reads fresh
+ * values — no stale-closure issues with map event listeners.
+ */
+function RotatableImageOverlay({ bounds, url, opacity = 0.7, rotation = 0, imgRef: externalImgRef }) {
+  const map      = useMap()
+  const localRef = useRef(null)
+  const imgRef   = externalImgRef || localRef
+
+  // Keep refs current on every render — update() always reads fresh values
+  const boundsRef   = useRef(bounds)
+  const rotationRef = useRef(rotation)
+  const opacityRef  = useRef(opacity)
+  boundsRef.current   = bounds
+  rotationRef.current = rotation
+  opacityRef.current  = opacity
+
+  // Single stable update function — reads from refs, never stale
+  const update = useCallback(() => {
+    if (!boundsRef.current || !map || !imgRef.current) return
+
+    const [[n, w], [s, e]] = boundsRef.current
+    const nwPx = map.latLngToLayerPoint([n, w])
+    const sePx = map.latLngToLayerPoint([s, e])
+
+    const wPx = Math.abs(sePx.x - nwPx.x)
+    const hPx = Math.abs(sePx.y - nwPx.y)
+
+    const img = imgRef.current
+    img.style.left            = `${nwPx.x}px`
+    img.style.top             = `${nwPx.y}px`
+    img.style.width           = `${wPx}px`
+    img.style.height          = `${hPx}px`
+    img.style.transformOrigin = '50% 50%'
+    img.style.transform       = `rotate(${rotationRef.current}deg)`
+    img.style.transition      = 'transform 0.2s ease'
+    img.style.opacity         = String(opacityRef.current)
+    img.style.display         = 'block'
+  }, [map]) // map is the only real dependency — everything else via refs
+
+  const resetOnZoom = useCallback(() => {
+    requestAnimationFrame(update)
+  }, [update])
+
+  // Mount: create the img element and attach map listeners once
+  useEffect(() => {
+    if (!map || !url) return
+
+    const pane = map.getPanes().overlayPane
+    pane.style.overflow = 'visible'
+
+    const img = document.createElement('img')
+    img.src              = url
+    img.style.position   = 'absolute'
+    img.style.display    = 'none'
+    img.style.pointerEvents = 'none'
+    pane.appendChild(img)
+    imgRef.current = img
+
+    img.onload = update
+    update()
+
+    map.on('move',    update)
+    map.on('zoom',    resetOnZoom)
+    map.on('moveend', update)
+    map.on('zoomend', update)
+
+    return () => {
+      map.off('move',    update)
+      map.off('zoom',    resetOnZoom)
+      map.off('moveend', update)
+      map.off('zoomend', update)
+      if (img.parentNode) img.parentNode.removeChild(img)
+      imgRef.current = null
+    }
+  }, [map, url, update, resetOnZoom])
+
+  // Re-apply whenever bounds / rotation / opacity change
+  useEffect(() => {
+    update()
+  }, [bounds, rotation, opacity, update])
+
+  return null
+}
+
+/**
+ * DraggablePlanOverlay
+ *
+ * Makes the floor plan image directly draggable on the map by:
+ * 1. Enabling pointer events on the img element
+ * 2. Intercepting mousedown/touchstart on the img to start a drag
+ * 3. Computing delta from drag start position to update geoBounds
+ * 4. Corner markers for resize (rotation-aware positions)
+ * 5. Centre marker as a visible drag handle fallback
+ */
+function rotatePt(lat, lng, cLat, cLng, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const dLat = lat - cLat
+  const dLng = lng - cLng
+  return {
+    lat: cLat + dLat * cos - dLng * sin,
+    lng: cLng + dLat * sin + dLng * cos,
+  }
+}
+
+function cornerIcon(label) {
+  return L.divIcon({
+    className: '',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    html: `<div style="width:20px;height:20px;background:#0891b2;border:2.5px solid #fff;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.55);cursor:nwse-resize">${label}</div>`,
+  })
+}
+
+function centerDragIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    html: `<div style="width:28px;height:28px;background:#0891b2;border:3px solid #fff;border-radius:50%;display:grid;place-items:center;cursor:move;box-shadow:0 2px 10px rgba(0,0,0,0.55);font-size:15px">✥</div>`,
+  })
+}
+
+function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onPlanDrag, onDragStart, imgRef }) {
+  const map           = useMap()
+  const boundsRef     = useRef(geoBounds)
+  const rotRef        = useRef(rotation)
+  const onChangeRef   = useRef(onBoundsChange)
+  const onPlanDragRef = useRef(onPlanDrag)
+  const onDragStartRef = useRef(onDragStart)
+  useEffect(() => { boundsRef.current   = geoBounds     }, [geoBounds])
+  useEffect(() => { rotRef.current      = rotation      }, [rotation])
+  useEffect(() => { onChangeRef.current = onBoundsChange }, [onBoundsChange])
+  useEffect(() => { onPlanDragRef.current = onPlanDrag }, [onPlanDrag])
+  useEffect(() => { onDragStartRef.current = onDragStart }, [onDragStart])
+
+  // ── Stable image drag (mousedown on the <img> itself) ─────────
+  useEffect(() => {
+    const img = imgRef?.current
+    if (!img || !map) return
+
+    let dragStart = null
+
+    function onMouseDown(e) {
+      if (e.button !== 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      map.dragging.disable()
+      const b = boundsRef.current
+      onDragStartRef.current?.()
+      dragStart = { mouseX: e.clientX, mouseY: e.clientY, origBounds: { ...b } }
+
+      function onMouseMove(me) {
+        if (!dragStart) return
+        const dx = me.clientX - dragStart.mouseX
+        const dy = me.clientY - dragStart.mouseY
+        const startPt = map.latLngToContainerPoint([
+          (dragStart.origBounds.northLat + dragStart.origBounds.southLat) / 2,
+          (dragStart.origBounds.eastLng  + dragStart.origBounds.westLng)  / 2,
+        ])
+        const endLatLng   = map.containerPointToLatLng({ x: startPt.x + dx, y: startPt.y + dy })
+        const startLatLng = map.containerPointToLatLng(startPt)
+        const dLat = endLatLng.lat - startLatLng.lat
+        const dLng = endLatLng.lng - startLatLng.lng
+        const ob = dragStart.origBounds
+        onChangeRef.current({
+          northLat: ob.northLat + dLat,
+          southLat: ob.southLat + dLat,
+          eastLng:  ob.eastLng  + dLng,
+          westLng:  ob.westLng  + dLng,
+        })
+        onPlanDragRef.current?.({ dLat, dLng })
+      }
+
+      function onMouseUp() {
+        dragStart = null
+        map.dragging.enable()
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup',   onMouseUp)
+      }
+
+      window.addEventListener('mousemove', onMouseMove)
+      window.addEventListener('mouseup',   onMouseUp)
+    }
+
+    img.style.cursor        = 'move'
+    img.style.pointerEvents = 'auto'
+    img.addEventListener('mousedown', onMouseDown)
+    return () => {
+      img.removeEventListener('mousedown', onMouseDown)
+      img.style.pointerEvents = 'none'
+      img.style.cursor        = ''
+    }
+  }, [map, imgRef])
+
+  // ── Stable corner & centre drag handlers (stable refs → no re-registration) ──
+  const onCenterDragRef = useRef(null)
+  onCenterDragRef.current = (e) => {
+    const b = boundsRef.current
+    const oldCLat = (b.northLat + b.southLat) / 2
+    const oldCLng = (b.eastLng  + b.westLng)  / 2
+    const halfLat = (b.northLat - b.southLat) / 2
+    const halfLng = (b.eastLng  - b.westLng)  / 2
+    const { lat, lng } = e.target.getLatLng()
+    const dLat = lat - oldCLat
+    const dLng = lng - oldCLng
+    onChangeRef.current({
+      northLat: lat + halfLat,
+      southLat: lat - halfLat,
+      eastLng:  lng + halfLng,
+      westLng:  lng - halfLng,
+    })
+    // Move the site pin with the plan
+    onPlanDragRef.current?.({ dLat, dLng })
+  }
+
+  const onCornerDragRef = useRef(null)
+  onCornerDragRef.current = (corner, e) => {
+    const b    = boundsRef.current
+    const rot  = rotRef.current
+    const { lat: vLat, lng: vLng } = e.target.getLatLng()
+    const cLat2 = (b.northLat + b.southLat) / 2
+    const cLng2 = (b.eastLng  + b.westLng)  / 2
+    // Un-rotate the dragged visual position back to axis-aligned space
+    const { lat: aLat, lng: aLng } = rotatePt(vLat, vLng, cLat2, cLng2, -rot)
+    let next = { ...b }
+    if (corner === 'NW') { next.northLat = aLat; next.westLng = aLng }
+    if (corner === 'NE') { next.northLat = aLat; next.eastLng = aLng }
+    if (corner === 'SW') { next.southLat = aLat; next.westLng = aLng }
+    if (corner === 'SE') { next.southLat = aLat; next.eastLng = aLng }
+    // enforce minimum size so plan never inverts
+    if (next.northLat <= next.southLat) {
+      if (corner === 'NW' || corner === 'NE') next.northLat = b.southLat + 0.00005
+      else next.southLat = b.northLat - 0.00005
+    }
+    if (next.eastLng <= next.westLng) {
+      if (corner === 'NE' || corner === 'SE') next.eastLng = b.westLng + 0.00005
+      else next.westLng = b.eastLng - 0.00005
+    }
+    onChangeRef.current(next)
+  }
+
+  // Stable event handler objects so Leaflet doesn't re-register during drag
+  const centerHandlers = useMemo(() => ({
+    dragstart: () => onDragStartRef.current?.(),
+    drag:    (e) => onCenterDragRef.current(e),
+    dragend: (e) => onCenterDragRef.current(e),
+  }), [])
+
+  const cornerHandlers = useMemo(() => ({
+    NW: { drag: (e) => onCornerDragRef.current('NW', e), dragend: (e) => onCornerDragRef.current('NW', e) },
+    NE: { drag: (e) => onCornerDragRef.current('NE', e), dragend: (e) => onCornerDragRef.current('NE', e) },
+    SW: { drag: (e) => onCornerDragRef.current('SW', e), dragend: (e) => onCornerDragRef.current('SW', e) },
+    SE: { drag: (e) => onCornerDragRef.current('SE', e), dragend: (e) => onCornerDragRef.current('SE', e) },
+  }), [])
+
+  if (!geoBounds) return null
+
+  const { northLat, southLat, eastLng, westLng } = geoBounds
+  const cLat = (northLat + southLat) / 2
+  const cLng = (eastLng  + westLng)  / 2
+
+  // Rotate corner positions to their visual locations on the map
+  const corners = [
+    { id: 'NW', lat: northLat, lng: westLng },
+    { id: 'NE', lat: northLat, lng: eastLng },
+    { id: 'SW', lat: southLat, lng: westLng },
+    { id: 'SE', lat: southLat, lng: eastLng },
+  ].map((c) => ({ ...c, ...rotatePt(c.lat, c.lng, cLat, cLng, rotation) }))
+
+  return (
+    <>
+      {/* Centre drag handle */}
+      <Marker
+        position={[cLat, cLng]}
+        icon={centerDragIcon()}
+        draggable
+        eventHandlers={centerHandlers}
+      />
+      {/* Corner resize handles — placed at visual (rotated) corner positions */}
+      {corners.map((c) => (
+        <Marker
+          key={c.id}
+          position={[c.lat, c.lng]}
+          icon={cornerIcon(c.id)}
+          draggable
+          eventHandlers={cornerHandlers[c.id]}
+        />
+      ))}
+    </>
+  )
+}
+
+
 const ZONE_COLORS = { restroom: '#38bdf8', corridor: '#94a3b8', lobby: '#34d399', maintenance: '#fbbf24', other: '#a78bfa' }
 const TYPE_META = {
   badge: { icon: '◉', label: 'Badge', color: '#8b5cf6' },
@@ -26,8 +327,7 @@ const TYPE_META = {
 
 const steps = [
   ['Define Site', 'Name & location'],
-  ['Floor Plans', 'Setup floor images'],
-  ['Position Floor Plan', 'Place image on map'],
+  ['Floor Plans', 'Upload & position floor image'],
   ['Draw Zones', 'Polygon zone mapping'],
   ['Place Devices', 'Pin devices on map'],
   ['Place Gateways', 'Pin gateways on map'],
@@ -165,7 +465,7 @@ function PreviewMap({ center, zoom = 15, site, bounds, planImage, zones = [], he
     <div className="planner-preview-map" style={{ height }}>
       <MapContainer center={mapCenter} zoom={zoom} className="planner-map-container" scrollWheelZoom={false} dragging={false} doubleClickZoom={false} zoomControl={false}>
         <MapFocus center={mapCenter} zoom={zoom} />
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" maxNativeZoom={19} maxZoom={22} />
         {site && <SitePin location={site} />}
         {bounds && planImage && <ImageOverlay bounds={bounds} url={planImage} opacity={0.55} />}
         {zones.map((zone) => {
@@ -284,7 +584,7 @@ function CenterPicker({ initial, onCancel, onSave }) {
         <div className="planner-picker-map">
           <MapContainer center={focus} zoom={initial ? 15 : 5} className="planner-map-container">
             <MapFocus center={focus} zoom={15} />
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" maxNativeZoom={19} maxZoom={22} />
             <MapClick onClick={(point) => setSelected([point.lat, point.lng])} />
             {selected && <Marker position={selected} icon={L.divIcon({ className: 'planner-site-pin', iconSize: [40, 48], iconAnchor: [20, 48], html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ef4444" width="40" height="48"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>' }) } />}
           </MapContainer>
@@ -306,13 +606,16 @@ export default function SiteConfiguration() {
   const navigate = useNavigate()
   const fileRef = useRef(null)
   const geoJsonRef = useRef(null)
+  const planImgRef = useRef(null) // shared ref between RotatableImageOverlay and DraggablePlanOverlay
   const [step, setStep] = useState(1)
   const [site, setSite] = useState(null)
   const [floors, setFloors] = useState([])
   const [floor, setFloor] = useState(null)
-  const [plan, setPlan] = useState(null)
+  const [plans, setPlans] = useState([])       // all floor plans for the active floor
+  const [plan, setPlan] = useState(null)        // currently active / being aligned plan
   const [planRotation, setPlanRotation] = useState(0)
   const [planScale, setPlanScale] = useState(1)
+  const [planOpacity, setPlanOpacity] = useState(0.7)
   const [mapZoom, setMapZoom] = useState(17)
   const [zones, setZones] = useState([])
   const [restrooms, setRestrooms] = useState([])
@@ -331,6 +634,7 @@ export default function SiteConfiguration() {
   const [addFloorOpen, setAddFloorOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [siteStats, setSiteStats] = useState({ zones: 0, devices: 0, gateways: 0 })
   const [allDevices, setAllDevices] = useState([])
   const [allGateways, setAllGateways] = useState([])
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
@@ -339,6 +643,7 @@ export default function SiteConfiguration() {
   const [editingZoneId, setEditingZoneId] = useState(null)
   const [editingZoneForm, setEditingZoneForm] = useState({ name: '', type: 'restroom' })
   const [editingZonePoints, setEditingZonePoints] = useState([])
+  const [editingZoneRedrawing, setEditingZoneRedrawing] = useState(false)
   const [movingItemId, setMovingItemId] = useState(null)
   const [movingItemType, setMovingItemType] = useState(null)
   const [mousePos, setMousePos] = useState(null)
@@ -351,39 +656,139 @@ export default function SiteConfiguration() {
   const ready = { site: !!site, floor: !!floor, plan: !!plan }
   const progress = Math.round((step / steps.length) * 100)
 
+  const currentFloorIdRef = useRef(null)
+
+  useEffect(() => {
+    currentFloorIdRef.current = floor?.id || null
+  }, [floor])
+  const floorCache = useRef({}) // cache: floorId → { plans, zones, restrooms, devices, gateways }
+  const [floorLoading, setFloorLoading] = useState(false)
+  const [reviewData, setReviewData] = useState({}) // floorId → { plans, zones, devices, gateways }
+
   useEffect(() => {
     if (!floor) return
-    Promise.all([
-      floorPlanAPI.getByFloor(floor.id),
-      zoneAPI.getByFloor(floor.id),
-      restroomAPI.getByFloor(floor.id),
-      deviceAPI.getByFloor(floor.id),
-      gatewayAPI.getAll({ floorId: floor.id }),
-    ])
-      .then(([plans, zoneData, restroomData, deviceData, gatewayData]) => {
-        const planData = plans.floorPlans?.[0] || null
-        setPlan(planData)
-        if (planData) {
-          setPlanRotation(planData.rotation || 0)
-          setPlanScale(planData.scale || 1)
-        } else {
-          setPlanRotation(0)
-          setPlanScale(1)
-        }
-        setZones(zoneData.zones || [])
-        setRestrooms(restroomData.restrooms || [])
-        setDevices(deviceData.devices || [])
-        setGateways(gatewayData.gateways || [])
-        // Load all devices/gateways separately so a failure doesn't break the floor load
-        loadAllDevices()
-        loadAllGateways()
-      })
-      .catch(() => setNotice('Could not load the saved spatial configuration.'))
-  }, [floor])
+
+    // If we have cached data for this floor, apply it instantly
+    const cached = floorCache.current[floor.id]
+    if (cached) {
+      setPlans(cached.plans)
+      setPlan(cached.plans[0] || null)
+      if (cached.plans[0]) {
+        setPlanRotation(cached.plans[0].rotation || 0)
+        setPlanScale(cached.plans[0].scale || 1)
+      } else {
+        setPlanRotation(0)
+        setPlanScale(1)
+        setPlanOpacity(0.45)
+      }
+      setZones(cached.zones)
+      setRestrooms(cached.restrooms)
+      setDevices(cached.devices)
+      setGateways(cached.gateways)
+      // Refresh in background silently to pick up any changes
+      refreshFloorData(floor.id, true)
+      return
+    }
+
+    // No cache — clear stale data immediately so UI shows loading state
+    setPlans([])
+    setPlan(null)
+    setPlanRotation(0)
+    setPlanScale(1)
+    setZones([])
+    setRestrooms([])
+    setDevices([])
+    setGateways([])
+    setFloorLoading(true)
+    refreshFloorData(floor.id, false)
+  }, [floor]) // eslint-disable-line
+
+  async function refreshFloorData(floorId, silent) {
+    // Invalidate cache so next switch always gets fresh data
+    delete floorCache.current[floorId]
+    try {
+      const [planRes, zoneData, restroomData, deviceData, gatewayData, allDevData, allGwData] = await Promise.all([
+        floorPlanAPI.getByFloor(floorId),
+        zoneAPI.getByFloor(floorId),
+        restroomAPI.getByFloor(floorId),
+        deviceAPI.getByFloor(floorId),
+        gatewayAPI.getAll({ floorId }),
+        deviceAPI.getAll(),
+        gatewayAPI.getAll(),
+      ])
+
+      const allPlans   = planRes.floorPlans || []
+      const zones      = zoneData.zones || []
+      const restrooms  = restroomData.restrooms || []
+      const devices    = deviceData.devices || []
+      const gateways   = gatewayData.gateways || []
+
+      // Store in cache for instant switching
+      floorCache.current[floorId] = { plans: allPlans, zones, restrooms, devices, gateways }
+
+      // Only apply if this floor is still selected (user hasn't switched again)
+      if (currentFloorIdRef.current !== floorId) return
+
+      const planData = allPlans[0] || null
+      setPlans(allPlans)
+      setPlan(planData)
+      if (planData) {
+        setPlanRotation(planData.rotation || 0)
+        setPlanScale(planData.scale || 1)
+      } else {
+        setPlanRotation(0)
+        setPlanScale(1)
+        if (!silent) setPlanOpacity(0.45)
+      }
+      setZones(zones)
+      setRestrooms(restrooms)
+      setDevices(devices)
+      setGateways(gateways)
+      setAllDevices(allDevData.devices || [])
+      setAllGateways(allGwData.gateways || [])
+    } catch {
+      if (!silent) setNotice('Could not load floor data.')
+    } finally {
+      if (!silent) setFloorLoading(false)
+    }
+  }
 
   useEffect(() => {
     loadLocations()
   }, [loadLocations])
+
+  // Load all floors' data when entering review step
+  useEffect(() => {
+    if (step !== 6 || !floors.length) return
+    async function loadReview() {
+      const results = await Promise.all(
+        floors.map(async (f) => {
+          // Use cache first, fall back to fetch
+          if (floorCache.current[f.id]) {
+            return [f.id, floorCache.current[f.id]]
+          }
+          const [planRes, zoneData, deviceData, gatewayData] = await Promise.all([
+            floorPlanAPI.getByFloor(f.id),
+            zoneAPI.getByFloor(f.id),
+            deviceAPI.getByFloor(f.id),
+            gatewayAPI.getAll({ floorId: f.id }),
+          ])
+          return [f.id, {
+            plans:    planRes.floorPlans || [],
+            zones:    zoneData.zones     || [],
+            devices:  deviceData.devices  || [],
+            gateways: gatewayData.gateways || [],
+          }]
+        })
+      )
+      setReviewData(Object.fromEntries(results))
+    }
+    loadReview().catch(() => {})
+  }, [step, floors]) // eslint-disable-line
+  useEffect(() => {
+    if (!selectedLocationId || !floors.length) return
+    loadSiteStats(selectedLocationId, floors)
+  }, [zones.length, devices.length, gateways.length]) // eslint-disable-line
 
   useEffect(() => {
     if (selectedLocationId) {
@@ -399,12 +804,13 @@ export default function SiteConfiguration() {
     setMovingItemType(null)
     setEditingZoneId(null)
     setEditingZonePoints([])
+    setEditingZoneRedrawing(false)
     setDrawing(false)
     setPoints([])
   }, [step])
 
   useEffect(() => {
-    if (step === 4 && floor) {
+    if (step === 3 && floor) {
       Promise.all([zoneAPI.getByFloor(floor.id), restroomAPI.getByFloor(floor.id)])
         .then(([zoneData, restroomData]) => {
           setZones(zoneData.zones || [])
@@ -419,11 +825,31 @@ export default function SiteConfiguration() {
     setPickerOpen(false)
   }
 
+  const siteRef = useRef(site)
+  const origSiteRef = useRef(null) // site position at drag start
+  siteRef.current = site
+
   function handleSitePinMove(lat, lng) {
     setSiteForm((v) => ({ ...v, latitude: String(lat), longitude: String(lng) }))
-    if (site) {
-      setSite({ ...site, latitude: lat, longitude: lng })
+    const current = siteRef.current
+    if (current) {
+      const next = { ...current, latitude: lat, longitude: lng }
+      siteRef.current = next
+      setSite(next)
     }
+  }
+
+  function handlePlanDrag({ dLat, dLng }) {
+    // dLat/dLng is the absolute delta from the drag-start position
+    // Use the original site position captured at drag start
+    const orig = origSiteRef.current
+    if (!orig) return
+    const newLat = orig.latitude  + dLat
+    const newLng = orig.longitude + dLng
+    const next = { ...siteRef.current, latitude: newLat, longitude: newLng }
+    siteRef.current = next
+    setSite(next)
+    setSiteForm((v) => ({ ...v, latitude: String(newLat), longitude: String(newLng) }))
   }
 
   async function loadLocations() {
@@ -431,6 +857,30 @@ export default function SiteConfiguration() {
       const data = await locationAPI.getAll(user?.organizationId)
       setLocations(data.locations || [])
     } catch { }
+  }
+
+  async function loadSiteStats(locationId, allFloors) {
+    if (!locationId || !allFloors?.length) {
+      setSiteStats({ zones: 0, devices: 0, gateways: 0 })
+      return
+    }
+    try {
+      const results = await Promise.all(
+        allFloors.map((f) => Promise.all([
+          zoneAPI.getByFloor(f.id),
+          deviceAPI.getByFloor(f.id),
+          gatewayAPI.getAll({ floorId: f.id }),
+        ]))
+      )
+      const stats = results.reduce((acc, [z, d, g]) => ({
+        zones:    acc.zones    + (z.zones?.length    || 0),
+        devices:  acc.devices  + (d.devices?.length  || 0),
+        gateways: acc.gateways + (g.gateways?.length || 0),
+      }), { zones: 0, devices: 0, gateways: 0 })
+      setSiteStats(stats)
+    } catch {
+      // non-critical — silently ignore
+    }
   }
 
   async function loadSiteConfiguration(locationId) {
@@ -448,7 +898,7 @@ export default function SiteConfiguration() {
         const firstFloor = floors[0]
         setFloor(firstFloor)
         
-        const [plans, zoneData, restroomData, deviceData, gatewayData] = await Promise.all([
+        const [planRes, zoneData, restroomData, deviceData, gatewayData] = await Promise.all([
           floorPlanAPI.getByFloor(firstFloor.id),
           zoneAPI.getByFloor(firstFloor.id),
           restroomAPI.getByFloor(firstFloor.id),
@@ -458,7 +908,9 @@ export default function SiteConfiguration() {
         
         if (selectedLocationIdRef.current !== locationId) return
         
-        const planData = plans.floorPlans?.[0] || null
+        const allPlans = planRes.floorPlans || []
+        setPlans(allPlans)
+        const planData = allPlans[0] || null
         setPlan(planData)
         if (planData) {
           setPlanRotation(planData.rotation || 0)
@@ -466,12 +918,14 @@ export default function SiteConfiguration() {
         } else {
           setPlanRotation(0)
           setPlanScale(1)
+          setPlanOpacity(0.45)
         }
         setZones(zoneData.zones || [])
         setRestrooms(restroomData.restrooms || [])
         setDevices(deviceData.devices || [])
         setGateways(gatewayData.gateways || [])
       } else {
+        setPlans([])
         setPlan(null)
         setZones([])
         setRestrooms([])
@@ -483,6 +937,7 @@ export default function SiteConfiguration() {
       
       await loadAllDevices()
       await loadAllGateways()
+      await loadSiteStats(locationId, floors)
     } catch (error) {
       setNotice('Could not load site configuration.')
     } finally {
@@ -525,7 +980,7 @@ export default function SiteConfiguration() {
       setRestrooms([])
       setDevices([])
       setGateways([])
-    }
+      setSiteStats({ zones: 0, devices: 0, gateways: 0 })    }
   }
 
   async function saveSite() {
@@ -589,6 +1044,10 @@ export default function SiteConfiguration() {
     }
   }
 
+  function invalidateFloorCache() {
+    if (floor?.id) delete floorCache.current[floor.id]
+  }
+
   async function removeFloor(floorId) {
     if (!window.confirm('Delete this floor and all its plans, zones, devices, and gateways?')) return
     setBusy(true)
@@ -612,14 +1071,20 @@ export default function SiteConfiguration() {
     }
   }
 
-  async function removePlan() {
-    if (!plan || !window.confirm('Remove this floor plan image?')) return
+  async function removePlan(targetPlan) {
+    const p = targetPlan || plan
+    if (!p || !window.confirm('Remove this floor plan image?')) return
     setBusy(true)
     try {
-      await floorPlanAPI.delete(plan.id)
-      setPlan(null)
-      setPlanRotation(0)
-      setPlanScale(1)
+      await floorPlanAPI.delete(p.id)
+      const remaining = plans.filter((fp) => fp.id !== p.id)
+      setPlans(remaining)
+      if (plan?.id === p.id) {
+        const next = remaining[0] || null
+        setPlan(next)
+        setPlanRotation(next?.rotation || 0)
+        setPlanScale(next?.scale || 1)
+      }
       setNotice('Floor plan removed.')
     } catch (error) {
       setNotice(error.message || 'Unable to delete floor plan.')
@@ -632,6 +1097,7 @@ export default function SiteConfiguration() {
     if (!window.confirm('Delete this zone?')) return
     try {
       await zoneAPI.delete(zoneId)
+      invalidateFloorCache()
       const zoneData = await zoneAPI.getByFloor(floor.id)
       setZones(zoneData.zones || [])
       const restroomData = await restroomAPI.getByFloor(floor.id)
@@ -690,10 +1156,13 @@ export default function SiteConfiguration() {
       const geoBounds = { northLat: center[0] + offsetLat, southLat: center[0] - offsetLat, westLng: center[1] - offsetLng, eastLng: center[1] + offsetLng }
       setBusy(true)
       try {
-        const data = await floorPlanAPI.create({ floorId: floor.id, name: `${floor.floorName} Plan`, imageData: src, width: image.width, height: image.height, geoBounds })
+        const planName = `${floor.floorName} Plan ${plans.length + 1}`
+        const data = await floorPlanAPI.create({ floorId: floor.id, name: planName, imageData: src, width: image.width, height: image.height, geoBounds })
+        setPlans((prev) => [...prev, data.floorPlan])
         setPlan(data.floorPlan)
         setPlanRotation(0)
         setPlanScale(1)
+        setPlanOpacity(0.45)
         setNotice('Floor plan uploaded. Position it over the selected site, then save.')
       } catch (error) {
         setNotice(error.message || 'Unable to upload plan.')
@@ -706,19 +1175,7 @@ export default function SiteConfiguration() {
 
   async function rotatePlan(angle) {
     if (!plan?.geoBounds) return
-    const b = plan.geoBounds
-    const centerLat = (b.northLat + b.southLat) / 2
-    const centerLng = (b.eastLng + b.westLng) / 2
-    const halfLat = (b.northLat - b.southLat) / 2
-    const halfLng = (b.eastLng - b.westLng) / 2
-    const next = {
-      northLat: centerLat + halfLng,
-      southLat: centerLat - halfLng,
-      eastLng: centerLng + halfLat,
-      westLng: centerLng - halfLat,
-    }
-    setPlan({ ...plan, geoBounds: next })
-    setPlanRotation((prev) => prev + angle)
+    setPlanRotation((prev) => ((prev + angle) % 360 + 360) % 360)
   }
 
   async function scalePlan(delta) {
@@ -744,18 +1201,23 @@ export default function SiteConfiguration() {
     const b = plan.geoBounds
     const lat = b.northLat - b.southLat
     const lng = b.eastLng - b.westLng
+    // fine = 1%, coarse = 5% of current extent
+    const fine = 0.01
+    const coarse = 0.05
+    const step_size = direction.startsWith('fine-') ? fine : coarse
+    const dir = direction.replace('fine-', '')
     let next = { ...b }
-    if (direction === 'left') { next.westLng -= lng * 0.12; next.eastLng -= lng * 0.12 }
-    if (direction === 'right') { next.westLng += lng * 0.12; next.eastLng += lng * 0.12 }
-    if (direction === 'up') { next.northLat += lat * 0.12; next.southLat += lat * 0.12 }
-    if (direction === 'down') { next.northLat -= lat * 0.12; next.southLat -= lat * 0.12 }
-    if (direction === 'grow') { next.northLat += lat * 0.12; next.southLat -= lat * 0.12; next.eastLng += lng * 0.12; next.westLng -= lng * 0.12 }
-    if (direction === 'shrink') { next.northLat -= lat * 0.12; next.southLat += lat * 0.12; next.eastLng -= lng * 0.12; next.westLng += lng * 0.12 }
+    if (dir === 'left')   { next.westLng -= lng * step_size; next.eastLng -= lng * step_size }
+    if (dir === 'right')  { next.westLng += lng * step_size; next.eastLng += lng * step_size }
+    if (dir === 'up')     { next.northLat += lat * step_size; next.southLat += lat * step_size }
+    if (dir === 'down')   { next.northLat -= lat * step_size; next.southLat -= lat * step_size }
+    if (dir === 'grow')   { next.northLat += lat * step_size; next.southLat -= lat * step_size; next.eastLng += lng * step_size; next.westLng -= lng * step_size }
+    if (dir === 'shrink') { next.northLat -= lat * step_size; next.southLat += lat * step_size; next.eastLng -= lng * step_size; next.westLng += lng * step_size }
     setPlan({ ...plan, geoBounds: next })
   }
 
   function zoomMap(delta) {
-    setMapZoom((prev) => Math.max(1, Math.min(23, prev + delta)))
+    setMapZoom((prev) => Math.max(2, Math.min(22, prev + delta)))
   }
 
   function fitPlan() {
@@ -773,7 +1235,8 @@ export default function SiteConfiguration() {
   async function savePlan() {
     try {
       await floorPlanAPI.update(plan.id, { geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale })
-      setStep(4)
+      setPlans((prev) => prev.map((p) => p.id === plan.id ? { ...p, geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale } : p))
+      setStep(3)
       setNotice('Floor plan geographically aligned. Draw zones on top of it.')
     } catch (error) {
       setNotice(error.message || 'Unable to save alignment.')
@@ -781,16 +1244,12 @@ export default function SiteConfiguration() {
   }
 
   function onMapClick(point) {
-    if ((step === 2 || step === 3) && plan) {
-      const currentBounds = plan.geoBounds
-      const halfLat = (currentBounds.northLat - currentBounds.southLat) / 2
-      const halfLng = (currentBounds.eastLng - currentBounds.westLng) / 2
-      setPlan({ ...plan, geoBounds: { northLat: point.lat + halfLat, southLat: point.lat - halfLat, eastLng: point.lng + halfLng, westLng: point.lng - halfLng } })
-      setNotice('Floor plan moved. Use the controls for fine positioning or scaling, then save.')
+    if (step === 2 && plan) {
+      // Click-to-move is disabled — use the drag handles on the floor plan overlay instead
       return
     }
-    if (step === 4) {
-      if (editingZoneId && drawing) {
+    if (step === 3) {
+      if (editingZoneId && editingZoneRedrawing) {
         setEditingZonePoints((all) => {
           if (drawingMode !== 'rectangle' || all.length === 0) return [...all, [point.lat, point.lng]]
           const [startLat, startLng] = all[0]
@@ -807,23 +1266,23 @@ export default function SiteConfiguration() {
         return
       }
     }
-    if (movingItemId && (step === 5 || step === 6)) {
+    if (movingItemId && (step === 4 || step === 5)) {
       movePlacedItem(movingItemId, movingItemType, point)
       return
     }
-    if (step === 5 && selectedDeviceId) {
+    if (step === 4 && selectedDeviceId) {
       placeExistingItem(point, 'device')
       return
     }
-    if (step === 6 && selectedGatewayId) {
+    if (step === 5 && selectedGatewayId) {
       placeExistingItem(point, 'gateway')
       return
     }
-    if (step === 5 && !selectedDeviceId) {
+    if (step === 4 && !selectedDeviceId) {
       setNotice('Select a device from the list before clicking the map.')
       return
     }
-    if (step === 6 && !selectedGatewayId) {
+    if (step === 5 && !selectedGatewayId) {
       setNotice('Select a gateway from the list before clicking the map.')
       return
     }
@@ -833,25 +1292,37 @@ export default function SiteConfiguration() {
     if (points.length < 3) { setNotice('A zone needs at least three points.'); return }
     try {
       const coordinates = { type: 'Polygon', coordinates: [[...points, points[0]].map(([lat, lng]) => [lng, lat])] }
-      const zoneName = zoneForm.name.trim() || 'Restroom zone'
+      const zoneType = zoneForm.type || 'restroom'
+      const defaultName = { restroom: 'Restroom', corridor: 'Corridor', lobby: 'Lobby', maintenance: 'Maintenance', other: 'Zone' }
+      const zoneName = zoneForm.name.trim() || defaultName[zoneType] || 'Zone'
       const centroid = getPolygonCentroid(points)
-      const restroomData = await floorPlanAPI.createRestroom({ floorId: floor.id, name: zoneName, organizationId: user?.organizationId || '' })
-      const payload = { floorId: floor.id, name: zoneName, type: 'restroom', coordinates, restroomId: restroomData.restroom.id, latitude: centroid[0], longitude: centroid[1] }
-      const data = await zoneAPI.create(payload)
+
+      // Only create a linked Restroom record for restroom-type zones
+      let restroomId = null
+      if (zoneType === 'restroom') {
+        const restroomData = await floorPlanAPI.createRestroom({ floorId: floor.id, name: zoneName, organizationId: user?.organizationId || '' })
+        restroomId = restroomData.restroom.id
+      }
+
+      const payload = { floorId: floor.id, name: zoneName, type: zoneType, coordinates, restroomId, latitude: centroid[0], longitude: centroid[1] }
+      await zoneAPI.create(payload)
       const zoneData = await zoneAPI.getByFloor(floor.id)
       setZones(zoneData.zones || [])
       const updatedRestrooms = await restroomAPI.getByFloor(floor.id)
       setRestrooms(updatedRestrooms.restrooms || [])
       setPoints([])
-      setZoneForm({ name: '' })
-      setNotice('Restroom zone saved.')
+      setZoneForm({ name: '', type: 'restroom' })
+      setDrawing(false)
+      invalidateFloorCache()
+      setNotice(`${zoneName} zone saved.`)
     } catch (error) {
       setNotice(error.message || 'Unable to create zone.')
     }
   }
 
   function zoneAt(lat, lng) {
-    return zones.find((zone) => {
+    // First try exact point-in-polygon
+    const exact = zones.find((zone) => {
       const raw = zone.coordinates
       if (!raw) return false
       let ring
@@ -871,6 +1342,22 @@ export default function SiteConfiguration() {
       }
       return inside
     })
+    if (exact) return exact
+
+    // Fallback: find the nearest zone by centroid within a reasonable radius
+    // (handles clicks near zone edges or with slight coordinate imprecision)
+    let nearest = null
+    let minDist = Infinity
+    const MAX_DIST = 0.002 // ~200m in degrees
+    for (const zone of zones) {
+      if (!Number.isFinite(zone.latitude) || !Number.isFinite(zone.longitude)) continue
+      const dist = Math.sqrt((zone.latitude - lat) ** 2 + (zone.longitude - lng) ** 2)
+      if (dist < minDist && dist < MAX_DIST) {
+        minDist = dist
+        nearest = zone
+      }
+    }
+    return nearest || null
   }
 
   function getPolygonCentroid(points) {
@@ -928,7 +1415,8 @@ export default function SiteConfiguration() {
           : [...prev, placedDevice]
       })
       setAllDevices((prev) => prev.map((device) => device.id === deviceId ? { ...device, ...placedDevice } : device))
-      setNotice(`Device placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zoneId ? ` in zone` : ''}.`)
+      invalidateFloorCache()
+      setNotice(`Device placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zone?.restroomId ? ` — assigned to restroom: ${zone.name}` : zoneId ? ` in zone: ${zone?.name}` : ' (no zone detected — click inside a drawn zone to assign restroom)'}.`)
       return true
     } catch (error) {
       setNotice(error.message || 'Unable to place device.')
@@ -955,6 +1443,7 @@ export default function SiteConfiguration() {
           : [...prev, placedGateway]
       })
       setAllGateways((prev) => prev.map((gateway) => gateway.id === gatewayId ? { ...gateway, ...placedGateway } : gateway))
+      invalidateFloorCache()
       setNotice(`Gateway placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zoneId ? ` in zone` : ''}.`)
       return true
     } catch (error) {
@@ -1040,7 +1529,12 @@ export default function SiteConfiguration() {
 
   function startEditZone(zone) {
     setEditingZoneId(zone.id)
-    setEditingZoneForm({ name: zone.name })
+    setEditingZoneForm({ name: zone.name, type: zone.type || 'restroom' })
+    // Clear any in-progress new-zone drawing so stale points can't trigger finishZone
+    setPoints([])
+    setZoneForm({ name: '' })
+    setDrawing(false)
+    setEditingZoneRedrawing(false)
     const raw = zone.coordinates
     let ring
     if (typeof raw === 'string') {
@@ -1052,22 +1546,43 @@ export default function SiteConfiguration() {
     }
     const positions = Array.isArray(ring) ? ring.map((pt) => Array.isArray(pt) && pt.length >= 2 ? [Number(pt[1]), Number(pt[0])] : null).filter(Boolean) : []
     setEditingZonePoints(positions)
-    setDrawing(true)
-    setNotice('Redraw the zone on the map, then save.')
+    setNotice('Edit the zone name then save, or click "Redraw" to change its boundary.')
   }
 
   async function saveEditedZone() {
     if (editingZonePoints.length < 3) { setNotice('A zone needs at least three points.'); return }
     const coordinates = { type: 'Polygon', coordinates: [[...editingZonePoints, editingZonePoints[0]].map(([lat, lng]) => [lng, lat])] }
     const centroid = getPolygonCentroid(editingZonePoints)
+    const zoneType = editingZoneForm.type || 'restroom'
+    const defaultName = { restroom: 'Restroom', corridor: 'Corridor', lobby: 'Lobby', maintenance: 'Maintenance', other: 'Zone' }
+    const newName = editingZoneForm.name.trim() || defaultName[zoneType] || 'Zone'
     try {
-      const payload = { name: editingZoneForm.name.trim() || 'Restroom zone', type: 'restroom', coordinates, latitude: centroid[0], longitude: centroid[1] }
+      const payload = { name: newName, type: zoneType, coordinates, latitude: centroid[0], longitude: centroid[1] }
       await zoneAPI.update(editingZoneId, payload)
-      const zoneData = await zoneAPI.getByFloor(floor.id)
+
+      // If this zone is linked to a restroom, rename the restroom to match
+      const linkedZone = zones.find((z) => z.id === editingZoneId)
+      if (linkedZone?.restroomId && zoneType === 'restroom') {
+        try {
+          await restroomAPI.update(linkedZone.restroomId, { name: newName })
+        } catch {
+          // non-fatal
+        }
+      }
+
+      const [zoneData, restroomData] = await Promise.all([
+        zoneAPI.getByFloor(floor.id),
+        restroomAPI.getByFloor(floor.id),
+      ])
       setZones(zoneData.zones || [])
+      setRestrooms(restroomData.restrooms || [])
       setEditingZoneId(null)
       setEditingZonePoints([])
+      setEditingZoneRedrawing(false)
+      setPoints([])
+      setZoneForm({ name: '' })
       setDrawing(false)
+      invalidateFloorCache()
       setNotice('Zone updated.')
     } catch (error) {
       setNotice(error.message || 'Unable to update zone.')
@@ -1077,6 +1592,9 @@ export default function SiteConfiguration() {
   function cancelEditZone() {
     setEditingZoneId(null)
     setEditingZonePoints([])
+    setEditingZoneRedrawing(false)
+    setPoints([])
+    setZoneForm({ name: '' })
     setDrawing(false)
     setNotice('Zone edit cancelled.')
   }
@@ -1270,9 +1788,9 @@ export default function SiteConfiguration() {
                      {selectedLocationId && (
                        <>
                          <div className="planner-preview-card"><span className="planner-preview-card__label">Floors</span><span className="planner-preview-card__value">{floors.length}</span></div>
-                         <div className="planner-preview-card"><span className="planner-preview-card__label">Zones</span><span className="planner-preview-card__value">{zones.length}</span></div>
-                         <div className="planner-preview-card"><span className="planner-preview-card__label">Devices</span><span className="planner-preview-card__value">{devices.length}</span></div>
-                         <div className="planner-preview-card"><span className="planner-preview-card__label">Gateways</span><span className="planner-preview-card__value">{gateways.length}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Zones</span><span className="planner-preview-card__value">{siteStats.zones}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Devices</span><span className="planner-preview-card__value">{siteStats.devices}</span></div>
+                         <div className="planner-preview-card"><span className="planner-preview-card__label">Gateways</span><span className="planner-preview-card__value">{siteStats.gateways}</span></div>
                        </>
                      )}
                      {previewCoords && <div className="planner-preview-card" style={{ gridColumn: '1 / -1' }}><span className="planner-preview-card__label">Map</span><PreviewMap center={previewCoords} site={{ latitude: previewCoords[0], longitude: previewCoords[1] }} /></div>}
@@ -1291,54 +1809,238 @@ export default function SiteConfiguration() {
       {/* Step 2 — Floor Plans */}
       {step === 2 && (
         <div className="planner-stage-wrap">
-          <section className="planner-step-layout">
-            <FloorSidebar floors={floors} floor={floor} onSelect={setFloor} onAdd={() => setAddFloorOpen(true)} onDelete={removeFloor} />
-            <main className="planner-step-layout__canvas">
-              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={23} minZoom={2}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="OpenStreetMap" />
+          <section className="planner-map-shell">
+            {/* Mapbar: floor selector + upload/remove */}
+            <div className="planner-mapbar">
+              <div>
+                {floor && (
+                  <select value={floor.id} onChange={(e) => setFloor(floors.find((item) => item.id === e.target.value))}>
+                    {floors.map((item) => (
+                      <option key={item.id} value={item.id}>{item.floorName}{item.floorNumber !== null ? ` (Floor ${item.floorNumber})` : ''}</option>
+                    ))}
+                  </select>
+                )}
+                {floorLoading && (
+                  <span style={{ fontSize: 12, color: 'var(--primary)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 12, height: 12, border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                    Loading floor…
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {floor && (
+                  <>
+                    <button type="button" className="planner-button planner-button--ghost" onClick={() => fileRef.current?.click()}>
+                      ⇧ {plan ? 'Replace floor plan' : 'Upload floor plan'}
+                    </button>
+                    {plan && <button type="button" className="planner-button planner-button--danger" onClick={removePlan}>Remove plan</button>}
+                    <input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} />
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Floor sidebar - outside map so it's always accessible */}
+            <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 0 }}>
+              {/* Floors panel */}
+              <div className="planner-floors-panel">
+                <div className="planner-floors-overlay__heading">
+                  <strong>Floors</strong>
+                  <button
+                    type="button"
+                    className="planner-button"
+                    disabled={!site}
+                    title={!site ? 'Save the site first (Step 1)' : 'Add a new floor'}
+                    onClick={() => setAddFloorOpen(true)}
+                  >
+                    + Add Floor
+                  </button>
+                </div>
+                {!site && (
+                  <p style={{ color: 'var(--text)', fontSize: 12, margin: '8px 0' }}>
+                    Save the site in Step 1 first.
+                  </p>
+                )}
+                {site && floors.length === 0 && (
+                  <p style={{ color: 'var(--text)', fontSize: 12, margin: '8px 0' }}>
+                    No floors yet. Click "+ Add Floor".
+                  </p>
+                )}
+                {floors.map((item) => (
+                  <div key={item.id} className="planner-floor-row">
+                    <button
+                      type="button"
+                      className={`planner-floor ${floor?.id === item.id ? 'is-selected' : ''}`}
+                      onClick={() => setFloor(item)}
+                    >
+                      <span>{item.floorNumber ?? '—'}</span>
+                      {item.floorName}
+                    </button>
+                    <DeleteButton label={`Delete ${item.floorName}`} onClick={() => removeFloor(item.id)} />
+                  </div>
+                ))}
+              </div>
+
+              {/* Map with alignment controls */}
+              <div className="planner-map" style={{ flex: 1 }}>
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" maxNativeZoom={19} maxZoom={22} />
                 <MapFocus center={center} zoom={mapZoom} />
                 <MapClick onClick={onMapClick} />
                 <SitePin location={site} onLocationChange={handleSitePinMove} />
                 <MapZoomControl onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)} />
-                {bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}
+                {bounds && <RotatableImageOverlay bounds={bounds} url={plan.imageData} opacity={planOpacity} rotation={planRotation} imgRef={planImgRef} />}
+                {bounds && plan && (
+                  <DraggablePlanOverlay
+                    geoBounds={plan.geoBounds}
+                    rotation={planRotation}
+                    imgRef={planImgRef}
+                    onBoundsChange={(next) => setPlan({ ...plan, geoBounds: next })}
+                    onPlanDrag={handlePlanDrag}
+                    onDragStart={() => { origSiteRef.current = siteRef.current ? { ...siteRef.current } : null }}
+                  />
+                )}
               </MapContainer>
-              {floor && (
-                <button type="button" className="planner-button planner-floor-plan-map__upload" style={{ position: 'absolute', zIndex: 600, top: 14, right: 14 }} onClick={() => fileRef.current?.click()}>
-                  {plan ? 'Replace floor plan' : 'Upload floor plan'}
-                </button>
+
+              {/* Alignment controls — shown once a plan is uploaded */}
+              {plan && (
+                <div className="planner-align">
+                  <strong>Align floor plan</strong>
+                  <small>Drag ✥ to move · use nudge buttons to fine-tune position & size.</small>
+
+                  {/* Nudge: fine (1%) */}
+                  <div style={{ fontSize: 11, color: 'var(--text)', marginBottom: 2, marginTop: 4 }}>Fine nudge (1%)</div>
+                  <div className="planner-align__controls">
+                    <button type="button" onClick={() => adjustPlan('fine-up')}>↑</button>
+                    <button type="button" onClick={() => adjustPlan('fine-left')}>←</button>
+                    <button type="button" onClick={() => adjustPlan('fine-right')}>→</button>
+                    <button type="button" onClick={() => adjustPlan('fine-down')}>↓</button>
+                    <button type="button" onClick={() => adjustPlan('fine-grow')}>＋</button>
+                    <button type="button" onClick={() => adjustPlan('fine-shrink')}>−</button>
+                  </div>
+
+                  {/* Nudge: coarse (5%) */}
+                  <div style={{ fontSize: 11, color: 'var(--text)', marginBottom: 2 }}>Coarse nudge (5%)</div>
+                  <div className="planner-align__controls">
+                    <button type="button" onClick={() => adjustPlan('up')}>↑</button>
+                    <button type="button" onClick={() => adjustPlan('left')}>←</button>
+                    <button type="button" onClick={() => adjustPlan('right')}>→</button>
+                    <button type="button" onClick={() => adjustPlan('down')}>↓</button>
+                    <button type="button" onClick={() => adjustPlan('grow')}>＋</button>
+                    <button type="button" onClick={() => adjustPlan('shrink')}>−</button>
+                  </div>
+
+                  {/* Rotation — slider for precise angle alignment */}
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text)', fontWeight: 600 }}>↻ Rotation</span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 700, color: '#0891b2',
+                        background: 'rgba(8,145,178,0.12)',
+                        border: '1px solid rgba(8,145,178,0.3)',
+                        borderRadius: 6, padding: '1px 10px',
+                        minWidth: 52, textAlign: 'center',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
+                        {planRotation}°
+                      </span>
+                    </div>
+                    {/* Continuous slider — drag to any angle */}
+                    <input
+                      type="range"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      value={planRotation}
+                      onChange={(e) => setPlanRotation(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#0891b2', cursor: 'pointer', marginBottom: 4 }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text)', marginBottom: 6 }}>
+                      <span>−180°</span><span>−90°</span><span>0°</span><span>90°</span><span>180°</span>
+                    </div>
+                    {/* Step buttons for fine-grained rotation */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 3 }}>
+                      {[[-15,'↺15°'],[-5,'↺5°'],[-1,'↺1°'],[1,'↻1°'],[5,'↻5°'],[15,'↻15°']].map(([deg, label]) => (
+                        <button
+                          key={deg}
+                          type="button"
+                          className="planner-button"
+                          style={{ fontSize: 10, padding: '4px 2px', whiteSpace: 'nowrap' }}
+                          onClick={() => setPlanRotation((prev) => {
+                            const next = prev + deg
+                            // keep in -180..180
+                            return next > 180 ? next - 360 : next < -180 ? next + 360 : next
+                          })}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Reset rotation to 0 */}
+                    <button
+                      type="button"
+                      className="planner-button planner-button--ghost"
+                      style={{ width: '100%', marginTop: 4, fontSize: 11 }}
+                      onClick={() => setPlanRotation(0)}
+                    >
+                      Reset rotation
+                    </button>
+                  </div>
+
+                  {/* Opacity slider */}
+                  <label style={{ fontSize: 11, color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    Opacity: {Math.round(planOpacity * 100)}%
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={planOpacity}
+                      onChange={(e) => setPlanOpacity(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#0891b2' }}
+                    />
+                  </label>
+
+                  <div className="planner-align__actions" style={{ marginTop: 4 }}>
+                    <button type="button" className="planner-button" onClick={fitPlan}>⊞ Fit</button>
+                    <button type="button" className="planner-button planner-button--ghost" onClick={() => { setPlanRotation(0); setPlanScale(1); setPlanOpacity(0.45) }}>Reset</button>
+                  </div>
+                </div>
               )}
-              <input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} />
-            </main>
-            <footer className="planner-step-layout__footer">
-              <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(1)}>Back</button>
-              <button type="button" className="planner-button" onClick={() => setStep(3)}>Continue →</button>
-            </footer>
+
+              {/* Map actions panel */}
+            </div>{/* end .planner-map */}
+            </div>{/* end flex wrapper */}
+
+            {/* Footer */}
+            <div className="planner-step-layout__footer" style={{ position: 'relative' }}>
+              <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(1)}>← Back</button>
+              {plan ? (
+                <button type="button" className="planner-button" disabled={busy} onClick={savePlan}>Save &amp; Continue →</button>
+              ) : (
+                <button type="button" className="planner-button" onClick={() => setStep(3)}>Continue →</button>
+              )}
+            </div>
           </section>
-          <PreviewPanel title="Floors & site preview" empty={!site ? 'Save the site first.' : null}>
+
+          {/* Preview panel below map */}
+          <PreviewPanel title="Floor plan preview" empty={!plan ? (floor ? 'Upload a floor plan image to position it on the map.' : 'Select or add a floor first.') : null}>
             <div className="planner-preview-grid">
-              {site && (
+              {plan && (
                 <>
-                  <div className="planner-preview-card"><span className="planner-preview-card__label">Site</span><span className="planner-preview-card__value">{site.officeName}</span></div>
-                  <div className="planner-preview-card"><span className="planner-preview-card__label">Floors</span><span className="planner-preview-card__value">{floors.length} configured</span></div>
-                  {floor && <div className="planner-preview-card"><span className="planner-preview-card__label">Selected floor</span><span className="planner-preview-card__value">{floor.floorName}</span></div>}
-                  {plan && <div className="planner-preview-card"><span className="planner-preview-card__label">Floor plan</span><span className="planner-preview-card__value">{plan.name}</span></div>}
-                  <div className="planner-preview-card" style={{ gridColumn: '1 / -1' }}>
-                    <span className="planner-preview-card__label">Site map</span>
-                    <PreviewMap center={center} site={site} bounds={bounds} planImage={plan?.imageData} />
+                  <div className="planner-preview-card"><span className="planner-preview-card__label">Plan name</span><span className="planner-preview-card__value">{plan.name}</span></div>
+                  <div className="planner-preview-card"><span className="planner-preview-card__label">Dimensions</span><span className="planner-preview-card__value">{plan.width} × {plan.height} px</span></div>
+                  <div className="planner-preview-card"><span className="planner-preview-card__label">Thumbnail</span><img className="planner-preview-thumb" src={plan.imageData} alt={plan.name} /></div>
+                  <div className="planner-preview-card" style={{ gridColumn: 'span 2' }}>
+                    <span className="planner-preview-card__label">Aligned on map</span>
+                    <PreviewMap center={center} site={site} bounds={bounds} planImage={plan.imageData} height="200px" />
                   </div>
                 </>
               )}
-              {floors.length > 0 && (
-                <div className="planner-preview-list" style={{ gridColumn: '1 / -1' }}>
-                  {floors.map((item) => (
-                    <div key={item.id} className="planner-preview-item">
-                      <div className="planner-preview-item__info">
-                        <strong>{item.floorName}</strong>
-                        <small>Floor {item.floorNumber ?? '—'}</small>
-                      </div>
-                      <DeleteButton label={`Delete ${item.floorName}`} onClick={() => removeFloor(item.id)} />
-                    </div>
-                  ))}
+              {!plan && site && (
+                <div className="planner-preview-card" style={{ gridColumn: '1/-1' }}>
+                  <span className="planner-preview-card__label">Site map</span>
+                  <PreviewMap center={center} site={site} />
                 </div>
               )}
             </div>
@@ -1346,8 +2048,8 @@ export default function SiteConfiguration() {
         </div>
       )}
 
-      {/* Steps 3–6 — Map workspace */}
-      {step >= 3 && step <= 6 && (
+      {/* Steps 3–5 — Map workspace */}
+      {step >= 3 && step <= 5 && (
         <div className="planner-stage-wrap">
           <section className="planner-map-shell">
             <div className="planner-mapbar">
@@ -1359,16 +2061,15 @@ export default function SiteConfiguration() {
                     ))}
                   </select>
                 )}
+                {floorLoading && (
+                  <span style={{ fontSize: 12, color: 'var(--primary)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 12, height: 12, border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                    Loading floor…
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 {step === 3 && (
-                  <>
-                    <button type="button" className="planner-button planner-button--ghost" onClick={() => fileRef.current?.click()}>⇧ Upload floor plan</button>
-                    {plan && <button type="button" className="planner-button planner-button--danger" onClick={removePlan}>Remove plan</button>}
-                    <input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} />
-                  </>
-                )}
-                {step === 4 && (
                   <>
                     <button type="button" className="planner-button planner-button--ghost" onClick={() => geoJsonRef.current?.click()}>⇧ Import GeoJSON</button>
                     <input ref={geoJsonRef} hidden type="file" accept="application/json,.geojson" onChange={importGeoJson} />
@@ -1377,15 +2078,16 @@ export default function SiteConfiguration() {
               </div>
             </div>
             <div className="planner-map">
-              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={23} minZoom={2}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
+              <MapContainer center={center} zoom={mapZoom} className="planner-map-container" scrollWheelZoom={true} zoomControl={true} maxZoom={22} minZoom={2}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" maxNativeZoom={19} maxZoom={22} />
                 <MapFocus center={center} zoom={mapZoom} />
-                <MapCursor children={(selectedDeviceId && step === 5) || (selectedGatewayId && step === 6) ? 'crosshair' : ''} />
+                <MapCursor children={(selectedDeviceId && step === 4) || (selectedGatewayId && step === 5) ? 'crosshair' : ''} />
                 <MapMouseTracker onMouseMove={setMousePos} />
                 <MapClick onClick={onMapClick} />
                 <SitePin location={site} onLocationChange={handleSitePinMove} />
                 <MapZoomControl onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)} />
-                {bounds && <ImageOverlay bounds={bounds} url={plan.imageData} opacity={0.45} />}
+                {bounds && <RotatableImageOverlay bounds={bounds} url={plan.imageData} opacity={planOpacity} rotation={planRotation} />}
+                {/* Step 3: zones only — Step 4+5: zones as background context */}
                 {zones.map((zone) => {
                   const positions = zonePositions(zone)
                   if (!positions.length) return null
@@ -1395,18 +2097,23 @@ export default function SiteConfiguration() {
                   const color = ZONE_COLORS[zone.type] || ZONE_COLORS.other
                   return (
                     <Fragment key={zone.id}>
-                      <Polygon key={`${zone.id}-area`} positions={positions} color={color} fillColor={color} fillOpacity={0.35} weight={2} />
-                      {zone.type === 'restroom' && hasCentroid && (
+                      <Polygon key={`${zone.id}-area`} positions={positions} color={color} fillColor={color} fillOpacity={step === 3 ? 0.35 : 0.15} weight={step === 3 ? 2 : 1} />
+                      {zone.type === 'restroom' && hasCentroid && step === 3 && (
                         <Marker key={`${zone.id}-restroom`} position={[latitude, longitude]} icon={divIcon('restroom')} title={zone.name} />
                       )}
                     </Fragment>
                   )
                 })}
-                {drawing && editingZoneId && editingZonePoints.length > 1 && <Polygon positions={[...editingZonePoints, editingZonePoints[0]]} color="#38bdf8" dashArray="6 6" />}
-                {drawing && !editingZoneId && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}
-                {(selectedDeviceId && step === 5) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="device" />}
-                {(selectedGatewayId && step === 6) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="gateway" />}
-                {devices.map((item) => {
+                {/* Zone drawing helpers — step 3 only */}
+                {step === 3 && editingZoneId && !editingZoneRedrawing && editingZonePoints.length > 1 && <Polygon positions={[...editingZonePoints, editingZonePoints[0]]} color="#f59e0b" weight={2.5} dashArray="8 4" fillOpacity={0.1} />}
+                {step === 3 && drawing && editingZoneId && editingZoneRedrawing && editingZonePoints.length > 1 && <Polygon positions={[...editingZonePoints, editingZonePoints[0]]} color="#38bdf8" dashArray="6 6" />}
+                {step === 3 && drawing && !editingZoneId && points.length > 1 && <Polygon positions={[...points, points[0]]} color="#38bdf8" dashArray="6 6" />}
+                {/* Device placement preview cursor — step 4 only */}
+                {(selectedDeviceId && step === 4) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="device" />}
+                {/* Gateway placement preview cursor — step 5 only */}
+                {(selectedGatewayId && step === 5) && mousePos && <PlacementPreview position={[mousePos.lat, mousePos.lng]} type="gateway" />}
+                {/* Placed devices — step 4 only */}
+                {step === 4 && devices.map((item) => {
                   const position = devicePosition(item)
                   if (!position) return null
                   const isMoving = movingItemId === item.id
@@ -1433,7 +2140,8 @@ export default function SiteConfiguration() {
                     />
                   )
                 })}
-                {gateways.map((item) => {
+                {/* Placed gateways — step 5 only */}
+                {step === 5 && gateways.map((item) => {
                   const position = gatewayPosition(item)
                   if (!position) return null
                   const isMoving = movingItemId === item.id
@@ -1462,70 +2170,85 @@ export default function SiteConfiguration() {
                 })}
               </MapContainer>
 
-              {step === 3 && plan && (
-                <div className="planner-align">
-                  <strong>Align tracing image</strong>
-                  <small>Move and scale the plan against the site map.</small>
-                  <div className="planner-align__controls">
-                    <button type="button" onClick={() => adjustPlan('up')}>↑</button>
-                    <button type="button" onClick={() => adjustPlan('left')}>←</button>
-                    <button type="button" onClick={() => adjustPlan('right')}>→</button>
-                    <button type="button" onClick={() => adjustPlan('down')}>↓</button>
-                    <button type="button" onClick={() => adjustPlan('grow')}>＋</button>
-                    <button type="button" onClick={() => adjustPlan('shrink')}>−</button>
-                  </div>
-                   <div className="planner-align__actions">
-                     <button type="button" className="planner-button" onClick={() => rotatePlan(90)}>↻ Rotate</button>
-                     <button type="button" className="planner-button" onClick={() => scalePlan(0.1)}>Enlarge</button>
-                     <button type="button" className="planner-button" onClick={() => scalePlan(-0.1)}>Shrink</button>
-                     <button type="button" className="planner-button planner-button--ghost" onClick={fitPlan}>⊞ Fit</button>
-                     <button type="button" className="planner-button planner-button--ghost" onClick={() => { setPlanRotation(0); setPlanScale(1) }}>Reset</button>
-                   </div>
-                   <div className="planner-align__footer">
-                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(2)}>← Back</button>
-                     <button type="button" className="planner-button" onClick={savePlan}>Save &amp; Continue →</button>
-                   </div>
-                </div>
-              )}
 
-              {step >= 3 && step <= 6 && (
-                <>
-                  {step === 3 && plan && (
-                    <div className="planner-plan-actions">
-                      <strong>Plan actions</strong>
-                      <button type="button" className="planner-button planner-button--ghost" onClick={() => fileRef.current?.click()}>✎ Edit plan</button>
-                      <button type="button" className="planner-button planner-button--danger" onClick={removePlan}>🗑 Delete plan</button>
-                      <button type="button" className="planner-button" onClick={() => rotatePlan(90)}>↻ Rotate</button>
-                      <button type="button" className="planner-button" onClick={() => scalePlan(0.1)}>⤢ Enlarge</button>
-                      <button type="button" className="planner-button" onClick={() => scalePlan(-0.1)}>⤡ Shrink</button>
-                      <input ref={fileRef} hidden type="file" accept="image/*" onChange={uploadPlan} />
-                    </div>
-                  )}
-
-                  <div className="planner-map-actions">
-                    <strong>Map actions</strong>
-                    <button type="button" className="planner-button" onClick={() => zoomMap(1)}>＋ Zoom in</button>
-                    <button type="button" className="planner-button" onClick={() => zoomMap(-1)}>− Zoom out</button>
-                    <button type="button" className="planner-button planner-button--ghost" onClick={() => { setZones([]); setRestrooms([]); setDevices([]); setGateways([]); setPlanRotation(0); setPlanScale(1); setNotice('Map data cleared.'); }}>🗑 Delete map data</button>
-                    <button type="button" className="planner-button" onClick={() => setMapZoom((prev) => prev + 1)}>↻ Rotate view</button>
-                    <button type="button" className="planner-button" onClick={() => setMapZoom(17)}>⤢ Reset view</button>
-                  </div>
-                </>
-              )}
-
-              {step === 4 && (
+              {step === 3 && (
                 <div className="planner-toolbox">
                   <strong>{editingZoneId ? 'Edit zone' : 'Draw zones'}</strong>
-                  {drawing ? (
+                  {editingZoneId ? (
                     <>
-                      <input placeholder="Zone name" value={editingZoneId ? editingZoneForm.name : zoneForm.name} onChange={(e) => editingZoneId ? setEditingZoneForm({ ...editingZoneForm, name: e.target.value }) : setZoneForm({ ...zoneForm, name: e.target.value })} />
-                      <small>{editingZoneId ? 'Redraw the zone boundary on the map.' : (drawingMode === 'rectangle' ? 'Click two opposite corners of the rectangle.' : `Click the plan to add vertices (${editingZonePoints.length > 0 ? editingZonePoints.length : points.length}/3 minimum).`)}</small>
-                      <button type="button" className="planner-button" onClick={editingZoneId ? saveEditedZone : finishZone}>Save zone</button>
-                      <button type="button" className="planner-button planner-button--ghost" onClick={editingZoneId ? cancelEditZone : () => { setDrawing(false); setPoints([]) }}>Cancel</button>
+                      <input
+                        placeholder="Zone name"
+                        value={editingZoneForm.name}
+                        onChange={(e) => setEditingZoneForm({ ...editingZoneForm, name: e.target.value })}
+                      />
+                      {editingZoneRedrawing ? (
+                        <>
+                          <small>Click the map to place new vertices ({editingZonePoints.length}/3 minimum).</small>
+                          <button type="button" className="planner-button" onClick={saveEditedZone}>Save zone</button>
+                          <button type="button" className="planner-button planner-button--ghost" onClick={() => {
+                            // Restore original boundary from zones state
+                            const origZone = zones.find(z => z.id === editingZoneId)
+                            if (origZone) {
+                              const raw = origZone.coordinates
+                              let ring
+                              if (typeof raw === 'string') { try { const p = JSON.parse(raw); ring = p?.coordinates?.[0] || p } catch { ring = [] } }
+                              else if (Array.isArray(raw)) { ring = raw }
+                              else { ring = raw?.coordinates?.[0] || [] }
+                              const pts = Array.isArray(ring) ? ring.map(pt => Array.isArray(pt) && pt.length >= 2 ? [Number(pt[1]), Number(pt[0])] : null).filter(Boolean) : []
+                              setEditingZonePoints(pts)
+                            }
+                            setEditingZoneRedrawing(false)
+                            setDrawing(false)
+                          }}>Cancel redraw</button>
+                        </>
+                      ) : (
+                        <>
+                          <small>Rename or change type, then save.</small>
+                          {/* Type selector for edit mode */}
+                          <select
+                            value={editingZoneForm.type || 'restroom'}
+                            onChange={(e) => setEditingZoneForm({ ...editingZoneForm, type: e.target.value })}
+                            style={{ marginBottom: 4 }}
+                          >
+                            <option value="restroom">🚻 Restroom</option>
+                            <option value="corridor">🚶 Corridor</option>
+                            <option value="lobby">🏛 Lobby</option>
+                            <option value="maintenance">🔧 Maintenance</option>
+                            <option value="other">📦 Other</option>
+                          </select>
+                          <button type="button" className="planner-button" onClick={saveEditedZone}>Save zone</button>
+                          <button type="button" className="planner-button planner-button--ghost" onClick={() => { setEditingZonePoints([]); setEditingZoneRedrawing(true); setDrawing(true) }}>⌗ Redraw boundary</button>
+                          <button type="button" className="planner-button planner-button--ghost" onClick={cancelEditZone}>Cancel</button>
+                        </>
+                      )}
+                    </>
+                  ) : drawing ? (
+                    <>
+                      <input placeholder="Zone name" value={zoneForm.name} onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })} />
+                      {/* Zone type selector */}
+                      <select
+                        value={zoneForm.type || 'restroom'}
+                        onChange={(e) => setZoneForm({ ...zoneForm, type: e.target.value })}
+                        style={{ marginBottom: 4 }}
+                      >
+                        <option value="restroom">🚻 Restroom</option>
+                        <option value="corridor">🚶 Corridor</option>
+                        <option value="lobby">🏛 Lobby</option>
+                        <option value="maintenance">🔧 Maintenance</option>
+                        <option value="other">📦 Other</option>
+                      </select>
+                      <small>
+                        {zoneForm.type === 'restroom'
+                          ? '🚻 A linked restroom will be created for device assignment.'
+                          : 'ℹ This zone is spatial only — no restroom record created.'}
+                      </small>
+                      <small>{drawingMode === 'rectangle' ? 'Click two opposite corners.' : `Click to add vertices (${points.length}/3 minimum).`}</small>
+                      <button type="button" className="planner-button" onClick={finishZone}>Save zone</button>
+                      <button type="button" className="planner-button planner-button--ghost" onClick={() => { setDrawing(false); setPoints([]) }}>Cancel</button>
                     </>
                   ) : (
                     <>
-                      <p>Define spatial zones for restrooms, corridors, lobbies and maintenance areas.</p>
+                      <p>Draw zones on the floor plan. Choose a type after starting to draw.</p>
                       <button type="button" className="planner-button" onClick={() => { setDrawingMode('polygon'); setDrawing(true) }}>⌗ Draw polygon</button>
                       <button type="button" className="planner-button planner-button--ghost" onClick={() => { setDrawingMode('rectangle'); setDrawing(true) }}>□ Draw rectangle</button>
                     </>
@@ -1533,18 +2256,18 @@ export default function SiteConfiguration() {
                 </div>
               )}
 
-               {step === 4 && (
+               {step === 3 && (
                 <div className="planner-placement">
                   <strong>Zone drawing</strong>
                   <p>Create zones by drawing polygons or rectangles on the map.</p>
                   <div className="planner-placement__footer">
-                    <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(3)}>Back</button>
-                    <button type="button" className="planner-button" onClick={() => setStep(5)}>Save &amp; Continue →</button>
+                    <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(2)}>Back</button>
+                    <button type="button" className="planner-button" onClick={() => setStep(4)}>Save &amp; Continue →</button>
                   </div>
                 </div>
               )}
 
-              {step === 5 && (
+              {step === 4 && (
                 <div className="planner-placement">
                   <strong>Device placement</strong>
                   <p>Select an existing device from Device Management and click on the map to place it. Restrooms saved in the previous step are listed below.</p>
@@ -1564,10 +2287,19 @@ export default function SiteConfiguration() {
                      )
                    })()}
                   <div className="planner-placement__restrooms">
-                    <small>Saved restrooms ({restrooms.length})</small>
-                    {restrooms.length ? (
-                      <div>{restrooms.map((restroom) => <span key={restroom.id} className="planner-placement__restroom">{restroom.name}</span>)}</div>
-                    ) : <small>No restrooms have been saved on this floor yet.</small>}
+                    {(() => {
+                      // Only show restrooms that are actively linked to a zone on this floor
+                      const linkedRestroomIds = new Set(zones.map(z => z.restroomId).filter(Boolean))
+                      const activeRestrooms = restrooms.filter(r => linkedRestroomIds.has(r.id))
+                      return (
+                        <>
+                          <small>Saved restrooms ({activeRestrooms.length})</small>
+                          {activeRestrooms.length ? (
+                            <div>{activeRestrooms.map((restroom) => <span key={restroom.id} className="planner-placement__restroom">{restroom.name}</span>)}</div>
+                          ) : <small>No restrooms have been saved on this floor yet.</small>}
+                        </>
+                      )
+                    })()}
                   </div>
                    <select value={selectedDeviceId || ''} onChange={(e) => { setSelectedDeviceId(e.target.value || null); setPlacingType(e.target.value ? 'device' : null); setMovingItemId(null); setMovingItemType(null) }}>
                     <option value="">Select a device...</option>
@@ -1584,13 +2316,13 @@ export default function SiteConfiguration() {
                   </select>
                    {selectedDeviceId && <small>Device selected. Click on the map to place it.</small>}
                    <div className="planner-placement__footer">
-                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(4)}>Back</button>
-                     <button type="button" className="planner-button" onClick={() => setStep(6)}>Save &amp; Continue →</button>
+                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(3)}>Back</button>
+                     <button type="button" className="planner-button" onClick={() => setStep(5)}>Save &amp; Continue →</button>
                    </div>
                 </div>
               )}
 
-              {step === 6 && (
+              {step === 5 && (
                 <div className="planner-placement">
                   <strong>Gateway placement</strong>
                   <p>Select an existing gateway from Gateway Management and click on the map to place it.</p>
@@ -1623,8 +2355,8 @@ export default function SiteConfiguration() {
                   </select>
                    {selectedGatewayId && <small>Gateway selected. Click on the map to place it.</small>}
                    <div className="planner-placement__footer">
-                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(5)}>Back</button>
-                     <button type="button" className="planner-button" onClick={() => setStep(7)}>Save &amp; Continue →</button>
+                     <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(4)}>Back</button>
+                     <button type="button" className="planner-button" onClick={() => setStep(6)}>Save &amp; Continue →</button>
                    </div>
                 </div>
               )}
@@ -1633,24 +2365,6 @@ export default function SiteConfiguration() {
 
           {/* Step-specific preview below map */}
           {step === 3 && (
-            <PreviewPanel title="Floor plan alignment preview" empty={!plan ? 'Upload a floor plan to see the alignment preview.' : null}>
-              <div className="planner-preview-grid">
-                {plan && (
-                  <>
-                    <div className="planner-preview-card"><span className="planner-preview-card__label">Plan name</span><span className="planner-preview-card__value">{plan.name}</span></div>
-                    <div className="planner-preview-card"><span className="planner-preview-card__label">Dimensions</span><span className="planner-preview-card__value">{plan.width} × {plan.height} px</span></div>
-                    <div className="planner-preview-card"><span className="planner-preview-card__label">Thumbnail</span><img className="planner-preview-thumb" src={plan.imageData} alt={plan.name} /></div>
-                    <div className="planner-preview-card" style={{ gridColumn: 'span 2' }}>
-                      <span className="planner-preview-card__label">Aligned on map</span>
-                      <PreviewMap center={center} site={site} bounds={bounds} planImage={plan.imageData} height="200px" />
-                    </div>
-                  </>
-                )}
-              </div>
-            </PreviewPanel>
-          )}
-
-          {step === 4 && (
             <PreviewPanel title="Zones preview" empty={zones.length === 0 ? 'No zones drawn yet. Use the map tools above to create zones.' : null}>
               <div className="planner-preview-list">
                 {zones.map((zone) => (
@@ -1668,7 +2382,7 @@ export default function SiteConfiguration() {
             </PreviewPanel>
           )}
 
-          {step === 5 && (
+          {step === 4 && (
             <PreviewPanel title="Devices preview" empty={devices.length === 0 ? 'No devices placed yet. Select a device and click the map.' : null}>
               <div className="planner-preview-list">
                 {devices.map((device) => {
@@ -1689,7 +2403,7 @@ export default function SiteConfiguration() {
             </PreviewPanel>
           )}
 
-          {step === 6 && (
+          {step === 5 && (
             <PreviewPanel title="Gateways preview" empty={gateways.length === 0 ? 'No gateways placed yet. Select a gateway and click the map.' : null}>
               <div className="planner-preview-list">
                 {gateways.map((gateway) => {
@@ -1712,59 +2426,118 @@ export default function SiteConfiguration() {
         </div>
       )}
 
-      {/* Step 7 — Review */}
-      {step === 7 && (
+      {/* Step 6 — Review */}
+      {step === 6 && (
         <div className="planner-stage-wrap">
           <section className="planner-review">
             <h2>Review site configuration</h2>
-            <p>Everything below is spatially connected to the selected site centre. Remove any item you no longer need.</p>
+            <p>All floors, zones, devices and gateways configured for this site.</p>
 
+            {/* Site header */}
             <div className="planner-review-card">
               <div className="planner-review-card__header">
+                <span style={{ fontSize: 18 }}>🏢</span>
                 <strong>{site?.officeName}</strong>
+                <span style={{ fontSize: 12, color: 'var(--text)', marginLeft: 'auto' }}>
+                  {site?.city} · {site?.latitude?.toFixed(5)}, {site?.longitude?.toFixed(5)}
+                </span>
               </div>
               <div className="planner-review-card__children">
-                <span>{site?.latitude?.toFixed(6)}, {site?.longitude?.toFixed(6)}</span>
+                <div className="planner-review-row">
+                  <span>{floors.length} floor{floors.length !== 1 ? 's' : ''} · {siteStats.zones} zone{siteStats.zones !== 1 ? 's' : ''} · {siteStats.devices} device{siteStats.devices !== 1 ? 's' : ''} · {siteStats.gateways} gateway{siteStats.gateways !== 1 ? 's' : ''}</span>
+                </div>
               </div>
             </div>
 
-            {floors.map((item) => (
-              <div key={item.id} className="planner-review-card">
-                <div className="planner-review-card__header">
-                  <strong>{item.floorName}</strong>
-                  <DeleteButton label={`Delete ${item.floorName}`} onClick={() => removeFloor(item.id)} />
-                </div>
-                <div className="planner-review-card__children">
-                  {item.id === floor?.id && plan && (
-                    <div className="planner-review-row">
-                      <span>Floor plan: {plan.name}</span>
-                      <DeleteButton label="Remove floor plan" onClick={removePlan} />
+            {/* One card per floor */}
+            {floors.map((floorItem) => {
+              const fd = reviewData[floorItem.id] || {}
+              const floorPlans  = fd.plans    || []
+              const floorZones  = fd.zones    || []
+              const floorDev    = fd.devices  || []
+              const floorGw     = fd.gateways || []
+              const isLoading   = !reviewData[floorItem.id]
+
+              return (
+                <div key={floorItem.id} className="planner-review-card">
+                  <div className="planner-review-card__header">
+                    <span style={{ fontSize: 15 }}>🏗</span>
+                    <strong>{floorItem.floorName}{floorItem.floorNumber != null ? ` (Floor ${floorItem.floorNumber})` : ''}</strong>
+                    <span style={{ fontSize: 11, color: 'var(--text)', marginLeft: 'auto' }}>
+                      {isLoading ? 'Loading…' : `${floorZones.length} zones · ${floorDev.length} devices · ${floorGw.length} gateways`}
+                    </span>
+                    <DeleteButton label={`Delete ${floorItem.floorName}`} onClick={() => removeFloor(floorItem.id)} />
+                  </div>
+
+                  {!isLoading && (
+                    <div className="planner-review-card__children">
+
+                      {/* Floor plans */}
+                      {floorPlans.map((p) => (
+                        <div key={p.id} className="planner-review-row">
+                          <span>🗺 Floor plan: <strong>{p.name}</strong>{p.rotation ? ` · ${p.rotation}° rotation` : ''}</span>
+                          {floorItem.id === floor?.id && (
+                            <DeleteButton label="Remove floor plan" onClick={() => removePlan(p)} />
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Zones */}
+                      {floorZones.map((z) => (
+                        <div key={z.id} className="planner-review-row">
+                          <span>
+                            {ZONE_COLORS[z.type] ? (
+                              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: ZONE_COLORS[z.type], marginRight: 5 }} />
+                            ) : null}
+                            {z.type === 'restroom' ? '🚻' : z.type === 'corridor' ? '🚶' : z.type === 'lobby' ? '🏛' : z.type === 'maintenance' ? '🔧' : '📦'} Zone: <strong>{z.name}</strong>
+                            <span style={{ color: 'var(--text)', fontSize: 11, marginLeft: 6 }}>{z.type}</span>
+                          </span>
+                          <DeleteButton label={`Delete ${z.name}`} onClick={() => {
+                            if (floorItem.id !== floor?.id) setFloor(floorItem)
+                            removeZone(z.id)
+                          }} />
+                        </div>
+                      ))}
+
+                      {/* Devices */}
+                      {floorDev.map((d) => (
+                        <div key={d.id} className="planner-review-row">
+                          <span>
+                            <span style={{ marginRight: 4 }}>{TYPE_META[d.deviceType]?.icon || '▣'}</span>
+                            {TYPE_META[d.deviceType]?.label || 'Device'}: <strong>{d.name || d.badgeId}</strong>
+                            {d.restroomName && d.restroomName !== 'Unassigned' && (
+                              <span style={{ color: 'var(--text)', fontSize: 11, marginLeft: 6 }}>→ {d.restroomName}</span>
+                            )}
+                          </span>
+                          <DeleteButton label={`Unlink ${d.name || d.badgeId}`} onClick={() => unlinkDevice(d.id)} />
+                        </div>
+                      ))}
+
+                      {/* Gateways */}
+                      {floorGw.map((g) => (
+                        <div key={g.id} className="planner-review-row">
+                          <span>
+                            <span style={{ marginRight: 4 }}>⌁</span>
+                            Gateway: <strong>{g.name}</strong>
+                            <span style={{ color: 'var(--text)', fontSize: 11, marginLeft: 6 }}>{g.gatewayEui}</span>
+                          </span>
+                          <DeleteButton label={`Unlink ${g.name}`} onClick={() => unlinkGateway(g.id)} />
+                        </div>
+                      ))}
+
+                      {floorPlans.length === 0 && floorZones.length === 0 && floorDev.length === 0 && floorGw.length === 0 && (
+                        <div className="planner-review-row">
+                          <span style={{ color: 'var(--text)', fontStyle: 'italic' }}>No configuration yet for this floor.</span>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {item.id === floor?.id && zones.map((z) => (
-                    <div key={z.id} className="planner-review-row">
-                       <span>Restroom: {z.name} · {z.latitude?.toFixed(5)}, {z.longitude?.toFixed(5)}</span>
-                      <DeleteButton label={`Delete ${z.name}`} onClick={() => removeZone(z.id)} />
-                    </div>
-                  ))}
-                  {item.id === floor?.id && devices.map((d) => (
-                    <div key={d.id} className="planner-review-row">
-                      <span>{TYPE_META[d.deviceType]?.label || 'Device'}: {d.badgeId || d.name} · {d.latitude?.toFixed(5)}, {d.longitude?.toFixed(5)}</span>
-                      <DeleteButton label={`Unlink ${d.name}`} onClick={() => unlinkDevice(d.id)} />
-                    </div>
-                  ))}
-                  {item.id === floor?.id && gateways.map((g) => (
-                    <div key={g.id} className="planner-review-row">
-                      <span>Gateway: {g.name} ({g.gatewayEui}) · {g.latitude?.toFixed(5)}, {g.longitude?.toFixed(5)}</span>
-                      <DeleteButton label={`Unlink ${g.name}`} onClick={() => unlinkGateway(g.id)} />
-                    </div>
-                  ))}
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-              <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(6)}>Back</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="button" className="planner-button planner-button--ghost" onClick={() => setStep(5)}>← Back</button>
               <button type="button" className="planner-button" onClick={() => navigate('/dashboard')}>Finish &amp; go to dashboard</button>
             </div>
           </section>

@@ -95,3 +95,4 @@ async function seedInventory() {
 seedInventory()
   .catch((err) => { console.error("Seed error:", err); process.exit(1); })
   .finally(() => prisma.$disconnect());
+ 

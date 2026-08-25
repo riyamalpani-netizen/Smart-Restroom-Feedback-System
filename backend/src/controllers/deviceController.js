@@ -1096,7 +1096,7 @@ async function bulkCreateDevices(req, res) {
     const seen = new Set();
     items.forEach((item, index) => {
       const deviceEui = String(item.deviceEui || item.devEui || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-      if (deviceEui.length !== 16) return errors.push({ row: index + 1, message: "Device EUI must be 16 hexadecimal characters" });
+      if (deviceEui.length !== 16) return errors.push({ row: index + 1, message: `Device EUI must be exactly 16 hexadecimal characters (got ${deviceEui.length}): "${item.deviceEui || ''}"` });
       if (seen.has(deviceEui)) return errors.push({ row: index + 1, message: "Duplicate Device EUI in upload" });
       seen.add(deviceEui);
       normalized.push({
@@ -1109,12 +1109,12 @@ async function bulkCreateDevices(req, res) {
         batteryLevel: Number.isFinite(Number(item.batteryLevel)) ? Number(item.batteryLevel) : 100,
       });
     });
-    if (errors.length) return res.status(400).json({ message: "Fix the invalid upload rows", errors });
-    const existing = await prisma.device.findMany({ where: { OR: [{ deviceEui: { in: normalized.map((item) => item.deviceEui) } }, { badgeId: { in: normalized.map((item) => item.badgeId) } }] }, select: { deviceEui: true, badgeId: true } });
+    // Don't abort — create valid rows and report errors for invalid ones
+    const existing = normalized.length ? await prisma.device.findMany({ where: { OR: [{ deviceEui: { in: normalized.map((item) => item.deviceEui) } }, { badgeId: { in: normalized.map((item) => item.badgeId) } }] }, select: { deviceEui: true, badgeId: true } }) : [];
     const existingKeys = new Set(existing.flatMap((item) => [item.deviceEui, item.badgeId]));
     const toCreate = normalized.filter((item) => !existingKeys.has(item.deviceEui) && !existingKeys.has(item.badgeId));
     if (toCreate.length) await prisma.device.createMany({ data: toCreate });
-    res.status(201).json({ message: `${toCreate.length} device(s) added to inventory`, created: toCreate.length, skipped: normalized.length - toCreate.length, errors: [] });
+    res.status(201).json({ message: `${toCreate.length} device(s) added to inventory`, created: toCreate.length, skipped: normalized.length - toCreate.length, errors });
   } catch (error) {
     console.error("Bulk device upload error:", error);
     res.status(500).json({ message: "Unable to import devices" });

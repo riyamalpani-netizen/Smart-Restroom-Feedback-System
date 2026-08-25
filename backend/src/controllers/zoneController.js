@@ -225,10 +225,22 @@ async function deleteZone(req, res) {
 
     // Keep inventory records when a zone is removed, but remove the stale
     // placement links so the items immediately become available again.
+    // Also delete the restroom that was created when this zone was drawn,
+    // so orphaned restroom records don't accumulate.
+    const restroomId = existing.restroomId || null;
+
     await prisma.$transaction([
       prisma.device.updateMany({ where: { zoneId: id }, data: { zoneId: null, restroomId: null, floorId: null, floorPlanPosX: null, floorPlanPosY: null, latitude: null, longitude: null } }),
       prisma.gateway.updateMany({ where: { zoneId: id }, data: { zoneId: null, floorId: null, locationId: null, latitude: null, longitude: null } }),
       prisma.zone.delete({ where: { id } }),
+      // Delete the linked restroom (and cascade its feedback/alerts) if one exists
+      ...(restroomId ? [
+        prisma.device.updateMany({ where: { restroomId }, data: { restroomId: null } }),
+        prisma.notification.deleteMany({ where: { alert: { restroomId } } }),
+        prisma.alert.deleteMany({ where: { restroomId } }),
+        prisma.feedback.deleteMany({ where: { restroomId } }),
+        prisma.restroom.delete({ where: { id: restroomId } }),
+      ] : []),
     ]);
 
     res.status(200).json({

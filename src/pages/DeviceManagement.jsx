@@ -43,8 +43,8 @@ export default function DeviceManagement() {
   function downloadSampleCSV() {
     const headers = 'name,deviceEui,appKey,joinEui,deviceType,batteryLevel,lorawanVersion'
     const rows = [
-      'Sensor 01,AA000000000000001,A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1,0000000000000000,sensor,100,MAC_V1_0_3',
-      'Badge 01,AA000000000000002,B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2,0000000000000000,badge,100,MAC_V1_0_3',
+      'Sensor 01,AA00000000000001,A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1,0000000000000000,sensor,100,MAC_V1_0_3',
+      'Badge 01,AA00000000000002,B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2,0000000000000000,badge,100,MAC_V1_0_3',
     ]
     const csv = [headers, ...rows].join('\n')
     const a = document.createElement('a')
@@ -242,12 +242,16 @@ export default function DeviceManagement() {
     try {
       const rows = (await file.text()).trim().split(/\r?\n/).filter(Boolean)
       const headers = rows.shift()?.split(',').map((value) => value.trim()) || []
+      if (!headers.includes('deviceEui')) {
+        setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: 'CSV missing required column: deviceEui. Download the sample CSV to see the correct format.' }] })
+        return
+      }
       const items = rows.map((row) => Object.fromEntries(row.split(',').map((value, index) => [headers[index], value.trim()])))
       const result = await deviceAPI.bulkCreate(items)
       setBulkResult({ created: result.created, skipped: result.skipped, errors: result.errors || [] })
       await loadDevices()
     } catch (error) {
-      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Ensure CSV has: name, deviceEui, appKey, joinEui, deviceType, batteryLevel, lorawanVersion columns.' }] })
+      setBulkResult({ created: 0, skipped: 0, errors: [{ row: '—', message: error.message || 'Upload failed. Download the sample CSV to see the required columns: name, deviceEui, appKey, joinEui, deviceType, batteryLevel, lorawanVersion' }] })
     } finally {
       event.target.value = ''
     }
@@ -871,5 +875,6 @@ export default function DeviceManagement() {
           </div>
         </div>
       )}
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 const express = require("express");
-const { getAlerts, getAlertStats, getAlertById, createAlert, updateAlert, acknowledgeAlert, resolveAlert, getUnhappyAggregated, acknowledgeGroup, resolveGroup } = require("../controllers/alertController");
+const { getAlerts, getAlertStats, getAlertById, createAlert, updateAlert, acknowledgeAlert, resolveAlert, getUnhappyAggregated, acknowledgeGroup, resolveGroup, addNoteToGroup } = require("../controllers/alertController");
 const { authenticate, authorize } = require("../auth/authMiddleware");
 
 const router = express.Router();
@@ -14,5 +14,6 @@ router.post("/:id/acknowledge", authenticate, authorize("super_admin", "vendor_a
 router.post("/:id/resolve", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), resolveAlert);
 router.post("/acknowledge-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), acknowledgeGroup);
 router.post("/resolve-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), resolveGroup);
+router.post("/add-note-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), addNoteToGroup);
 
 module.exports = router;

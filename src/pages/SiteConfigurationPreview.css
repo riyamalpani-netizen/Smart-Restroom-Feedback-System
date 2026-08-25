@@ -374,3 +374,85 @@
     border-top: 1px solid var(--border);
   }
 }
+
+/* ── Floors overlay panel (merged step 2) ─────────────────────── */
+.planner-floors-overlay {
+  position: absolute;
+  z-index: 600;
+  top: 12px;
+  left: 12px;
+  width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+}
+
+.planner-floors-overlay__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.planner-floors-overlay__heading strong {
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.planner-floors-overlay .planner-floor-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.planner-floors-overlay .planner-floor {
+  flex: 1;
+  margin-bottom: 0;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+/* ── Floors panel in merged step 2 ───────────────────────────── */
+.planner-floors-panel {
+  width: 230px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.planner-floors-panel .planner-floors-overlay__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.planner-floors-panel .planner-floors-overlay__heading strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.planner-floors-panel .planner-floor-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.planner-floors-panel .planner-floor {
+  flex: 1;
+  margin-bottom: 0;
+  font-size: 12px;
+  padding: 8px 10px;
+}

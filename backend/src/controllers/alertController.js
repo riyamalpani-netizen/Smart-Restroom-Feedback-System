@@ -285,7 +285,32 @@ async function getUnhappyAggregated(req, res) {
             ELSE 0
           END
         ) as "priorityScore",
-        MAX(a."createdAt") as "lastReported"
+        MAX(a."createdAt") as "lastReported",
+        (
+          SELECT a2.id FROM alerts a2
+          JOIN feedback fb2 ON a2."feedbackId" = fb2.id
+          JOIN devices d2 ON fb2."deviceId" = d2.id
+          JOIN restrooms r2 ON a2."restroomId" = r2.id
+          JOIN floors f2 ON r2."floorId" = f2.id
+          WHERE f2."locationId" = l.id
+            AND COALESCE(d2."zoneId"::text, 'unassigned') = COALESCE(z.id::text, 'unassigned')
+            AND a2.status != 'closed'
+          ORDER BY a2."createdAt" DESC
+          LIMIT 1
+        ) as "latestAlertId",
+        (
+          SELECT a3.notes FROM alerts a3
+          JOIN feedback fb3 ON a3."feedbackId" = fb3.id
+          JOIN devices d3 ON fb3."deviceId" = d3.id
+          JOIN restrooms r3 ON a3."restroomId" = r3.id
+          JOIN floors f3 ON r3."floorId" = f3.id
+          WHERE f3."locationId" = l.id
+            AND COALESCE(d3."zoneId"::text, 'unassigned') = COALESCE(z.id::text, 'unassigned')
+            AND a3.status != 'closed'
+            AND a3.notes IS NOT NULL
+          ORDER BY a3."updatedAt" DESC
+          LIMIT 1
+        ) as "latestNote"
       FROM alerts a
       JOIN restrooms r ON a."restroomId" = r.id
       JOIN floors f ON r."floorId" = f.id
@@ -295,7 +320,7 @@ async function getUnhappyAggregated(req, res) {
       LEFT JOIN zones z ON d."zoneId" = z.id
       WHERE ${whereClause}
         AND fb."feedbackType" IN ('needs_cleaning', 'emergency')
-      GROUP BY l.id, l."officeName", z.id, z."name"
+      GROUP BY l.id, l."officeName", l.city, z.id, z."name"
       ORDER BY "unhappyCount" DESC
     `;
 
@@ -309,8 +334,10 @@ async function getUnhappyAggregated(req, res) {
       unhappyCount: parseInt(row.unhappyCount, 10),
       status: row.status,
       statusDisplay: STATUS_DISPLAY[row.status] || row.status,
-      priority: PRIORITY_SCORE[row.priorityScore] === 4 ? 'critical' : PRIORITY_SCORE[row.priorityScore] === 3 ? 'high' : PRIORITY_SCORE[row.priorityScore] === 2 ? 'medium' : 'low',
+      priority: Number(row.priorityScore) === 4 ? 'critical' : Number(row.priorityScore) === 3 ? 'high' : Number(row.priorityScore) === 2 ? 'medium' : 'low',
       lastReported: row.lastReported ? new Date(row.lastReported).getTime() : null,
+      latestAlertId: row.latestAlertId || null,
+      latestNote: row.latestNote || null,
     }));
 
     res.status(200).json({
@@ -465,6 +492,72 @@ async function resolveAlert(req, res) {
   }
 }
 
+/**
+ * addNoteToGroup
+ * Adds an investigation note to the latest open alert for a given
+ * location + zone group. The note explains WHY the unhappy complaint
+ * occurred — e.g. "Cleaner on break", "Soap dispenser empty".
+ * If no open alert exists for the group, returns 404.
+ */
+async function addNoteToGroup(req, res) {
+  try {
+    const { locationId, zoneId, note } = req.body;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+    const userId = req.user?.sub;
+
+    if (!locationId || zoneId === undefined) {
+      return res.status(400).json({ message: "locationId and zoneId are required" });
+    }
+    if (!note || !note.trim()) {
+      return res.status(400).json({ message: "note text is required" });
+    }
+
+    const deviceFilter = zoneId === "unassigned" ? { zoneId: null } : { zoneId };
+
+    const where = {
+      status: { not: "closed" },
+      restroom: {
+        floor: { locationId },
+        ...(userRole !== "super_admin" ? { organizationId: userOrgId } : {}),
+      },
+      feedback: { device: deviceFilter },
+    };
+
+    // Get the single most recent open alert for this group to attach the note to
+    const latestAlert = await prisma.alert.findFirst({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: { id: true, notes: true },
+    });
+
+    if (!latestAlert) {
+      return res.status(404).json({ message: "No open alert found for this group" });
+    }
+
+    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false });
+    const authorLabel = req.user?.name || req.user?.email || "Staff";
+    // Append to existing notes so the full history is preserved
+    const existingNotes = latestAlert.notes ? latestAlert.notes + "\n\n" : "";
+    const combinedNote = `${existingNotes}[${timestamp}] ${authorLabel}: ${note.trim()}`;
+
+    const updated = await prisma.alert.update({
+      where: { id: latestAlert.id },
+      data: { notes: combinedNote },
+      select: { id: true, notes: true },
+    });
+
+    res.status(200).json({
+      message: "Note added successfully",
+      alertId: updated.id,
+      notes: updated.notes,
+    });
+  } catch (error) {
+    console.error("Add note to group error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   getAlerts,
   getAlertStats,
@@ -476,4 +569,5 @@ module.exports = {
   getUnhappyAggregated,
   acknowledgeGroup,
   resolveGroup,
+  addNoteToGroup,
 };
