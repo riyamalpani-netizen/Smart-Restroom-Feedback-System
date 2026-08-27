@@ -119,6 +119,40 @@ async function getFeedback(req, res) {
       where.restroomId = { in: locationRestrooms.map((r) => r.id) };
     }
 
+    const { floorId, zoneId } = req.query;
+
+    if (floorId) {
+      const floorRestrooms = await prisma.restroom.findMany({
+        where: { floorId },
+        select: { id: true },
+      });
+      const floorRestroomIds = floorRestrooms.map((r) => r.id);
+      // Intersect with any existing restroomId filter
+      if (where.restroomId?.in) {
+        const existing = new Set(where.restroomId.in);
+        where.restroomId = { in: floorRestroomIds.filter((id) => existing.has(id)) };
+      } else if (!where.restroomId) {
+        where.restroomId = { in: floorRestroomIds };
+      }
+    }
+
+    if (zoneId) {
+      // A zone has devices assigned to it — filter by those devices
+      const zoneDevices = await prisma.device.findMany({
+        where: { zoneId },
+        select: { id: true },
+      });
+      const zoneDeviceIds = zoneDevices.map((d) => d.id);
+      if (where.deviceId) {
+        // keep existing single-device filter only if it belongs to the zone
+        if (!zoneDeviceIds.includes(where.deviceId)) {
+          where.deviceId = { in: [] }; // effectively no results
+        }
+      } else {
+        where.deviceId = { in: zoneDeviceIds };
+      }
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [feedbackEntries, total] = await Promise.all([

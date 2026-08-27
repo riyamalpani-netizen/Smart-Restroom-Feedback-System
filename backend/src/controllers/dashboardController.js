@@ -872,10 +872,73 @@ async function getHeatMapData(req, res) {
   }
 }
 
+async function getSitePerformance(req, res) {
+  try {
+    const orgFilter = getOrgFilter(req);
+    const isSuperAdmin = req.user?.role === "super_admin";
+    const { locationId, floorId, zoneId } = req.query;
+
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const locationWhere = isSuperAdmin ? {} : { organizationId: orgFilter.organizationId };
+    if (locationId) locationWhere.id = locationId;
+
+    const locations = await prisma.location.findMany({
+      where: locationWhere,
+      include: {
+        floors: {
+          where: floorId ? { id: floorId } : {},
+          include: {
+            restrooms: {
+              include: {
+                feedback: { where: { timestamp: { gte: startOfToday } } },
+                alerts: { where: { status: { not: "closed" } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const sites = locations.map((loc) => {
+      const allRestrooms = loc.floors.flatMap((f) => f.restrooms);
+      const filtered = zoneId
+        ? allRestrooms.filter((r) => r.zones?.some((z) => z.id === zoneId))
+        : allRestrooms;
+
+      const totalFeedback = filtered.reduce((s, r) => s + r.feedback.length, 0);
+      const happyFeedback = filtered.reduce(
+        (s, r) => s + r.feedback.filter((fb) => fb.feedbackType === "happy").length,
+        0
+      );
+      const activeAlerts = filtered.reduce((s, r) => s + r.alerts.length, 0);
+      const happyPct = totalFeedback > 0 ? Math.round((happyFeedback / totalFeedback) * 100) : 0;
+
+      return {
+        id: loc.id,
+        name: `${loc.city} – ${loc.officeName}`,
+        restrooms: filtered.length,
+        todayFeedback: totalFeedback,
+        happyFeedback,
+        happyPct,
+        activeAlerts,
+      };
+    });
+
+    res.status(200).json({ sites });
+  } catch (error) {
+    console.error("Site performance error:", error);
+    res.status(500).json({ message: "Failed to fetch site performance" });
+  }
+}
+
 module.exports = {
   getDashboard,
   getDashboardSummary,
   getDashboardCharts,
   getDashboardLive,
   getHeatMapData,
+  getSitePerformance,
 };

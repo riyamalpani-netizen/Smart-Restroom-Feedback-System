@@ -593,6 +593,20 @@ app.use("/api/gateway", gatewayRoutes);
 app.use("/api/test-mode", testModeRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 
+// ── Organizations (Super Admin only — used by device/gateway assignment UI) ──
+app.get("/api/organizations", require("./auth/authMiddleware").authenticate, require("./auth/authMiddleware").authorize("super_admin"), async (req, res) => {
+  try {
+    const prismaDb = require("./config/database");
+    const orgs = await prismaDb.organization.findMany({
+      select: { id: true, name: true, address: true },
+      orderBy: { name: "asc" },
+    });
+    res.status(200).json({ organizations: orgs });
+  } catch (e) {
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });

@@ -21,12 +21,32 @@ async function getAlertOrgFilter(req) {
 
 async function getAlerts(req, res) {
   try {
-    const { status, priority, restroomId, page = 1, limit = 20 } = req.query;
+    const { status, excludeStatus, priority, restroomId, locationId, floorId, zoneId, deviceId, page = 1, limit = 20 } = req.query;
     const orgFilter = await getAlertOrgFilter(req);
     const where = { ...orgFilter };
     if (status) where.status = status;
+    else if (excludeStatus) where.status = { not: excludeStatus };
     if (priority) where.priority = priority;
     if (restroomId) where.restroomId = restroomId;
+
+    // Location / floor / zone / device hierarchy filters
+    if (locationId || floorId || zoneId || deviceId) {
+      const prismaLocal = require("../config/database");
+      if (deviceId) {
+        // Filter by feedback device
+        where.feedback = { deviceId };
+      } else if (zoneId) {
+        const zoneDevices = await prismaLocal.device.findMany({ where: { zoneId }, select: { id: true } });
+        where.feedback = { deviceId: { in: zoneDevices.map((d) => d.id) } };
+      } else if (floorId) {
+        const floorRestrooms = await prismaLocal.restroom.findMany({ where: { floorId }, select: { id: true } });
+        where.restroomId = { in: floorRestrooms.map((r) => r.id) };
+      } else if (locationId) {
+        const locFloors = await prismaLocal.floor.findMany({ where: { locationId }, select: { id: true } });
+        const locRestrooms = await prismaLocal.restroom.findMany({ where: { floorId: { in: locFloors.map((f) => f.id) } }, select: { id: true } });
+        where.restroomId = { in: locRestrooms.map((r) => r.id) };
+      }
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 

@@ -5,25 +5,35 @@ import { ROLES, ROLE_LABELS } from '../utils/constants'
 
 const PAGE_SIZE = 25
 
-const ACTION_COLORS = {
-  CREATE: '#10b981',
-  UPDATE: '#3b82f6',
-  DELETE: '#ef4444',
-  DEACTIVATE: '#f59e0b',
-  ASSIGN: '#8b5cf6',
-  UNASSIGN: '#8b5cf6',
-  PLACE: '#06b6d4',
-  MOVE: '#06b6d4',
-  UNPLACE: '#94a3b8',
+const ACTION_META = {
+  CREATE:     { color: '#10b981', bg: 'rgba(16,185,129,0.12)'  },
+  UPDATE:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)'  },
+  DELETE:     { color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   },
+  DEACTIVATE: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  },
+  ASSIGN:     { color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)'  },
+  UNASSIGN:   { color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)'  },
+  PLACE:      { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)'   },
+  MOVE:       { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)'   },
+  UNPLACE:    { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
 }
 
 function ActionBadge({ action }) {
-  const color = ACTION_COLORS[action?.toUpperCase()] || '#64748b'
+  const meta = ACTION_META[action?.toUpperCase()] || { color: '#64748b', bg: 'rgba(100,116,139,0.12)' }
   return (
-    <span
-      className="status-badge"
-      style={{ '--badge-color': color, fontSize: '0.75rem' }}
-    >
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '3px 10px',
+      borderRadius: 5,
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      color: meta.color,
+      background: meta.bg,
+      border: `1px solid ${meta.color}30`,
+      whiteSpace: 'nowrap',
+    }}>
       {action}
     </span>
   )
@@ -31,10 +41,13 @@ function ActionBadge({ action }) {
 
 function formatDate(iso) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+const MODULE_ICONS = {
+  Settings: '⚙️', User: '👤', Device: '📟', Gateway: '📡',
+  Restroom: '🚻', Alert: '🔔', Location: '📍', Floor: '🏢',
+  Zone: '📐', Report: '📊',
 }
 
 export default function AuditHistory() {
@@ -46,21 +59,12 @@ export default function AuditHistory() {
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [filters, setFilters] = useState({ module: '', action: '', from: '', to: '', page: 1 })
 
-  // Filters
-  const [filters, setFilters] = useState({
-    module: '',
-    action: '',
-    from: '',
-    to: '',
-    page: 1,
-  })
-
-  // Load distinct module names for the filter dropdown
   useEffect(() => {
     api.get('/api/audit-logs/modules')
       .then((d) => setModules(d.modules || []))
-      .catch(() => { /* non-critical */ })
+      .catch(() => {})
   }, [])
 
   const loadLogs = useCallback(async (f) => {
@@ -74,7 +78,6 @@ export default function AuditHistory() {
       if (f.to) params.set('to', f.to)
       params.set('page', f.page)
       params.set('limit', PAGE_SIZE)
-
       const data = await api.get(`/api/audit-logs?${params.toString()}`)
       setLogs(data.logs || [])
       setPagination(data.pagination || { page: 1, total: 0, pages: 1 })
@@ -85,16 +88,10 @@ export default function AuditHistory() {
     }
   }, [])
 
-  useEffect(() => {
-    loadLogs(filters)
-  }, [filters, loadLogs])
+  useEffect(() => { loadLogs(filters) }, [filters, loadLogs])
 
   function handleFilterChange(field, value) {
-    setFilters((prev) => ({ ...prev, [field]: value, page: 1 }))
-  }
-
-  function handlePageChange(newPage) {
-    setFilters((prev) => ({ ...prev, page: newPage }))
+    setFilters((p) => ({ ...p, [field]: value, page: 1 }))
   }
 
   function handleClearFilters() {
@@ -102,93 +99,110 @@ export default function AuditHistory() {
   }
 
   const hasActiveFilters = filters.module || filters.action || filters.from || filters.to
+  const colSpan = isSuperAdmin ? 6 : 5
 
   return (
-    <div className="page">
-      {/* Scope notice for Vendor Admin */}
-      {!isSuperAdmin && (
-        <div className="info-banner" role="note">
-          Showing audit history for your organisation only.
-        </div>
-      )}
+    <div className="page audit-page">
 
-      {/* ── Filters ────────────────────────────────────────────────────── */}
-      <div className="card filters-bar">
-        <div className="filters-bar__row">
-          <label className="filters-bar__item">
-            Module
+      {/* ── Header strip ─────────────────────────────────────────────── */}
+      <div className="audit-header">
+        {!isSuperAdmin && (
+          <div className="audit-scope-badge">
+            <span className="audit-scope-badge__dot" />
+            Showing audit history for your organisation only
+          </div>
+        )}
+        <div className="audit-stats">
+          <div className="audit-stat">
+            <span className="audit-stat__value">{pagination.total}</span>
+            <span className="audit-stat__label">Total Entries</span>
+          </div>
+          <div className="audit-stat">
+            <span className="audit-stat__value">{pagination.pages}</span>
+            <span className="audit-stat__label">Pages</span>
+          </div>
+          <div className="audit-stat">
+            <span className="audit-stat__value">{PAGE_SIZE}</span>
+            <span className="audit-stat__label">Per Page</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Filters bar ──────────────────────────────────────────────── */}
+      <div className="audit-filters card">
+        <div className="audit-filters__grid">
+          <div className="audit-filters__field">
+            <span className="audit-filters__label">Module</span>
             <select
               value={filters.module}
               onChange={(e) => handleFilterChange('module', e.target.value)}
-              className="select"
+              className="audit-select"
             >
               <option value="">All modules</option>
               {modules.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>{MODULE_ICONS[m] || ''} {m}</option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <label className="filters-bar__item">
-            Action
+          <div className="audit-filters__field">
+            <span className="audit-filters__label">Action</span>
             <select
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
-              className="select"
+              className="audit-select"
             >
               <option value="">All actions</option>
-              <option value="CREATE">Create</option>
-              <option value="UPDATE">Update</option>
-              <option value="DELETE">Delete</option>
-              <option value="DEACTIVATE">Deactivate</option>
-              <option value="ASSIGN">Assign</option>
-              <option value="UNASSIGN">Unassign</option>
-              <option value="PLACE">Place</option>
-              <option value="MOVE">Move</option>
-              <option value="UNPLACE">Unplace</option>
+              {Object.keys(ACTION_META).map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
             </select>
-          </label>
+          </div>
 
-          <label className="filters-bar__item">
-            From
+          <div className="audit-filters__field">
+            <span className="audit-filters__label">From</span>
             <input
               type="date"
               value={filters.from}
               onChange={(e) => handleFilterChange('from', e.target.value)}
+              className="audit-select"
             />
-          </label>
+          </div>
 
-          <label className="filters-bar__item">
-            To
+          <div className="audit-filters__field">
+            <span className="audit-filters__label">To</span>
             <input
               type="date"
               value={filters.to}
               onChange={(e) => handleFilterChange('to', e.target.value)}
+              className="audit-select"
             />
-          </label>
+          </div>
 
           {hasActiveFilters && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={handleClearFilters}
-            >
-              Clear filters
-            </button>
+            <div className="audit-filters__field audit-filters__field--action">
+              <span className="audit-filters__label">&nbsp;</span>
+              <button type="button" className="btn btn--ghost btn--sm audit-clear-btn" onClick={handleClearFilters}>
+                ✕ Clear
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ── Table ──────────────────────────────────────────────────────── */}
-      <div className="card">
+      {/* ── Table ────────────────────────────────────────────────────── */}
+      <div className="card audit-table-card">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>
         ) : error ? (
-          <div className="error-message">{error}</div>
+          <div className="audit-error">
+            <span className="audit-error__icon">⚠️</span>
+            {error}
+          </div>
         ) : (
           <>
-            <div className="table-wrapper">
-              <table className="data-table">
+            <div className="table-wrapper audit-table-wrapper">
+              <table className="data-table audit-table">
                 <thead>
                   <tr>
                     <th>Timestamp</th>
@@ -201,43 +215,50 @@ export default function AuditHistory() {
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr key={log.id}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{formatDate(log.createdAt)}</td>
+                    <tr key={log.id} className="audit-row">
+                      <td className="audit-row__time">
+                        {formatDate(log.createdAt)}
+                      </td>
                       <td>
-                        <div>{log.user?.name || '—'}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                          {log.user?.email}
-                        </div>
-                        {log.user?.role && (
-                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                            {ROLE_LABELS[log.user.role] || log.user.role}
+                        <div className="audit-user">
+                          <span className="audit-user__avatar">
+                            {log.user?.name?.charAt(0)?.toUpperCase() || '?'}
+                          </span>
+                          <div className="audit-user__info">
+                            <span className="audit-user__name">{log.user?.name || '—'}</span>
+                            <span className="audit-user__email">{log.user?.email}</span>
+                            {log.user?.role && (
+                              <span className="audit-user__role">
+                                {ROLE_LABELS[log.user.role] || log.user.role}
+                              </span>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </td>
                       {isSuperAdmin && (
-                        <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {log.organization?.name || log.organizationId}
+                        <td className="audit-row__org">
+                          {log.organization?.name || log.organizationId || '—'}
                         </td>
                       )}
                       <td>
-                        <span className="text-mono">{log.module}</span>
+                        <span className="audit-module">
+                          <span>{MODULE_ICONS[log.module] || '📋'}</span>
+                          {log.module}
+                        </span>
                       </td>
                       <td>
                         <ActionBadge action={log.action} />
                       </td>
-                      <td style={{ maxWidth: 380, wordBreak: 'break-word' }}>
+                      <td className="audit-row__desc">
                         {log.description}
                       </td>
                     </tr>
                   ))}
                   {logs.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={isSuperAdmin ? 6 : 5}
-                        style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}
-                      >
-                        No audit log entries found
-                        {hasActiveFilters && ' for the selected filters'}.
+                      <td colSpan={colSpan} className="audit-empty">
+                        <span className="audit-empty__icon">🔍</span>
+                        <span>No audit log entries found{hasActiveFilters && ' for the selected filters'}.</span>
                       </td>
                     </tr>
                   )}
@@ -245,26 +266,26 @@ export default function AuditHistory() {
               </table>
             </div>
 
-            {/* ── Pagination ──────────────────────────────────────────── */}
+            {/* ── Pagination ─────────────────────────────────────────── */}
             {pagination.pages > 1 && (
-              <div className="pagination" aria-label="Pagination">
+              <div className="audit-pagination">
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
-                  disabled={pagination.page <= 1}
-                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={filters.page <= 1}
+                  onClick={() => handleFilterChange('page', filters.page - 1)}
                 >
                   ← Previous
                 </button>
-                <span className="pagination__info">
-                  Page {pagination.page} of {pagination.pages}
-                  &nbsp;({pagination.total} entries)
+                <span className="audit-pagination__info">
+                  Page <strong>{pagination.page}</strong> of <strong>{pagination.pages}</strong>
+                  <span className="audit-pagination__total">&nbsp;· {pagination.total} entries</span>
                 </span>
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
-                  disabled={pagination.page >= pagination.pages}
-                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={filters.page >= pagination.pages}
+                  onClick={() => handleFilterChange('page', filters.page + 1)}
                 >
                   Next →
                 </button>
@@ -273,6 +294,7 @@ export default function AuditHistory() {
           </>
         )}
       </div>
+
     </div>
   )
 }

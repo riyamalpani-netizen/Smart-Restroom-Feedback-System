@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { ToastProvider } from './context/ToastContext'
 import MainLayout from './layouts/MainLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
@@ -19,13 +20,14 @@ import AuditHistory from './pages/AuditHistory'
 import NotFound from './pages/NotFound'
 import { ROLES } from './utils/constants'
 
-const ALL_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]
+const ALL_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.SITE_INCHARGE, ROLES.FACILITY_MANAGER, ROLES.VIEWER]
 const MGMT_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]
-const EDIT_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER]
+const EDIT_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER]
 
 export default function App() {
   return (
-    <Routes>
+    <ToastProvider>
+      <Routes>
       <Route path="/login" element={<Login />} />
 
       <Route
@@ -64,7 +66,6 @@ export default function App() {
         {/* ── Disaster Management: Super Admin only ── */}
         <Route path="disaster"
           element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/disaster"><DisasterManagement /></ProtectedRoute>} />
-
         {/* ── User Management: Super Admin + Vendor Admin (scoped by controller) ── */}
         <Route path="users"
           element={<ProtectedRoute allowedRoles={MGMT_ROLES} path="/users"><UserManagement /></ProtectedRoute>} />
@@ -80,5 +81,6 @@ export default function App() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </ToastProvider>
   )
 }

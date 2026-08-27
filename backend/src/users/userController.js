@@ -10,7 +10,7 @@ const { logAudit } = require("../utils/auditLogger");
  * Roles that a vendor_admin is allowed to assign to the users they manage.
  * They can create / update users to these roles only.
  */
-const VENDOR_MANAGEABLE_ROLES = ["facility_manager", "viewer"];
+const VENDOR_MANAGEABLE_ROLES = ["regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"];
 
 /**
  * Check whether the caller (vendor_admin) is allowed to act on the target user.
@@ -123,7 +123,7 @@ const createUser = async (req, res) => {
       });
     }
 
-    const allValidRoles = ["super_admin", "vendor_admin", "facility_manager", "viewer"];
+    const allValidRoles = ["super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"];
     if (!allValidRoles.includes(role)) {
       return res.status(400).json({ message: "Invalid user role" });
     }
@@ -216,7 +216,7 @@ const updateUser = async (req, res) => {
     if (email !== undefined) updateData.email = email;
 
     if (role !== undefined) {
-      const allValidRoles = ["super_admin", "vendor_admin", "facility_manager", "viewer"];
+      const allValidRoles = ["super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"];
       if (!allValidRoles.includes(role)) {
         return res.status(400).json({ message: "Invalid user role" });
       }

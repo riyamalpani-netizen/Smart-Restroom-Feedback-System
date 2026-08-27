@@ -2,39 +2,61 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { NAV_ITEMS, ROLES, canAccessRoute } from '../utils/constants'
+import {
+  IconDashboard, IconLiveFeedback, Iconsidemap, IconReports,
+  IconSiteConfig, IconGateway, IconDevice, IconRestroom,
+  IconAlerts, IconDisaster, IconUsers, IconAudit, IconSettings,
+  IconOverview, IconMonitoring, IconInfrastructure,
+  IconRestroomOps, IconAlertsSafety, IconAdmin,
+} from './SidebarIcons'
 
-const GROUP_ICONS = {
-  'Overview':             '🏠',
-  'Monitoring':           '📊',
-  'Infrastructure':       '⚙️',
-  'Restroom Operations':  '🚻',
-  'Alerts & Safety':      '🚨',
-  'Administration':       '👥',
+function NavIcon({ name }) {
+  switch (name) {
+    case 'dashboard':    return <IconDashboard />
+    case 'livefeedback': return <IconLiveFeedback />
+    case 'sidemap':      return <Iconsidemap />
+    case 'reports':      return <IconReports />
+    case 'siteconfig':   return <IconSiteConfig />
+    case 'gateway':      return <IconGateway />
+    case 'device':       return <IconDevice />
+    case 'restroom':     return <IconRestroom />
+    case 'alerts':       return <IconAlerts />
+    case 'disaster':     return <IconDisaster />
+    case 'users':        return <IconUsers />
+    case 'audit':        return <IconAudit />
+    case 'settings':     return <IconSettings />
+    default:             return <span>{name}</span>
+  }
+}
+
+function GroupIcon({ name }) {
+  switch (name) {
+    case 'Overview':            return <IconOverview />
+    case 'Monitoring':          return <IconMonitoring />
+    case 'Infrastructure':      return <IconInfrastructure />
+    case 'Restroom Operations': return <IconRestroomOps />
+    case 'Alerts & Safety':     return <IconAlertsSafety />
+    case 'Administration':      return <IconAdmin />
+    default:                    return null
+  }
 }
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { user } = useAuth()
   const location = useLocation()
 
-  // Filter items visible to current user
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (!user) return false
     if (item.roles && !item.roles.includes(user.role)) return false
     return canAccessRoute(user.role, item.path)
   })
 
-  // Build ordered group list
   const groups = []
   const seen = new Set()
   for (const item of visibleItems) {
-    if (!seen.has(item.group)) {
-      seen.add(item.group)
-      groups.push(item.group)
-    }
+    if (!seen.has(item.group)) { seen.add(item.group); groups.push(item.group) }
   }
 
-  // Track which groups are open.
-  // Default: the group containing the active route is open; rest are collapsed.
   const activeGroup = visibleItems.find((i) => i.path === location.pathname)?.group ?? groups[0]
   const [openGroups, setOpenGroups] = useState(() => new Set([activeGroup]))
 
@@ -56,7 +78,12 @@ export default function Sidebar({ collapsed, onToggle }) {
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       {/* ── Brand ── */}
       <div className="sidebar__brand">
-        <span className="sidebar__logo" aria-hidden="true">🚻</span>
+        <span className="sidebar__logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </span>
         {!collapsed && (
           <div className="sidebar__brand-text">
             <span className="sidebar__title">AtlasIED Smart Restroom</span>
@@ -74,7 +101,6 @@ export default function Sidebar({ collapsed, onToggle }) {
 
           return (
             <div key={group} className="sidebar__group">
-              {/* Clickable group heading (hidden when sidebar is collapsed) */}
               {!collapsed && (
                 <button
                   type="button"
@@ -82,19 +108,16 @@ export default function Sidebar({ collapsed, onToggle }) {
                   onClick={() => toggleGroup(group)}
                   aria-expanded={openGroups.has(group)}
                 >
-                  <span className="sidebar__group-icon">{GROUP_ICONS[group] ?? ''}</span>
+                  <span className="sidebar__group-icon"><GroupIcon name={group} /></span>
                   <span className="sidebar__group-label">{group}</span>
                   <span
                     className="sidebar__group-chevron"
                     aria-hidden="true"
                     style={{ transform: openGroups.has(group) ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                  >
-                    ›
-                  </span>
+                  >›</span>
                 </button>
               )}
 
-              {/* Items — hidden when group is collapsed (unless sidebar itself is collapsed) */}
               {isOpen && (
                 <div className="sidebar__group-items">
                   {items.map((item) => (
@@ -106,8 +129,10 @@ export default function Sidebar({ collapsed, onToggle }) {
                       }
                       title={collapsed ? `${group} › ${item.label}` : item.label}
                     >
-                      <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
-                      {!collapsed && <span>{item.label}</span>}
+                      <span className="sidebar__icon" aria-hidden="true">
+                        <NavIcon name={item.icon} />
+                      </span>
+                      {!collapsed && <span className="sidebar__link-label">{item.label}</span>}
                     </NavLink>
                   ))}
                 </div>
@@ -124,7 +149,15 @@ export default function Sidebar({ collapsed, onToggle }) {
         onClick={onToggle}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {collapsed ? '→' : '←'}
+        {collapsed ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        )}
       </button>
     </aside>
   )

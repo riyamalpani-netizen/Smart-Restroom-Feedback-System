@@ -218,8 +218,12 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onTrans
 
   // ── Stable corner & centre drag handlers (stable refs → no re-registration) ──
   const onCenterDragRef = useRef(null)
+    // Keep pointer events enabled after map re-renders that reset img styles
+    const keepEnabled = () => { img.style.pointerEvents = 'auto'; img.style.cursor = 'move' }
+    map.on('moveend', keepEnabled); map.on('zoomend', keepEnabled)
   onCenterDragRef.current = (e) => {
     const b = boundsRef.current
+      map.off('moveend', keepEnabled); map.off('zoomend', keepEnabled)
     const oldCLat = (b.northLat + b.southLat) / 2
     const oldCLng = (b.eastLng  + b.westLng)  / 2
     const halfLat = (b.northLat - b.southLat) / 2
@@ -311,8 +315,18 @@ function DraggablePlanOverlay({ geoBounds, rotation = 0, onBoundsChange, onTrans
 
   return (
     <>
-      {/* Centre drag handle */}
-      {/* Corner resize handles — placed at visual (rotated) corner positions */}
+      {/* Centre drag handle — drag the ✥ icon to move the entire plan */}
+      <Marker
+        position={[cLat, cLng]}
+        icon={centerDragIcon()}
+        zIndexOffset={2000}
+        draggable={true}
+        eventHandlers={{
+          drag: (e) => { onCenterDragRef.current(e) },
+          dragend: () => { onTransformEndRef.current?.(boundsRef.current) },
+        }}
+      />
+      {/* Corner resize handles */}
       {corners.map((c) => (
         <Marker
           key={c.id}
@@ -900,13 +914,33 @@ export default function SiteConfiguration() {
     setPlan((currentPlan) => currentPlan ? { ...currentPlan, geoBounds: nextBounds } : currentPlan)
   }
 
-  function handlePlanTransformEnd(nextBounds) {
+  async function savePlanAlignment(nextBounds, nextRotation, nextScale) {
+    if (!plan?.id) return
+    const geoBounds = nextBounds || plan.geoBounds
+    const rotation = nextRotation ?? planRotation
+    const scale = nextScale ?? planScale
+    if (!geoBounds) return
+    try {
+      await floorPlanAPI.update(plan.id, { geoBounds, rotation, scale })
+      if (floor?.id && floorCache.current[floor.id]) {
+        floorCache.current[floor.id] = {
+          ...floorCache.current[floor.id],
+          plans: floorCache.current[floor.id].plans.map((p) =>
+            p.id === plan.id ? { ...p, geoBounds, rotation, scale } : p
+          ),
+        }
+      }
+    } catch (error) {
+      console.error('Auto-save plan alignment error:', error)
+    }
+  }
+
+  async function handlePlanTransformEnd(nextBounds) {
     if (!nextBounds) return
-    // Move the location pin only after a resize/move completes; doing it during
-    // each drag event recentres Leaflet and prevents the corner handle dragging.
     const latitude = (nextBounds.northLat + nextBounds.southLat) / 2
     const longitude = (nextBounds.eastLng + nextBounds.westLng) / 2
     handleSitePinMove(latitude, longitude)
+    await savePlanAlignment(nextBounds, planRotation, planScale)
   }
 
   async function loadLocations() {
@@ -1137,6 +1171,10 @@ export default function SiteConfiguration() {
       await floorPlanAPI.delete(p.id)
       const remaining = plans.filter((fp) => fp.id !== p.id)
       setPlans(remaining)
+      // Invalidate floor cache so deleted plan does not reappear on floor switch
+      if (floor && floor.id && floorCache.current[floor.id]) {
+        floorCache.current[floor.id] = { ...floorCache.current[floor.id], plans: remaining }
+      }
       if (plan?.id === p.id) {
         const next = remaining[0] || null
         setPlan(next)
@@ -1233,25 +1271,29 @@ export default function SiteConfiguration() {
 
   async function rotatePlan(angle) {
     if (!plan?.geoBounds) return
-    setPlanRotation((prev) => ((prev + angle) % 360 + 360) % 360)
+    const next = ((planRotation + angle) % 360 + 360) % 360
+    setPlanRotation(next)
+    await savePlanAlignment(plan.geoBounds, next, planScale)
   }
 
   async function scalePlan(delta) {
-    if (!plan) return
+    if (!plan?.geoBounds) return
     const b = plan.geoBounds
     const centerLat = (b.northLat + b.southLat) / 2
     const centerLng = (b.eastLng + b.westLng) / 2
     const halfLat = (b.northLat - b.southLat) / 2
     const halfLng = (b.eastLng - b.westLng) / 2
     const factor = 1 + delta
-    const next = {
+    const nextBounds = {
       northLat: centerLat + halfLat * factor,
       southLat: centerLat - halfLat * factor,
       eastLng: centerLng + halfLng * factor,
       westLng: centerLng - halfLng * factor,
     }
-    setPlan({ ...plan, geoBounds: next })
-    setPlanScale((prev) => Math.max(0.1, prev + delta))
+    const newScale = Math.max(0.1, Math.min(5, planScale + delta))
+    setPlan({ ...plan, geoBounds: nextBounds })
+    setPlanScale(newScale)
+    await savePlanAlignment(nextBounds, planRotation, newScale)
   }
 
   async function adjustPlan(direction) {
@@ -1272,6 +1314,7 @@ export default function SiteConfiguration() {
     if (dir === 'grow')   { next.northLat += lat * step_size; next.southLat -= lat * step_size; next.eastLng += lng * step_size; next.westLng -= lng * step_size }
     if (dir === 'shrink') { next.northLat -= lat * step_size; next.southLat += lat * step_size; next.eastLng -= lng * step_size; next.westLng += lng * step_size }
     setPlan({ ...plan, geoBounds: next })
+    savePlanAlignment(next, planRotation, planScale)
   }
 
   function zoomMap(delta) {
@@ -1294,8 +1337,25 @@ export default function SiteConfiguration() {
     if (!plan) return
     setBusy(true)
     try {
+      const updatedPlan = { ...plan, geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale }
       await floorPlanAPI.update(plan.id, { geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale })
-      setPlans((prev) => prev.map((p) => p.id === plan.id ? { ...p, geoBounds: plan.geoBounds, rotation: planRotation, scale: planScale } : p))
+
+      // Update local plans array and plan state to reflect saved values
+      const updatedPlans = plans.map((p) => p.id === plan.id ? updatedPlan : p)
+      setPlans(updatedPlans)
+      setPlan(updatedPlan)
+
+      // KEY FIX: populate the floor cache with the just-saved data so that
+      // switching floors and back does NOT lose the aligned plan position.
+      if (floor && floor.id) {
+        floorCache.current[floor.id] = {
+          plans: updatedPlans,
+          zones: zones,
+          restrooms: restrooms,
+          devices: devices,
+          gateways: gateways,
+        }
+      }
 
       // The location pin can move the plan, so persist its final position too.
       const latitude = Number(site?.latitude)

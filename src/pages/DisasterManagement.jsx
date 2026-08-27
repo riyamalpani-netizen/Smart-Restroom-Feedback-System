@@ -6,6 +6,7 @@ import Pagination from '../components/common/Pagination'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from '../context/ToastContext'
 
 function SystemStatus({ label, status }) {
   const isOperational = status === 'online' || status === 'operational'
@@ -30,6 +31,7 @@ const TABS = [
 
 export default function DisasterManagement() {
   const { user } = useAuth()
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState('overview')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -123,8 +125,9 @@ export default function DisasterManagement() {
     try {
       const updated = await api.post(`/api/gateway/incidents/${alertId}/close`)
       setIncidents((prev) => prev.map((i) => (i.id === alertId ? updated.alert : i)))
+      toast.success('Incident closed.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to close incident.')
     }
   }
 

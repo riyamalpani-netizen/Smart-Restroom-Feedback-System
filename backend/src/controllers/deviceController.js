@@ -758,12 +758,9 @@ async function getDevices(req, res) {
     const orgId = req.user?.organizationId;
     const where = {};
 
+    // Vendor admin only sees devices explicitly assigned to their org
     if (role !== "super_admin") {
-      where.OR = [
-        { restroom: { organizationId: orgId } },
-        { restroomId: null, floor: { location: { organizationId: orgId } } },
-        { restroomId: null, floorId: null },
-      ];
+      where.organizationId = orgId;
     }
 
     if (restroomId) where.restroomId = restroomId;
@@ -806,6 +803,7 @@ async function getDevices(req, res) {
         name: device.name,
         badgeId: device.badgeId,
         deviceEui: device.deviceEui,
+        organizationId: device.organizationId,
         restroomId: device.restroomId,
         restroomName: device.restroom?.name || "Unassigned",
         floorName: device.floor?.floorName || device.restroom?.floor?.floorName || null,
@@ -850,10 +848,7 @@ async function getDeviceById(req, res) {
 
     const whereClause = { id };
     if (role !== "super_admin") {
-      whereClause.OR = [
-        { restroom: { organizationId: orgId } },
-        { restroomId: null },
-      ];
+      whereClause.organizationId = orgId;
     }
 
     const device = await prisma.device.findFirst({
@@ -881,6 +876,7 @@ async function getDeviceById(req, res) {
       name: device.name,
       badgeId: device.badgeId,
       deviceEui: device.deviceEui,
+      organizationId: device.organizationId,
       restroomId: device.restroomId,
       restroomName: device.restroom?.name || "Unassigned",
       floorName: device.floor?.floorName || device.restroom?.floor?.floorName || null,
@@ -1127,19 +1123,16 @@ async function updateDevice(req, res) {
     const {
       badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY,
       floorId, zoneId, deviceType, joinEui, appKey, gatewayId, name, deviceEui,
-      latitude, longitude, // ← added
+      latitude, longitude, organizationId, // ← organizationId for super admin assignment
     } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
-    const whereClause = { id }
+    // Vendor admin: can only edit devices assigned to their org
+    // Super admin: can edit any device
+    const whereClause = { id };
     if (userRole !== "super_admin") {
-      whereClause.OR = [
-        { restroom: { organizationId: userOrgId } },
-        { restroomId: null },
-        { floor: { location: { organizationId: userOrgId } } },
-        { floorId: null },
-      ]
+      whereClause.organizationId = userOrgId;
     }
 
     const existing = await prisma.device.findFirst({
@@ -1193,8 +1186,12 @@ async function updateDevice(req, res) {
     if (gatewayId !== undefined) updateData.gatewayId = gatewayId || null
     if (name !== undefined) updateData.name = name || null
     if (deviceEui) updateData.deviceEui = deviceEui
-    if (latitude !== undefined) updateData.latitude = latitude     // ← added
-    if (longitude !== undefined) updateData.longitude = longitude  // ← added
+    if (latitude !== undefined) updateData.latitude = latitude
+    if (longitude !== undefined) updateData.longitude = longitude
+    // Super admin can assign/unassign a device to an organisation
+    if (organizationId !== undefined && userRole === "super_admin") {
+      updateData.organizationId = organizationId || null;
+    }
 
     const oldGatewayId = existing.gatewayId;
 

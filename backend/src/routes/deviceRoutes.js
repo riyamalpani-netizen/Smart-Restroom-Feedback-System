@@ -4,16 +4,22 @@ const { authenticate, authorize } = require("../auth/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDevices);
-router.post("/", authenticate, authorize("super_admin", "vendor_admin"), createDevice);
-router.post("/bulk", authenticate, authorize("super_admin", "vendor_admin"), bulkCreateDevices);
+// Read — all authenticated roles (scoped by org in controller)
+router.get("/", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getDevices);
+router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getOfflineDevices);
+router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getDeviceHealth);
+router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getDeviceById);
 
-router.get("/offline", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getOfflineDevices);
-router.get("/health/:deviceId", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceHealth);
+// Create / Bulk — Super Admin ONLY (vendor_admin receives devices via assignment, not creation)
+router.post("/", authenticate, authorize("super_admin"), createDevice);
+router.post("/bulk", authenticate, authorize("super_admin"), bulkCreateDevices);
 
-router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getDeviceById);
+// Update — vendor_admin can edit devices assigned to their org (rename, assign to site/floor/zone, activate)
+// Super Admin can also reassign organizationId via PUT
 router.put("/:id", authenticate, authorize("super_admin", "vendor_admin"), updateDevice);
-router.delete("/:id", authenticate, authorize("super_admin", "vendor_admin"), deleteDevice);
-router.post("/:id/register-ttn", authenticate, authorize("super_admin", "vendor_admin"), registerDeviceInTTN);
+
+// Delete / TTN — Super Admin ONLY
+router.delete("/:id", authenticate, authorize("super_admin"), deleteDevice);
+router.post("/:id/register-ttn", authenticate, authorize("super_admin"), registerDeviceInTTN);
 
 module.exports = router;

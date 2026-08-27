@@ -37,53 +37,68 @@ function getDateRange(type) {
 
 async function getReports(req, res) {
   try {
-    const { type = "daily", startDate, endDate, organizationId, locationId, floorId, restroomId, deviceId, feedbackType, reportType = "feedback" } = req.query;
-    const orgFilter = getOrgFilter(req);
-
-    let where = {};
+    const { type = "daily", startDate, endDate, locationId, floorId, restroomId, deviceId, feedbackType, reportType = "feedback" } = req.query;
     const isSuperAdmin = req.user?.role === "super_admin";
 
+    // ── Date range ──────────────────────────────────────────────────────────
+    let dateFilter = {};
     if (type === "daily" || type === "weekly" || type === "monthly") {
       const { start, end } = getDateRange(type);
-      where.timestamp = { gte: start, lte: end };
+      dateFilter = { gte: start, lte: end };
     } else {
-      if (startDate) where.timestamp = { ...(where.timestamp || {}), gte: new Date(startDate) };
-      if (endDate) where.timestamp = { ...(where.timestamp || {}), lte: new Date(endDate) };
+      if (startDate) dateFilter.gte = new Date(startDate);
+      if (endDate) dateFilter.lte = new Date(endDate);
     }
 
-    let restroomWhere = {};
-    if (locationId) {
-      const floors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
-      restroomWhere.floorId = { in: floors.map((f) => f.id) };
-    }
-    if (floorId) restroomWhere.floorId = floorId;
-    if (restroomId) restroomWhere.id = restroomId;
+    // ── Org-scoped restroom IDs ──────────────────────────────────────────────
+    // Build the list of restroom IDs this user is allowed to see.
+    // For super_admin: no restriction unless a location/floor/restroom filter is applied.
+    let allowedRestroomIds = null; // null = no restriction (super_admin without filters)
 
     if (!isSuperAdmin) {
-      const orgLocations = await prisma.location.findMany({ where: { organizationId: req.user.organizationId }, select: { id: true } });
-      const orgFloors = await prisma.floor.findMany({ where: { locationId: { in: orgLocations.map((l) => l.id) } }, select: { id: true } });
-      const orgFloorIds = orgFloors.map((f) => f.id);
+      // Scope to this org's restrooms
+      const orgRestrooms = await prisma.restroom.findMany({
+        where: { organizationId: req.user.organizationId },
+        select: { id: true },
+      });
+      allowedRestroomIds = orgRestrooms.map((r) => r.id);
+    }
 
-      if (restroomWhere.floorId && restroomWhere.floorId.in) {
-        restroomWhere.floorId = { in: restroomWhere.floorId.in.filter((id) => orgFloorIds.includes(id)) };
-      } else {
-        restroomWhere.floorId = { in: orgFloorIds };
+    // Apply optional location / floor / restroom filters on top
+    if (locationId || floorId || restroomId) {
+      let filterBase = {};
+      if (restroomId) {
+        filterBase = { id: restroomId };
+      } else if (floorId) {
+        filterBase = { floorId };
+      } else if (locationId) {
+        const locationFloors = await prisma.floor.findMany({ where: { locationId }, select: { id: true } });
+        filterBase = { floorId: { in: locationFloors.map((f) => f.id) } };
       }
+      const filteredRestrooms = await prisma.restroom.findMany({ where: filterBase, select: { id: true } });
+      const filteredIds = filteredRestrooms.map((r) => r.id);
+      allowedRestroomIds = allowedRestroomIds
+        ? allowedRestroomIds.filter((id) => filteredIds.includes(id))
+        : filteredIds;
     }
 
-    if (Object.keys(restroomWhere).length > 0) {
-      where.restroom = restroomWhere;
-    }
+    // ── Build per-model where clauses ───────────────────────────────────────
+    // For Feedback (has restroomId directly on the model)
+    const feedbackWhere = {};
+    if (Object.keys(dateFilter).length > 0) feedbackWhere.timestamp = dateFilter;
+    if (allowedRestroomIds !== null) feedbackWhere.restroomId = { in: allowedRestroomIds };
+    if (feedbackType) feedbackWhere.feedbackType = feedbackType;
+    if (deviceId) feedbackWhere.deviceId = deviceId;
 
-    if (feedbackType) where.feedbackType = feedbackType;
-    if (deviceId) where.deviceId = deviceId;
+    // For Alert & Device (use restroomId directly on those models too)
+    const restroomIdFilter = allowedRestroomIds !== null ? { restroomId: { in: allowedRestroomIds } } : {};
 
     let data = [];
     let summary = {};
 
     if (reportType === "feedback") {
       const feedback = await prisma.feedback.findMany({
-        where,
+        where: feedbackWhere,
         include: {
           restroom: { include: { floor: { include: { location: true } } } },
           device: true,
@@ -115,14 +130,18 @@ async function getReports(req, res) {
         battery: f.battery,
         signal: f.signalStrength,
       }));
+
     } else if (reportType === "alerts") {
+      const alertWhere = { ...restroomIdFilter };
+      if (Object.keys(dateFilter).length > 0) alertWhere.createdAt = dateFilter;
+
       const alerts = await prisma.alert.findMany({
-        where: {
-          ...(Object.keys(restroomWhere).length > 0 ? { restroom: restroomWhere } : {}),
-        },
+        where: alertWhere,
         include: {
           restroom: { include: { floor: { include: { location: true } } } },
           feedback: true,
+          assignedTo: true,
+          acknowledgedBy: true,
         },
         orderBy: { createdAt: "desc" },
       });
@@ -153,16 +172,15 @@ async function getReports(req, res) {
         feedbackType: a.feedback?.feedbackType || "",
         status: a.status,
         priority: a.priority,
-        assignedTo: a.assignedTo || "Unassigned",
-        acknowledgedBy: a.acknowledgedBy || "",
+        assignedTo: a.assignedTo?.name || "Unassigned",
+        acknowledgedBy: a.acknowledgedBy?.name || "",
         resolvedAt: a.resolvedAt,
         createdAt: a.createdAt,
       }));
+
     } else if (reportType === "device") {
       const devices = await prisma.device.findMany({
-        where: {
-          ...(Object.keys(restroomWhere).length > 0 ? { restroom: restroomWhere } : {}),
-        },
+        where: restroomIdFilter,
         include: {
           restroom: { include: { floor: { include: { location: true } } } },
           deviceHealth: { orderBy: { recordedAt: "desc" }, take: 1 },
@@ -188,19 +206,18 @@ async function getReports(req, res) {
         health: d.healthStatus,
         lastSeen: d.lastSeen,
       }));
+
     } else if (reportType === "battery") {
       const devices = await prisma.device.findMany({
-        where: {
-          ...(Object.keys(restroomWhere).length > 0 ? { restroom: restroomWhere } : {}),
-        },
+        where: restroomIdFilter,
         include: {
           restroom: { include: { floor: { include: { location: true } } } },
         },
       });
 
       const lowBattery = devices.filter((d) => (d.batteryLevel ?? 100) < 30);
-      const mediumBattery = devices.filter((d) => d.batteryLevel >= 30 && d.batteryLevel < 70);
-      const highBattery = devices.filter((d) => d.batteryLevel >= 70);
+      const mediumBattery = devices.filter((d) => (d.batteryLevel ?? 100) >= 30 && (d.batteryLevel ?? 100) < 70);
+      const highBattery = devices.filter((d) => (d.batteryLevel ?? 100) >= 70);
 
       summary = {
         total: devices.length,
@@ -219,7 +236,7 @@ async function getReports(req, res) {
         location: d.restroom?.floor?.location?.officeName || "",
         floor: d.restroom?.floor?.floorName || "",
         battery: d.batteryLevel,
-        status: (d.batteryLevel ?? 100) < 30 ? "low" : d.batteryLevel < 70 ? "medium" : "high",
+        status: (d.batteryLevel ?? 100) < 30 ? "low" : (d.batteryLevel ?? 100) < 70 ? "medium" : "high",
       }));
     }
 

@@ -2,16 +2,8 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { ROLES } from '../utils/constants'
+import { useToast } from '../context/ToastContext'
 
-/**
- * Settings page
- *
- * - Super Admin: sees and can edit all settings sections including Security
- *   (session timeout, password policy) and global alert thresholds.
- * - Vendor Admin: sees and can edit their own organisation's profile,
- *   alert/notification settings. Cannot touch password policy.
- * - Viewer: read-only message (blocked at route level, but graceful fallback here).
- */
 export default function Settings() {
   const { user } = useAuth()
   const role = user?.role
@@ -21,7 +13,6 @@ export default function Settings() {
   const [settings, setSettings] = useState({
     officeName: '',
     timeZone: 'UTC',
-    alertThreshold: 3,
     teamsWebhook: '',
     reportFrequency: 'daily',
     sessionTimeout: 28800,
@@ -31,13 +22,15 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitError, setSubmitError] = useState(null)
+  const [webhookTesting, setWebhookTesting] = useState(false)
+  const [webhookStatus, setWebhookStatus] = useState(null)
+  const toast = useToast()
 
   useEffect(() => {
     let mounted = true
     async function load() {
       setLoading(true)
       try {
-        // Settings endpoint is scoped by the backend for vendor_admin automatically
         const data = await api.get('/api/settings')
         if (mounted && data.settings) {
           setSettings((prev) => ({
@@ -48,17 +41,13 @@ export default function Settings() {
             passwordPolicy: data.settings.passwordPolicy || 'min 8 chars, 1 uppercase, 1 number',
           }))
         }
-
-        // Fetch org name for the vendor profile section
         if (user?.organizationId) {
           try {
             const locData = await api.get(`/api/locations?organizationId=${user.organizationId}`)
             if (mounted && locData?.locations?.length) {
               setOrgName(locData.locations[0]?.officeName || '')
             }
-          } catch {
-            // non-critical — org name is display only
-          }
+          } catch { /* non-critical */ }
         }
       } catch (e) {
         console.error('Settings load error:', e)
@@ -71,7 +60,7 @@ export default function Settings() {
   }, [user?.organizationId])
 
   function handleChange(field, value) {
-    setSettings({ ...settings, [field]: value })
+    setSettings((s) => ({ ...s, [field]: value }))
     setSaved(false)
     setSubmitError(null)
   }
@@ -80,32 +69,33 @@ export default function Settings() {
     e.preventDefault()
     setSubmitError(null)
     try {
-      const orgId = user?.organizationId
       const payload = {
-        organizationId: orgId,
+        organizationId: user?.organizationId,
         teamsWebhook: settings.teamsWebhook,
         reportFrequency: settings.reportFrequency,
         sessionTimeout: settings.sessionTimeout,
       }
-      // Only super_admin sends passwordPolicy
-      if (isSuperAdmin) {
-        payload.passwordPolicy = settings.passwordPolicy
-      }
+      if (isSuperAdmin) payload.passwordPolicy = settings.passwordPolicy
       await api.put('/api/settings', payload)
       setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+      toast.success('Settings saved.')
     } catch (err) {
       setSubmitError(err.message || 'Failed to save settings')
+      toast.error(err.message || 'Failed to save settings.')
     }
   }
 
   async function handleTestWebhook() {
+    setWebhookTesting(true)
+    setWebhookStatus(null)
     try {
-      await api.post('/api/settings/test-teams-webhook', {
-        teamsWebhook: settings.teamsWebhook,
-      })
-      alert('Test webhook sent successfully')
-    } catch (err) {
-      alert(err.message || 'Failed to send test webhook')
+      await api.post('/api/settings/test-teams-webhook', { teamsWebhook: settings.teamsWebhook })
+      setWebhookStatus('ok')
+    } catch {
+      setWebhookStatus('error')
+    } finally {
+      setWebhookTesting(false)
     }
   }
 
@@ -118,160 +108,174 @@ export default function Settings() {
   }
 
   return (
-    <div className="page">
-      <form className="settings-form card" onSubmit={handleSubmit}>
+    <div className="page settings-page">
+      <form className="settings-content" onSubmit={handleSubmit}>
 
-        {/* ── Section 1: Vendor / Organisation Profile ──────────────────── */}
-        <section className="settings-section">
-          <h3>
-            {isVendorAdmin ? 'Vendor Profile' : 'Organisation'}
-          </h3>
-          {isVendorAdmin && (
-            <p className="settings-section__desc">
-              Manage your vendor organisation profile and notification preferences.
-            </p>
-          )}
-          <label>
-            Organisation Name
-            <input
-              value={orgName}
-              disabled
-              title="Update the organisation name via Site Configuration"
-              className="input--locked"
-            />
-          </label>
-          {isSuperAdmin && (
-            <label>
-              Time Zone
-              <select
-                value={settings.timeZone}
-                onChange={(e) => handleChange('timeZone', e.target.value)}
-                className="select"
-              >
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">Eastern (US)</option>
-                <option value="America/Chicago">Central (US)</option>
-                <option value="America/Los_Angeles">Pacific (US)</option>
-                <option value="Asia/Kolkata">India (IST)</option>
-              </select>
-            </label>
-          )}
-        </section>
-
-        {/* ── Section 2: Alerts & Notifications ─────────────────────────── */}
-        <section className="settings-section">
-          <h3>Alerts &amp; Notifications</h3>
-          <p className="settings-section__desc">
-            Configure how your organisation receives alert notifications.
-          </p>
-
-          <label>
-            Alert Threshold
-            <span className="label-hint">(unhappy feedback count before alert is raised)</span>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={settings.alertThreshold}
-              onChange={(e) => handleChange('alertThreshold', Number(e.target.value))}
-            />
-          </label>
-
-          <label>
-            Microsoft Teams Webhook URL
-            <input
-              value={settings.teamsWebhook}
-              onChange={(e) => handleChange('teamsWebhook', e.target.value)}
-              placeholder="https://outlook.office.com/webhook/..."
-              type="url"
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn--secondary"
-            onClick={handleTestWebhook}
-            disabled={!settings.teamsWebhook}
-          >
-            Test Teams Webhook
-          </button>
-
-          <label>
-            Report Frequency
-            <select
-              value={settings.reportFrequency}
-              onChange={(e) => handleChange('reportFrequency', e.target.value)}
-              className="select"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </label>
-        </section>
-
-        {/* ── Section 3: Security — Super Admin only ─────────────────────── */}
-        {isSuperAdmin && (
-          <section className="settings-section">
-            <h3>Security</h3>
-            <p className="settings-section__desc">
-              Global security settings. These apply across all organisations.
-            </p>
-            <label>
-              Session Timeout (seconds)
+        {/* ── Organisation ─────────────────────────────────────────────── */}
+        <section className="settings-card">
+          <div className="settings-card__header">
+            <span className="settings-card__icon">🏢</span>
+            <div>
+              <h3 className="settings-card__title">Organisation</h3>
+              <p className="settings-card__desc">Your organisation profile and regional settings.</p>
+            </div>
+          </div>
+          <div className="settings-grid">
+            <div className="settings-field">
+              <label className="settings-label">
+                Organisation Name
+                <span className="settings-badge settings-badge--locked">Read only</span>
+              </label>
               <input
-                type="number"
-                min="300"
-                value={settings.sessionTimeout}
-                onChange={(e) => handleChange('sessionTimeout', Number(e.target.value))}
-              />
-            </label>
-            <label>
-              Password Policy
-              <input
-                value={settings.passwordPolicy}
-                onChange={(e) => handleChange('passwordPolicy', e.target.value)}
-                placeholder="min 8 chars, 1 uppercase, 1 number"
-              />
-            </label>
-          </section>
-        )}
-
-        {/* Vendor Admin — informational note about what they cannot change */}
-        {isVendorAdmin && (
-          <section className="settings-section settings-section--info">
-            <h3>Security</h3>
-            <p className="settings-section__desc text-muted">
-              Session timeout and password policy are managed by your Super Admin and cannot
-              be changed here.
-            </p>
-            <label>
-              Session Timeout (seconds)
-              <input
-                type="number"
-                value={settings.sessionTimeout}
+                value={orgName || user?.organizationId || '—'}
                 disabled
-                className="input--locked"
-                title="Managed by Super Admin"
+                className="settings-input settings-input--locked"
+                title="Update via Site Configuration"
               />
-            </label>
+              <p className="settings-hint">To update the name, go to Site Configuration.</p>
+            </div>
+            {isSuperAdmin && (
+              <div className="settings-field">
+                <label className="settings-label">Time Zone</label>
+                <select
+                  value={settings.timeZone}
+                  onChange={(e) => handleChange('timeZone', e.target.value)}
+                  className="settings-input"
+                >
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">Eastern (US)</option>
+                  <option value="America/Chicago">Central (US)</option>
+                  <option value="America/Los_Angeles">Pacific (US)</option>
+                  <option value="Asia/Kolkata">India (IST)</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── Notifications ─────────────────────────────────────────────── */}
+        <section className="settings-card">
+          <div className="settings-card__header">
+            <span className="settings-card__icon">🔔</span>
+            <div>
+              <h3 className="settings-card__title">Notifications</h3>
+              <p className="settings-card__desc">Configure how alerts are delivered to your team.</p>
+            </div>
+          </div>
+          <div className="settings-grid">
+            <div className="settings-field settings-field--full">
+              <label className="settings-label">Microsoft Teams Webhook URL</label>
+              <div className="settings-input-row">
+                <input
+                  value={settings.teamsWebhook}
+                  onChange={(e) => handleChange('teamsWebhook', e.target.value)}
+                  placeholder="https://outlook.office.com/webhook/..."
+                  type="url"
+                  className="settings-input"
+                />
+                <button
+                  type="button"
+                  className={`btn settings-test-btn ${webhookStatus === 'ok' ? 'btn--success' : webhookStatus === 'error' ? 'btn--danger' : 'btn--secondary'}`}
+                  onClick={handleTestWebhook}
+                  disabled={!settings.teamsWebhook || webhookTesting}
+                >
+                  {webhookTesting ? 'Sending…' : webhookStatus === 'ok' ? '✓ Sent' : webhookStatus === 'error' ? '✗ Failed' : 'Test'}
+                </button>
+              </div>
+              <p className="settings-hint">
+                Paste a Teams incoming webhook URL to receive alert notifications in your Teams channel.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Reports ───────────────────────────────────────────────────── */}
+        <section className="settings-card">
+          <div className="settings-card__header">
+            <span className="settings-card__icon">📊</span>
+            <div>
+              <h3 className="settings-card__title">Reports</h3>
+              <p className="settings-card__desc">Control how often scheduled reports are generated and delivered.</p>
+            </div>
+          </div>
+          <div className="settings-grid">
+            <div className="settings-field">
+              <label className="settings-label">Report Frequency</label>
+              <select
+                value={settings.reportFrequency}
+                onChange={(e) => handleChange('reportFrequency', e.target.value)}
+                className="settings-input"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <p className="settings-hint">Reports will be auto-generated at the selected cadence.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Security ──────────────────────────────────────────────────── */}
+        {(isSuperAdmin || isVendorAdmin) && (
+          <section className="settings-card">
+            <div className="settings-card__header">
+              <span className="settings-card__icon">🔒</span>
+              <div>
+                <h3 className="settings-card__title">Security</h3>
+                <p className="settings-card__desc">
+                  {isSuperAdmin
+                    ? 'Global security settings applied across all organisations.'
+                    : 'Security settings are managed by your Super Admin.'}
+                </p>
+              </div>
+            </div>
+            <div className="settings-grid">
+              <div className="settings-field">
+                <label className="settings-label">
+                  Session Timeout (seconds)
+                  {isVendorAdmin && <span className="settings-badge settings-badge--locked">Read only</span>}
+                </label>
+                <input
+                  type="number"
+                  min="300"
+                  value={settings.sessionTimeout}
+                  onChange={(e) => handleChange('sessionTimeout', Number(e.target.value))}
+                  disabled={isVendorAdmin}
+                  className={`settings-input ${isVendorAdmin ? 'settings-input--locked' : ''}`}
+                />
+                <p className="settings-hint">
+                  {Math.floor(settings.sessionTimeout / 3600) > 0
+                    ? `${Math.floor(settings.sessionTimeout / 3600)}h ${Math.floor((settings.sessionTimeout % 3600) / 60)}m`
+                    : `${Math.floor(settings.sessionTimeout / 60)} minutes`}
+                </p>
+              </div>
+              {isSuperAdmin && (
+                <div className="settings-field">
+                  <label className="settings-label">Password Policy</label>
+                  <input
+                    value={settings.passwordPolicy}
+                    onChange={(e) => handleChange('passwordPolicy', e.target.value)}
+                    placeholder="min 8 chars, 1 uppercase, 1 number"
+                    className="settings-input"
+                  />
+                  <p className="settings-hint">Displayed to users when they set or reset their password.</p>
+                </div>
+              )}
+            </div>
           </section>
         )}
 
-        <div className="settings-form__actions">
-          <button type="submit" className="btn btn--primary">
+        {/* ── Save bar ──────────────────────────────────────────────────── */}
+        <div className="settings-save-bar">
+          <div className="settings-save-bar__feedback">
+            {saved && <span className="settings-status settings-status--ok">✓ Settings saved</span>}
+            {submitError && <span className="settings-status settings-status--error">✗ {submitError}</span>}
+          </div>
+          <button type="submit" className="btn btn--primary settings-save-btn">
             Save Settings
           </button>
-          {saved && (
-            <span className="settings-form__saved" role="status">
-              Settings saved!
-            </span>
-          )}
-          {submitError && (
-            <span className="settings-form__error" role="alert">
-              {submitError}
-            </span>
-          )}
         </div>
+
       </form>
     </div>
   )

@@ -20,6 +20,7 @@ async function getRestrooms(req, res) {
       include: {
         floor: { include: { location: true } },
         devices: true,
+        zones: { select: { id: true, name: true } },
         _count: { select: { feedback: true, alerts: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -83,6 +84,11 @@ async function createRestroom(req, res) {
       data: { floorId, organizationId: organizationId || userOrgId, name, gender, status: status || "good", posX, posY, width, height },
     });
 
+    // Link zone if provided
+    if (req.body.zoneId) {
+      await prisma.zone.update({ where: { id: req.body.zoneId }, data: { restroomId: restroom.id } });
+    }
+
     res.status(201).json({ message: "Restroom created successfully", restroom });
   } catch (error) {
     console.error("Create restroom error:", error);
@@ -109,6 +115,17 @@ async function updateRestroom(req, res) {
       where: { id },
       data: { name, gender, status, floorId, organizationId, posX, posY, width, height },
     });
+
+    // Re-link zone: clear old link then set new one
+    const { zoneId } = req.body;
+    if (zoneId !== undefined) {
+      // Clear any zone previously linked to this restroom
+      await prisma.zone.updateMany({ where: { restroomId: id }, data: { restroomId: null } });
+      // Link new zone if provided
+      if (zoneId) {
+        await prisma.zone.update({ where: { id: zoneId }, data: { restroomId: id } });
+      }
+    }
 
     res.status(200).json({ message: "Restroom updated successfully", restroom });
   } catch (error) {

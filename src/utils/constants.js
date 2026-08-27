@@ -1,6 +1,9 @@
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
   VENDOR_ADMIN: 'vendor_admin',
+  REGIONAL_MANAGER: 'regional_manager',
+  VENDOR_MANAGER: 'vendor_manager',
+  SITE_INCHARGE: 'site_incharge',
   FACILITY_MANAGER: 'facility_manager',
   VIEWER: 'viewer',
 }
@@ -8,6 +11,9 @@ export const ROLES = {
 export const ROLE_LABELS = {
   [ROLES.SUPER_ADMIN]: 'Super Admin',
   [ROLES.VENDOR_ADMIN]: 'Vendor Admin',
+  [ROLES.REGIONAL_MANAGER]: 'Regional Manager',
+  [ROLES.VENDOR_MANAGER]: 'Vendor Manager',
+  [ROLES.SITE_INCHARGE]: 'Site Incharge',
   [ROLES.FACILITY_MANAGER]: 'Facility Manager',
   [ROLES.VIEWER]: 'Viewer',
 }
@@ -38,7 +44,13 @@ export const ALERT_STATUS = {
  * Roles a Vendor Admin is allowed to assign when creating/editing users.
  * Vendor Admin must not see or set super_admin or vendor_admin roles.
  */
-export const VENDOR_MANAGEABLE_ROLES = [ROLES.FACILITY_MANAGER, ROLES.VIEWER]
+export const VENDOR_MANAGEABLE_ROLES = [
+  ROLES.REGIONAL_MANAGER,
+  ROLES.VENDOR_MANAGER,
+  ROLES.SITE_INCHARGE,
+  ROLES.FACILITY_MANAGER,
+  ROLES.VIEWER,
+]
 
 /**
  * Navigation items shown in the sidebar.
@@ -50,7 +62,7 @@ export const NAV_ITEMS = [
   {
     path: '/dashboard',
     label: 'Dashboard',
-    icon: '🏠',
+    icon: 'dashboard',
     group: 'Overview',
   },
 
@@ -58,40 +70,41 @@ export const NAV_ITEMS = [
   {
     path: '/live-feedback',
     label: 'Live Feedback',
-    icon: '💬',
+    icon: 'livefeedback',
     group: 'Monitoring',
   },
   {
     path: '/sidemap',
-    label: 'Sidemap',
-    icon: '🗺️',
+    label: 'sidemap',
+    icon: 'sidemap',
     group: 'Monitoring',
   },
   {
     path: '/reports',
     label: 'Reports',
-    icon: '📈',
+    icon: 'reports',
     group: 'Monitoring',
   },
 
   // ── Infrastructure ────────────────────────────────────────────────────
+  // ── Site config: Super Admin, Vendor Admin, Facility Manager, Regional/Vendor/Site managers ── */
   {
     path: '/site-config',
     label: 'Site Configuration',
-    icon: '🏢',
+    icon: 'siteconfig',
     group: 'Infrastructure',
-    roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER],
+    roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
   },
   {
     path: '/gateways',
     label: 'Gateway Management',
-    icon: '📡',
+    icon: 'gateway',
     group: 'Infrastructure',
   },
   {
     path: '/devices',
     label: 'Device Management',
-    icon: '📱',
+    icon: 'device',
     group: 'Infrastructure',
   },
 
@@ -99,7 +112,7 @@ export const NAV_ITEMS = [
   {
     path: '/restrooms',
     label: 'Restroom Management',
-    icon: '🚻',
+    icon: 'restroom',
     group: 'Restroom Operations',
   },
 
@@ -107,13 +120,13 @@ export const NAV_ITEMS = [
   {
     path: '/alerts',
     label: 'Alert Management',
-    icon: '🔔',
+    icon: 'alerts',
     group: 'Alerts & Safety',
   },
   {
     path: '/disaster',
     label: 'Disaster Management',
-    icon: '⚠️',
+    icon: 'disaster',
     group: 'Alerts & Safety',
     roles: [ROLES.SUPER_ADMIN],
   },
@@ -122,21 +135,21 @@ export const NAV_ITEMS = [
   {
     path: '/users',
     label: 'User Management',
-    icon: '👥',
+    icon: 'users',
     group: 'Administration',
     roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN],
   },
   {
     path: '/audit-history',
     label: 'Audit History',
-    icon: '📋',
+    icon: 'audit',
     group: 'Administration',
     roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN],
   },
   {
     path: '/settings',
     label: 'Settings',
-    icon: '⚙️',
+    icon: 'settings',
     group: 'Administration',
     roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN],
   },
@@ -179,6 +192,41 @@ export const ROLE_ROUTE_ACCESS = {
     '/audit-history',
     '/profile',
   ],
+  [ROLES.REGIONAL_MANAGER]: [
+    '/dashboard',
+    '/live-feedback',
+    '/sidemap',
+    '/reports',
+    '/site-config',
+    '/gateways',
+    '/devices',
+    '/restrooms',
+    '/alerts',
+    '/profile',
+  ],
+  [ROLES.VENDOR_MANAGER]: [
+    '/dashboard',
+    '/live-feedback',
+    '/sidemap',
+    '/reports',
+    '/site-config',
+    '/gateways',
+    '/devices',
+    '/restrooms',
+    '/alerts',
+    '/profile',
+  ],
+  [ROLES.SITE_INCHARGE]: [
+    '/dashboard',
+    '/live-feedback',
+    '/sidemap',
+    '/reports',
+    '/gateways',
+    '/devices',
+    '/restrooms',
+    '/alerts',
+    '/profile',
+  ],
   [ROLES.FACILITY_MANAGER]: [
     '/dashboard',
     '/live-feedback',
@@ -189,7 +237,6 @@ export const ROLE_ROUTE_ACCESS = {
     '/devices',
     '/restrooms',
     '/alerts',
-    '/disaster',
     '/profile',
   ],
   [ROLES.VIEWER]: [
@@ -201,7 +248,6 @@ export const ROLE_ROUTE_ACCESS = {
     '/devices',
     '/restrooms',
     '/alerts',
-    '/disaster',
     '/profile',
   ],
 }
@@ -221,7 +267,15 @@ export function getRoleLabel(role) {
  */
 export function getAssignableRoles(actorRole) {
   if (actorRole === ROLES.SUPER_ADMIN) {
-    return [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.FACILITY_MANAGER, ROLES.VIEWER]
+    return [
+      ROLES.SUPER_ADMIN,
+      ROLES.VENDOR_ADMIN,
+      ROLES.REGIONAL_MANAGER,
+      ROLES.VENDOR_MANAGER,
+      ROLES.SITE_INCHARGE,
+      ROLES.FACILITY_MANAGER,
+      ROLES.VIEWER,
+    ]
   }
   if (actorRole === ROLES.VENDOR_ADMIN) {
     return VENDOR_MANAGEABLE_ROLES

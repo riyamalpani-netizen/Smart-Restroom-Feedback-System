@@ -7,12 +7,14 @@ const PAGE_TITLES = {
   '/sidemap': 'Floor Map',
   '/reports': 'Reports',
   '/site-config': 'Site Configuration',
+  '/gateways': 'Gateway Management',
   '/devices': 'Device Management',
   '/restrooms': 'Restroom Management',
   '/alerts': 'Alert Management',
   '/disaster': 'Disaster Management',
   '/users': 'User Management',
   '/settings': 'Settings',
+  '/audit-history': 'Audit History',
   '/profile': 'Profile',
 }
 
@@ -22,20 +24,47 @@ const PAGE_SUBTITLES = {
   '/sidemap': 'Interactive restroom monitoring, heatmap analytics and real-time site status',
   '/reports': 'Generate and export feedback and device reports',
   '/site-config': 'Map and configure sites, floors, zones, and devices',
+  '/gateways': 'Monitor and manage LoRaWAN gateways and their connected devices',
   '/devices': 'Monitor badge devices, battery, and connectivity',
   '/restrooms': 'Add, edit, and manage restroom locations',
   '/alerts': 'Track, acknowledge, and resolve restroom alerts',
   '/disaster': 'Monitor system health and incident recovery',
   '/users': 'Manage users, roles, and access',
   '/settings': 'Configure office, alerts, and notification preferences',
+  '/audit-history': 'Track all user actions and configuration changes in your organisation',
   '/profile': 'Your account information',
+}
+
+// Maps each route to its breadcrumb trail — mirrors the sidebar groups exactly
+const BREADCRUMBS = {
+  // Overview
+  '/dashboard':      [{ label: 'Overview' }, { label: 'Dashboard' }],
+  // Monitoring
+  '/live-feedback':  [{ label: 'Monitoring' }, { label: 'Live Feedback' }],
+  '/sidemap':        [{ label: 'Monitoring' }, { label: 'Sidemap' }],
+  '/reports':        [{ label: 'Monitoring' }, { label: 'Reports' }],
+  // Infrastructure
+  '/site-config':    [{ label: 'Infrastructure' }, { label: 'Site Configuration' }],
+  '/gateways':       [{ label: 'Infrastructure' }, { label: 'Gateway Management' }],
+  '/devices':        [{ label: 'Infrastructure' }, { label: 'Device Management' }],
+  // Restroom Operations
+  '/restrooms':      [{ label: 'Restroom Operations' }, { label: 'Restroom Management' }],
+  // Alerts & Safety
+  '/alerts':         [{ label: 'Alerts & Safety' }, { label: 'Alert Management' }],
+  '/disaster':       [{ label: 'Alerts & Safety' }, { label: 'Disaster Management' }],
+  // Administration
+  '/users':          [{ label: 'Administration' }, { label: 'User Management' }],
+  '/audit-history':  [{ label: 'Administration' }, { label: 'Audit History' }],
+  '/settings':       [{ label: 'Administration' }, { label: 'Settings' }],
+  '/profile':        [{ label: 'Administration' }, { label: 'Profile' }],
 }
 
 export default function Navbar({ onMenuToggle }) {
   const { user, logout } = useAuth()
   const location = useLocation()
-  const pageTitle = PAGE_TITLES[location.pathname] ?? 'Dashboard'
+  const pageTitle = PAGE_TITLES[location.pathname] ?? 'Smart Restroom'
   const pageSubtitle = PAGE_SUBTITLES[location.pathname] ?? ''
+  const breadcrumbs = BREADCRUMBS[location.pathname] ?? [{ label: pageTitle }]
 
   return (
     <header className="navbar">
@@ -49,7 +78,20 @@ export default function Navbar({ onMenuToggle }) {
       </button>
 
       <div className="navbar__title">
-        <span className="navbar__pagetitle">{pageTitle}</span>
+        <nav className="navbar__breadcrumb" aria-label="Breadcrumb">
+          {breadcrumbs.map((crumb, index) => (
+            <span key={index} className="navbar__breadcrumb-item">
+              {index < breadcrumbs.length - 1 ? (
+                <>
+                  <span className="navbar__breadcrumb-parent">{crumb.label}</span>
+                  <span className="navbar__breadcrumb-sep" aria-hidden="true">›</span>
+                </>
+              ) : (
+                <span className="navbar__breadcrumb-current">{crumb.label}</span>
+              )}
+            </span>
+          ))}
+        </nav>
         <span className="navbar__pagesubtitle">{pageSubtitle}</span>
       </div>
 

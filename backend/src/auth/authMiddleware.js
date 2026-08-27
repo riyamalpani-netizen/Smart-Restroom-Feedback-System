@@ -31,14 +31,19 @@ function authorize(...requiredRoles) {
     }
 
     const role = req.user.role;
-    const allowedRoles = [
+
+    // All known roles in the system — any token with an unrecognised role is rejected
+    const ALL_KNOWN_ROLES = [
       "super_admin",
       "vendor_admin",
+      "regional_manager",
+      "vendor_manager",
+      "site_incharge",
       "facility_manager",
       "viewer",
     ];
 
-    if (!allowedRoles.includes(role)) {
+    if (!ALL_KNOWN_ROLES.includes(role)) {
       return res.status(403).json({ message: "Access denied" });
     }
 

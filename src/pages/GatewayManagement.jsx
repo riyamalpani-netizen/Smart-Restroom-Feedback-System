@@ -4,9 +4,11 @@ import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import Pagination from '../components/common/Pagination'
 import BulkUploadModal from '../components/common/BulkUploadModal'
+import DetailDrawer from '../components/common/DetailDrawer'
 import { formatDateTime } from '../utils/formatters'
 import { gatewayAPI, locationAPI, floorAPI, zoneAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from '../context/ToastContext'
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -40,6 +42,15 @@ export default function GatewayManagement() {
   const [bulkUploading, setBulkUploading] = useState(false)
   const bulkFileRef = useRef(null)
   const canEdit = user?.role !== 'viewer'
+  const isSuperAdmin = user?.role === 'super_admin'
+  const toast = useToast()
+  const [drawerGw, setDrawerGw] = useState(null)
+
+  // Assign to org (super admin)
+  const [assignOrgOpen, setAssignOrgOpen] = useState(false)
+  const [assignOrgTarget, setAssignOrgTarget] = useState(null)
+  const [assignOrgId, setAssignOrgId] = useState('')
+  const [organizations, setOrganizations] = useState([])
 
   function downloadSampleCSV() {
     const lines = [
@@ -115,6 +126,34 @@ export default function GatewayManagement() {
     return () => clearInterval(timer)
   }, [loadGateways])
 
+  const loadOrganizations = useCallback(async () => {
+    if (!isSuperAdmin || organizations.length) return
+    try {
+      const data = await gatewayAPI.getOrganizations ? await gatewayAPI.getOrganizations() : await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/organizations`, { headers: { Authorization: `Bearer ${localStorage.getItem('srfs_token')}` } }).then(r => r.json())
+      setOrganizations(data.organizations || [])
+    } catch (e) { console.error('Load orgs error:', e) }
+  }, [isSuperAdmin, organizations.length])
+
+  const openAssignOrg = (gw) => {
+    setAssignOrgTarget(gw)
+    setAssignOrgId(gw.organizationId || '')
+    setAssignOrgOpen(true)
+    loadOrganizations()
+  }
+
+  const handleAssignOrg = async (e) => {
+    e.preventDefault()
+    if (!assignOrgTarget) return
+    setSaving(true)
+    try {
+      const data = await gatewayAPI.update(assignOrgTarget.id, { organizationId: assignOrgId || null })
+      setGateways(prev => prev.map(g => g.id === assignOrgTarget.id ? { ...g, ...data.gateway } : g))
+      setAssignOrgOpen(false)
+      setAssignOrgTarget(null)
+      toast.success('Organisation assigned.')
+    } catch (e) { toast.error(e.message || 'Failed to assign organisation.') } finally { setSaving(false) }
+  }
+
   const loadDetail = useCallback(async (id) => {
     setLoading(true)
     try {
@@ -148,8 +187,9 @@ export default function GatewayManagement() {
       setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadGateways()
+      toast.success('Gateway created successfully.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to create gateway.')
     } finally {
       setSaving(false)
     }
@@ -219,8 +259,9 @@ export default function GatewayManagement() {
       setSelected((prev) => ({ ...prev, ...data.gateway }))
       setGateways((prev) => prev.map((g) => (g.id === selected.id ? { ...g, ...data.gateway } : g)))
       setEditOpen(false)
+      toast.success('Gateway updated.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to update gateway.')
     } finally {
       setSaving(false)
     }
@@ -234,8 +275,9 @@ export default function GatewayManagement() {
       setGateways((prev) => prev.filter((g) => g.id !== selected.id))
       setSelected(null)
       setDeleteOpen(false)
+      toast.success('Gateway deleted.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to delete gateway.')
     } finally {
       setDeleting(false)
     }
@@ -265,8 +307,24 @@ export default function GatewayManagement() {
       }
       setGateways((prev) => prev.map((item) => item.id === gateway.id ? unassigned : item))
       setSelected((prev) => prev?.id === gateway.id ? unassigned : prev)
+      toast.success('Gateway unplaced.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to unplace gateway.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleActive = async (gw) => {
+    const newStatus = gw.status === 'online' ? 'offline' : 'online'
+    setSaving(true)
+    try {
+      const data = await gatewayAPI.update(gw.id, { status: newStatus })
+      setGateways((prev) => prev.map((g) => (g.id === gw.id ? { ...g, ...data.gateway } : g)))
+      setSelected((prev) => prev?.id === gw.id ? { ...prev, ...data.gateway } : prev)
+      toast.success(`Gateway ${newStatus === 'online' ? 'activated' : 'deactivated'}.`)
+    } catch (e) {
+      toast.error(e.message || 'Failed to update gateway.')
     } finally {
       setSaving(false)
     }
@@ -288,9 +346,9 @@ export default function GatewayManagement() {
       setGateways((prev) => prev.map((g) => (g.id === selected.id ? { ...g, ...data.gateway } : g)))
       setRegisterOpen(false)
       setRegisterForm({ ttnGatewayId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '', description: '' })
-      alert(data.message || 'Gateway registered in TTN successfully')
+      toast.success(data.message || 'Gateway registered in TTN successfully.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to register gateway in TTN.')
     } finally {
       setSaving(false)
     }
@@ -321,10 +379,14 @@ export default function GatewayManagement() {
         action={
           canEdit ? (
             <div className="btn-group">
-              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
-              <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()} disabled={bulkUploading}>{bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}</button>
-              <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>Add Gateway</button>
-              <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+              {isSuperAdmin && (
+                <>
+                  <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>Download Sample CSV</button>
+                  <button type="button" className="btn btn--secondary" onClick={() => bulkFileRef.current?.click()} disabled={bulkUploading}>{bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}</button>
+                  <button type="button" className="btn btn--primary" onClick={() => { setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' }); setAddOpen(true) }}>Add Gateway</button>
+                  <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+                </>
+              )}
             </div>
           ) : null
         }
@@ -342,52 +404,67 @@ export default function GatewayManagement() {
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Gateway ID / EUI</th>
+                    <th>EUI</th>
                     <th>Site</th>
                     <th>Floor</th>
-                    <th>Zone</th>
-                    <th>Restroom</th>
-                    <th>Latitude</th>
-                    <th>Longitude</th>
-                    <th>Assignment</th>
                     <th>Status</th>
-                    <th>TTN Status</th>
-                    <th>Connected Devices</th>
+                    <th>TTN</th>
+                    <th>Devices</th>
                     <th>Last Seen</th>
+                    <th></th>
                     {canEdit && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {pageItems.map((gw) => (
-                    <tr key={gw.id} className={selected?.id === gw.id ? 'data-table__row--selected' : ''} onClick={() => loadDetail(gw.id)}>
-                      <td>{gw.name}</td>
-                      <td><code>{gw.gatewayEui}</code></td>
+                    <tr key={gw.id} className={selected?.id === gw.id ? 'data-table__row--selected' : ''}>
+                      <td style={{ fontWeight: 600 }}>{gw.name}</td>
+                      <td><code style={{ fontSize: 11 }}>{gw.gatewayEui}</code></td>
                       <td>{gw.site || '—'}</td>
                       <td>{gw.floor || '—'}</td>
-                      <td>{gw.zone || '—'}</td>
-                      <td>{gw.restroomName || '—'}</td>
-                      <td>{gw.latitude ?? '—'}</td>
-                      <td>{gw.longitude ?? '—'}</td>
-                      <td>{hasAssignedLocation(gw) ? 'Assigned' : 'Available'}</td>
                       <td><StatusBadge status={gw.status || 'offline'} variant="device" /></td>
                       <td><StatusBadge status={gw.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></td>
-                      <td>{gw.connectedDevices ?? 0}</td>
-                      <td>{gw.lastSeen ? formatDateTime(gw.lastSeen) : '—'}</td>
+                      <td style={{ textAlign: 'center' }}>{gw.connectedDevices ?? 0}</td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-muted)' }}>{gw.lastSeen ? formatDateTime(gw.lastSeen) : '—'}</td>
+                      {/* Eye icon — opens detail drawer */}
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          title="View details"
+                          onClick={() => { setDrawerGw(gw); loadDetail(gw.id) }}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        </button>
+                      </td>
                       {canEdit && (
                         <td onClick={(e) => e.stopPropagation()}>
-                           <div style={{ display: 'flex', gap: 6 }}>
-                             {hasAssignedLocation(gw) && (
-                               <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(gw)}>Unplace</button>
-                             )}
-                             <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(gw)}>Edit</button>
-                             <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(gw); setDeleteOpen(true) }}>Delete</button>
-                           </div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+                            {isSuperAdmin && (
+                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(gw)}>
+                                {gw.organizationId ? 'Reassign' : 'Assign Org'}
+                              </button>
+                            )}
+                            <button type="button" className={`btn btn--sm ${gw.status === 'online' ? 'btn--secondary' : 'btn--primary'}`} style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleToggleActive(gw)} disabled={saving}>
+                              {gw.status === 'online' ? 'Deactivate' : 'Activate'}
+                            </button>
+                            {hasAssignedLocation(gw) && (
+                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleUnassignLocation(gw)}>Unplace</button>
+                            )}
+                            <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openEdit(gw)}>Edit</button>
+                            {isSuperAdmin && (
+                              <button type="button" className="btn btn--sm btn--danger" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => { setSelected(gw); setDeleteOpen(true) }}>Delete</button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
                   ))}
                   {pageItems.length === 0 && (
-                    <tr><td colSpan={canEdit ? "14" : "13"} style={{ textAlign: 'center', color: '#64748b' }}>No gateways found</td></tr>
+                    <tr><td colSpan={canEdit ? 10 : 9} style={{ textAlign: 'center', color: '#64748b' }}>No gateways found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -396,85 +473,6 @@ export default function GatewayManagement() {
           <Pagination page={page} totalPages={totalPages} onPageChange={(p) => setPage(p)} />
         </div>
 
-        {selected && (
-          <aside className="card device-detail">
-            <h3>Gateway Details</h3>
-            <dl>
-              <dt>Name</dt><dd>{selected.name || '—'}</dd>
-              <dt>Gateway ID / EUI</dt><dd><code>{selected.gatewayEui}</code></dd>
-              <dt>TTN Gateway ID</dt><dd><code>{selected.gatewayId || selected.ttnDeviceId || '—'}</code></dd>
-              <dt>Status</dt><dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
-              <dt>TTN Status</dt><dd><StatusBadge status={selected.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></dd>
-              <dt>Site</dt><dd>{selected.site || '—'}</dd>
-              <dt>Floor</dt><dd>{selected.floor || '—'}</dd>
-              <dt>Zone</dt><dd>{selected.zone || '—'}</dd>
-              <dt>Restroom</dt><dd>{selected.restroomName || '—'}</dd>
-              <dt>Last Seen</dt><dd>{selected.lastSeen ? formatDateTime(selected.lastSeen) : '—'}</dd>
-              <dt>Connected Devices</dt><dd>{selected.connectedDevices ?? 0}</dd>
-              <dt>TTN Device ID</dt><dd><code>{selected.ttnDeviceId || '—'}</code></dd>
-              <dt>Frequency Plan</dt><dd>{selected.frequencyPlanId || '—'}</dd>
-              <dt>Latitude</dt><dd>{selected.latitude ?? '—'}</dd>
-              <dt>Longitude</dt><dd>{selected.longitude ?? '—'}</dd>
-              <dt>Assignment</dt><dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
-            </dl>
-            <div className="tabs" style={{ marginTop: 16, marginBottom: 12 }}>
-              {TABS.map((tab) => (
-                <button key={tab.key} type="button" className={`tab ${activeTab === tab.key ? 'tab--active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
-              ))}
-            </div>
-            {activeTab === 'overview' && (
-              <div>
-                <div className="btn-group">
-                  {hasAssignedLocation(selected) && (
-                    <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
-                  )}
-                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
-                  <button type="button" className="btn btn--secondary" onClick={() => { setRegisterForm({ ttnGatewayId: '', frequencyPlanId: selected.frequencyPlanId || 'EU_863_870', latitude: selected.latitude || '', longitude: selected.longitude || '', description: selected.name || '' }); setRegisterOpen(true) }}>Register in TTN</button>
-                  <button type="button" className="btn btn--danger" onClick={() => setDeleteOpen(true)}>Delete</button>
-                </div>
-              </div>
-            )}
-            {activeTab === 'devices' && (
-              <div className="table-wrapper" style={{ maxHeight: 300, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Name</th><th>Type</th><th>Restroom</th><th>Battery</th><th>Status</th><th>Health</th><th>Last Seen</th></tr></thead>
-                  <tbody>
-                    {devices.map((d) => (
-                      <tr key={d.id}><td>{d.name || '—'}</td><td>{d.deviceType || 'sensor'}</td><td>{d.restroomName}</td><td>{d.battery ?? '—'}%</td><td><StatusBadge status={d.status || 'offline'} variant="device" /></td><td><StatusBadge status={d.health || 'healthy'} variant="health" /></td><td>{d.lastSeen ? formatDateTime(d.lastSeen) : '—'}</td></tr>
-                    ))}
-                    {devices.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', color: '#64748b' }}>No devices connected</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {activeTab === 'uplinks' && (
-              <div className="table-wrapper" style={{ maxHeight: 300, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Time</th><th>Device</th><th>Restroom</th><th>Feedback</th><th>Battery</th><th>Signal</th></tr></thead>
-                  <tbody>
-                    {uplinks.map((u) => (
-                      <tr key={u.id}><td>{formatDateTime(u.timestamp)}</td><td>{u.deviceName || u.deviceEui}</td><td>{u.restroomName || '—'}</td><td>{u.feedbackType?.replace(/_/g, ' ') || '—'}</td><td>{u.battery ?? '—'}</td><td>{u.signalStrength ?? '—'}</td></tr>
-                    ))}
-                    {uplinks.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', color: '#64748b' }}>No uplink activity</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {activeTab === 'events' && (
-              <div className="table-wrapper" style={{ maxHeight: 300, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Time</th><th>Device</th><th>Battery</th><th>Signal</th><th>Online</th></tr></thead>
-                  <tbody>
-                    {events.map((ev) => (
-                      <tr key={ev.id}><td>{formatDateTime(ev.timestamp)}</td><td>{ev.deviceName || ev.deviceEui}</td><td>{ev.battery ?? '—'}</td><td>{ev.signal ?? '—'}</td><td>{ev.online ? 'Yes' : 'No'}</td></tr>
-                    ))}
-                    {events.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', color: '#64748b' }}>No events</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </aside>
-        )}
       </div>
 
       {addOpen && (
@@ -568,6 +566,98 @@ export default function GatewayManagement() {
         onClose={() => setBulkResult(null)}
         entityName="Gateway"
       />
+
+      {/* ── Assign to Organisation modal (Super Admin only) ── */}
+      {isSuperAdmin && assignOrgOpen && (
+        <div className="modal-overlay" onClick={() => setAssignOrgOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h3>Assign Gateway to Organisation</h3>
+            <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 16px' }}>
+              Assign <strong>{assignOrgTarget?.name}</strong> to a vendor organisation.
+              The vendor admin will then see it in their portal.
+            </p>
+            <form onSubmit={handleAssignOrg}>
+              <label>
+                Organisation
+                <select value={assignOrgId} onChange={(e) => setAssignOrgId(e.target.value)} className="select">
+                  <option value="">— Unassigned (inventory only) —</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="btn-group" style={{ marginTop: 16 }}>
+                <button type="button" className="btn btn--secondary" onClick={() => setAssignOrgOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Assign'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Gateway Detail Drawer ── */}
+      <DetailDrawer
+        open={!!drawerGw}
+        onClose={() => { setDrawerGw(null); setSelected(null) }}
+        title={drawerGw?.name || 'Gateway Details'}
+        subtitle={drawerGw?.gatewayEui}
+      >
+        {drawerGw && (
+          <>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Identity</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">EUI</span><span className="drawer-field__value"><code>{drawerGw.gatewayEui}</code></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">TTN Gateway ID</span><span className="drawer-field__value"><code>{drawerGw.gatewayId || '—'}</code></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Frequency Plan</span><span className="drawer-field__value">{drawerGw.frequencyPlanId || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Connected Devices</span><span className="drawer-field__value">{drawerGw.connectedDevices ?? 0}</span></div>
+              </div>
+            </div>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Status</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">Status</span><span className="drawer-field__value"><StatusBadge status={drawerGw.status || 'offline'} variant="device" /></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">TTN</span><span className="drawer-field__value"><StatusBadge status={drawerGw.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Assignment</span><span className="drawer-field__value">{hasAssignedLocation(drawerGw) ? 'Placed' : 'Available'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Last Seen</span><span className="drawer-field__value" style={{ fontSize: 12 }}>{drawerGw.lastSeen ? formatDateTime(drawerGw.lastSeen) : '—'}</span></div>
+              </div>
+            </div>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Location</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">Site</span><span className="drawer-field__value">{drawerGw.site || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Floor</span><span className="drawer-field__value">{drawerGw.floor || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Zone</span><span className="drawer-field__value">{drawerGw.zone || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Restroom</span><span className="drawer-field__value">{drawerGw.restroomName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Latitude</span><span className="drawer-field__value">{drawerGw.latitude ?? '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Longitude</span><span className="drawer-field__value">{drawerGw.longitude ?? '—'}</span></div>
+              </div>
+            </div>
+            {devices.length > 0 && (
+              <div className="drawer-section">
+                <p className="drawer-section__title">Connected Devices ({devices.length})</p>
+                {devices.map((d) => (
+                  <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                    <span>{d.name || d.badgeId}</span>
+                    <StatusBadge status={d.status || 'offline'} variant="device" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {canEdit && (
+              <div className="drawer-section">
+                <p className="drawer-section__title">Actions</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <button type="button" className={`btn btn--sm ${drawerGw.status === 'online' ? 'btn--secondary' : 'btn--primary'}`} onClick={() => handleToggleActive(drawerGw)} disabled={saving}>{drawerGw.status === 'online' ? 'Deactivate' : 'Activate'}</button>
+                  {hasAssignedLocation(drawerGw) && <button type="button" className="btn btn--sm btn--secondary" onClick={() => { handleUnassignLocation(drawerGw); setDrawerGw(null) }}>Unplace</button>}
+                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openEdit(drawerGw); setDrawerGw(null) }}>Edit</button>
+                  {isSuperAdmin && <button type="button" className="btn btn--sm btn--danger" onClick={() => { setSelected(drawerGw); setDeleteOpen(true); setDrawerGw(null) }}>Delete</button>}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </DetailDrawer>
     </div>
   )
 }

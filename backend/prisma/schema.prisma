@@ -19,6 +19,7 @@ model Organization {
   restrooms Restroom[] @relation("OrganizationRestrooms")
   settings  Settings?
   users     User[]
+  devices   Device[]
 
   @@map("organizations")
 }
@@ -142,6 +143,7 @@ model Device {
   id                String               @id @default(cuid())
   deviceEui         String               @unique
   badgeId           String               @unique
+  organizationId    String?
   restroomId        String?
   batteryLevel      Int
   lastSeen          DateTime?
@@ -164,6 +166,7 @@ model Device {
   gateway           Gateway?             @relation(fields: [gatewayId], references: [id])
   deviceHealth      DeviceHealthRecord[]
   floor             Floor?               @relation(fields: [floorId], references: [id])
+  organization      Organization?        @relation(fields: [organizationId], references: [id])
   restroom          Restroom?            @relation(fields: [restroomId], references: [id])
   zone              Zone?                @relation(fields: [zoneId], references: [id])
   feedback          Feedback[]
@@ -335,6 +338,9 @@ enum AlertPriority {
 enum UserRole {
   super_admin
   vendor_admin
+  regional_manager
+  vendor_manager
+  site_incharge
   facility_manager
   viewer
 }

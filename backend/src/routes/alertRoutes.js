@@ -4,16 +4,16 @@ const { authenticate, authorize } = require("../auth/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getAlerts);
-router.get("/stats", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getAlertStats);
-router.get("/unhappy-aggregated", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getUnhappyAggregated);
-router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager", "viewer"), getAlertById);
-router.post("/", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), createAlert);
-router.put("/:id", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), updateAlert);
-router.post("/:id/acknowledge", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), acknowledgeAlert);
-router.post("/:id/resolve", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), resolveAlert);
-router.post("/acknowledge-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), acknowledgeGroup);
-router.post("/resolve-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), resolveGroup);
-router.post("/add-note-group", authenticate, authorize("super_admin", "vendor_admin", "facility_manager"), addNoteToGroup);
+router.get("/", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getAlerts);
+router.get("/stats", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getAlertStats);
+router.get("/unhappy-aggregated", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getUnhappyAggregated);
+router.get("/:id", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager", "viewer"), getAlertById);
+router.post("/", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), createAlert);
+router.put("/:id", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), updateAlert);
+router.post("/:id/acknowledge", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), acknowledgeAlert);
+router.post("/:id/resolve", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), resolveAlert);
+router.post("/acknowledge-group", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), acknowledgeGroup);
+router.post("/resolve-group", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), resolveGroup);
+router.post("/add-note-group", authenticate, authorize("super_admin", "vendor_admin", "regional_manager", "vendor_manager", "site_incharge", "facility_manager"), addNoteToGroup);
 
 module.exports = router;

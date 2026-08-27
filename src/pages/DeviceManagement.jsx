@@ -4,9 +4,11 @@ import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
 import BulkUploadModal from '../components/common/BulkUploadModal'
+import DetailDrawer from '../components/common/DetailDrawer'
 import { formatDateTime } from '../utils/formatters'
 import api, { deviceAPI, gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from '../context/ToastContext'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -59,6 +61,11 @@ export default function DeviceManagement() {
   const [testForm, setTestForm] = useState({ feedbackType: 'happy', count: 1 })
   const [testResult, setTestResult] = useState(null)
   const [testing, setTesting] = useState(false)
+  // Assign to org (super admin only)
+  const [assignOrgOpen, setAssignOrgOpen] = useState(false)
+  const [assignOrgTarget, setAssignOrgTarget] = useState(null)
+  const [organizations, setOrganizations] = useState([])
+  const [assignOrgId, setAssignOrgId] = useState('')
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
   const [editForm, setEditForm] = useState({
     name: '', deviceType: 'sensor', locationId: '', restroomId: '',
@@ -71,6 +78,9 @@ export default function DeviceManagement() {
     latitude: '', longitude: '',
   })
   const canEdit = user?.role !== 'viewer'
+  const isSuperAdmin = user?.role === 'super_admin'
+  const toast = useToast()
+  const [drawerDevice, setDrawerDevice] = useState(null)
 
   const [locations, setLocations] = useState([])
   const [floors, setFloors] = useState([])
@@ -124,6 +134,17 @@ export default function DeviceManagement() {
       console.error('Load restrooms error:', e)
     }
   }, [])
+
+  const loadOrganizations = useCallback(async () => {
+    if (!isSuperAdmin || organizations.length) return
+    try {
+      // Organizations are accessible through the users endpoint (super admin only)
+      const data = await api.get('/api/organizations')
+      setOrganizations(data.organizations || [])
+    } catch (e) {
+      console.error('Load organizations error:', e)
+    }
+  }, [isSuperAdmin, organizations.length])
 
   useEffect(() => {
     let mounted = true
@@ -245,8 +266,9 @@ export default function DeviceManagement() {
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
       setReplaceOpen(false)
+      toast.success('Badge replaced successfully.')
     } catch (e) {
-      console.error('Replace badge error:', e)
+      toast.error(e.message || 'Failed to replace badge.')
     } finally {
       setSaving(false)
     }
@@ -261,8 +283,9 @@ export default function DeviceManagement() {
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
       setMapOpen(false)
+      toast.success('Device mapped to restroom.')
     } catch (e) {
-      console.error('Map badge error:', e)
+      toast.error(e.message || 'Failed to map device.')
     } finally {
       setSaving(false)
     }
@@ -279,8 +302,9 @@ export default function DeviceManagement() {
       const unassigned = { ...device, ...data.device, restroomName: 'Unassigned', zoneName: null, floorName: null, locationName: null }
       setDevices((prev) => prev.map((item) => item.id === device.id ? unassigned : item))
       setSelected((prev) => prev?.id === device.id ? unassigned : prev)
+      toast.success(`${device.name || device.badgeId} unplaced.`)
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to unplace device.')
     } finally {
       setSaving(false)
     }
@@ -305,8 +329,9 @@ export default function DeviceManagement() {
       setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadDevices()
+      toast.success('Device created successfully.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to create device.')
     } finally {
       setSaving(false)
     }
@@ -351,8 +376,9 @@ export default function DeviceManagement() {
       setDevices((prev) => prev.map((d) => (d.id === selected.id ? { ...d, ...data.device } : d)))
       setSelected((prev) => ({ ...prev, ...data.device }))
       setEditOpen(false)
+      toast.success('Device updated.')
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to update device.')
     } finally {
       setSaving(false)
     }
@@ -367,19 +393,58 @@ export default function DeviceManagement() {
       setSelected(null)
       setDeleteOpen(false)
       if (data?.ttnDeleted) {
-        alert('Device deleted from app and TTN successfully')
+        toast.success('Device deleted from app and TTN.')
       } else {
-        alert(`Device deleted from app.\n\nTTN delete failed: ${data?.ttnDeleteError || 'unknown reason'}.\nPlease delete it manually from TTN Console.`)
+        toast.warning(`Device deleted from app. TTN delete failed: ${data?.ttnDeleteError || 'unknown'}. Please remove it manually from TTN Console.`)
       }
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Failed to delete device.')
     } finally {
       setDeleting(false)
     }
   }
 
-  const handleSimulate = async (e) => {
+  const openAssignOrg = (device) => {
+    setAssignOrgTarget(device)
+    setAssignOrgId(device.organizationId || '')
+    setAssignOrgOpen(true)
+    loadOrganizations()
+  }
+
+  const handleAssignOrg = async (e) => {
     e.preventDefault()
+    if (!assignOrgTarget) return
+    setSaving(true)
+    try {
+      const data = await api.put(`/api/devices/${assignOrgTarget.id}`, { organizationId: assignOrgId || null })
+      setDevices((prev) => prev.map((d) => d.id === assignOrgTarget.id ? { ...d, ...data.device } : d))
+      setAssignOrgOpen(false)
+      setAssignOrgTarget(null)
+      toast.success('Organisation assigned.')
+    } catch (e) {
+      toast.error(e.message || 'Failed to assign organisation.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleDeviceActive = async (device) => {
+    const newHealth = device.health === 'critical' ? 'healthy' : 'critical'
+    setSaving(true)
+    try {
+      const data = await api.put(`/api/devices/${device.id}`, { healthStatus: newHealth })
+      const updated = { ...device, ...data.device, health: data.device?.healthStatus || newHealth, status: newHealth === 'healthy' ? 'online' : 'offline' }
+      setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)))
+      setSelected((prev) => prev?.id === device.id ? updated : prev)
+      toast.success(`Device ${newHealth === 'healthy' ? 'activated' : 'deactivated'}.`)
+    } catch (e) {
+      toast.error(e.message || 'Failed to update device.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSimulate = async (e) => {    e.preventDefault()
     if (!selected) return
     setTesting(true)
     setTestResult(null)
@@ -393,10 +458,10 @@ export default function DeviceManagement() {
       setTestResult(data)
       await loadDevices()
       if (data.ttnSimulated) {
-        alert(`TTN simulate successful for ${selected.badgeId}. Check TTN Console Live Data and the Live Feedback page.`)
+        toast.info(`TTN simulate successful for ${selected.badgeId}. Check TTN Console Live Data and the Live Feedback page.`)
       }
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message || 'Simulation failed.')
     } finally {
       setTesting(false)
     }
@@ -409,21 +474,25 @@ export default function DeviceManagement() {
         action={
           canEdit ? (
             <div className="btn-group">
-              <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>
-                Download Sample CSV
-              </button>
-              <button
-                type="button"
-                className="btn btn--secondary"
-                onClick={() => bulkFileRef.current?.click()}
-                disabled={bulkUploading}
-              >
-                {bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}
-              </button>
-              <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>
-                Add Device
-              </button>
-              <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+              {isSuperAdmin && (
+                <>
+                  <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>
+                    Download Sample CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => bulkFileRef.current?.click()}
+                    disabled={bulkUploading}
+                  >
+                    {bulkUploading ? 'Uploading…' : 'Bulk Upload CSV'}
+                  </button>
+                  <button type="button" className="btn btn--primary" onClick={() => setAddOpen(true)}>
+                    Add Device
+                  </button>
+                  <input ref={bulkFileRef} hidden type="file" accept=".csv,text/csv" onChange={handleBulkUpload} />
+                </>
+              )}
             </div>
           ) : null
         }
@@ -442,42 +511,26 @@ export default function DeviceManagement() {
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Type</th>
                     <th>Badge ID</th>
                     <th>Site</th>
                     <th>Floor</th>
-                    <th>Restroom / Zone</th>
-                    <th>Latitude</th>
-                    <th>Longitude</th>
-                    <th>Assignment</th>
+                    <th>Restroom</th>
                     <th>Battery</th>
                     <th>Status</th>
                     <th>Health</th>
-                    <th>Last Communication</th>
+                    <th>Last Seen</th>
+                    <th></th>
                     {canEdit && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((device) => (
-                    <tr
-                      key={device.id}
-                      className={selected?.id === device.id ? 'data-table__row--selected' : ''}
-                      onClick={() => setSelected(device)}
-                    >
-                      <td>{device.name || '—'}</td>
-                      <td>{device.deviceType || 'sensor'}</td>
-                      <td><code>{device.badgeId}</code></td>
+                    <tr key={device.id} className={selected?.id === device.id ? 'data-table__row--selected' : ''}>
+                      <td style={{ fontWeight: 600 }}>{device.name || '—'}</td>
+                      <td><code style={{ fontSize: 11 }}>{device.badgeId}</code></td>
                       <td>{device.locationName || '—'}</td>
                       <td>{device.floorName || '—'}</td>
                       <td>{device.restroomName !== 'Unassigned' ? device.restroomName : (device.zoneName || '—')}</td>
-                      <td>{device.latitude ?? '—'}</td>
-                      <td>{device.longitude ?? '—'}</td>
-                      <td>
-                        {hasAssignedLocation(device)
-                          ? <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>Placed</span>
-                          : <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', fontSize: 12 }}>Available</span>
-                        }
-                      </td>
                       <td>
                         <span className={`battery battery--${(device.battery ?? 100) >= 30 ? 'ok' : 'low'}`}>
                           {device.battery ?? '—'}%
@@ -485,15 +538,39 @@ export default function DeviceManagement() {
                       </td>
                       <td><StatusBadge status={device.status || 'offline'} variant="device" /></td>
                       <td><StatusBadge status={device.health || 'healthy'} variant="health" /></td>
-                      <td>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-muted)' }}>{device.lastCommunication ? formatDateTime(device.lastCommunication) : '—'}</td>
+                      {/* Eye icon — opens detail drawer */}
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          title="View details"
+                          onClick={() => { setDrawerDevice(device); setSelected(device) }}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        </button>
+                      </td>
                       {canEdit && (
                         <td onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            {hasAssignedLocation(device) && (
-                              <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleUnassignLocation(device)}>Unplace</button>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+                            {isSuperAdmin && (
+                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(device)}>
+                                {device.organizationId ? 'Reassign' : 'Assign Org'}
+                              </button>
                             )}
-                            <button type="button" className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEdit(device)}>Edit</button>
-                            <button type="button" className="btn btn--danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setSelected(device); setDeleteOpen(true) }}>Delete</button>
+                            <button type="button" className={`btn btn--sm ${device.health === 'critical' ? 'btn--primary' : 'btn--secondary'}`} style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleToggleDeviceActive(device)} disabled={saving}>
+                              {device.health === 'critical' ? 'Activate' : 'Deactivate'}
+                            </button>
+                            {hasAssignedLocation(device) && (
+                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleUnassignLocation(device)}>Unplace</button>
+                            )}
+                            <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openEdit(device)}>Edit</button>
+                            {isSuperAdmin && (
+                              <button type="button" className="btn btn--sm btn--danger" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => { setSelected(device); setDeleteOpen(true) }}>Delete</button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -501,7 +578,7 @@ export default function DeviceManagement() {
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={canEdit ? 14 : 13} style={{ textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={canEdit ? 11 : 10} style={{ textAlign: 'center', color: '#64748b' }}>
                         No devices found
                       </td>
                     </tr>
@@ -512,46 +589,67 @@ export default function DeviceManagement() {
           )}
         </div>
 
-        {/* ── Device detail panel ── */}
-        {selected && (
-          <aside className="card device-detail">
-            <h3>Device Details</h3>
-            <dl>
-              <dt>Name</dt><dd>{selected.name || '—'}</dd>
-              <dt>Type</dt><dd>{selected.deviceType || 'sensor'}</dd>
-              <dt>Badge ID</dt><dd><code>{selected.badgeId}</code></dd>
-              <dt>Device EUI</dt><dd><code>{selected.deviceEui || '—'}</code></dd>
-              <dt>Join EUI</dt><dd><code>{selected.joinEui || '—'}</code></dd>
-              <dt>App Key</dt><dd><code>{selected.appKey || '—'}</code></dd>
-              <dt>LoRaWAN Version</dt><dd>{selected.lorawanVersion || '—'}</dd>
-              <dt>PHY Version</dt><dd>{selected.lorawanPhyVersion || '—'}</dd>
-              <dt>Restroom</dt><dd>{selected.restroomName}</dd>
-              <dt>Zone</dt><dd>{selected.zoneName || '—'}</dd>
-              <dt>Floor</dt><dd>{selected.floorName || '—'}</dd>
-              <dt>Location</dt><dd>{selected.locationName || '—'}</dd>
-              <dt>Battery</dt><dd>{selected.battery ?? '—'}%</dd>
-              <dt>Status</dt><dd><StatusBadge status={selected.status || 'offline'} variant="device" /></dd>
-              <dt>Health</dt><dd><StatusBadge status={selected.health || 'healthy'} variant="health" /></dd>
-              <dt>Last Communication</dt><dd>{selected.lastCommunication ? formatDateTime(selected.lastCommunication) : '—'}</dd>
-              <dt>Gateway</dt><dd>{selected.gatewayName || '—'}</dd>
-              <dt>Latitude</dt><dd>{selected.latitude ?? '—'}</dd>
-              <dt>Longitude</dt><dd>{selected.longitude ?? '—'}</dd>
-              <dt>Assignment</dt><dd>{hasAssignedLocation(selected) ? 'Assigned' : 'Available'}</dd>
-            </dl>
+      </div>
+
+      {/* ── Device Detail Drawer ── */}
+      <DetailDrawer
+        open={!!drawerDevice}
+        onClose={() => setDrawerDevice(null)}
+        title={drawerDevice?.name || drawerDevice?.badgeId || 'Device Details'}
+        subtitle={drawerDevice?.badgeId}
+      >
+        {drawerDevice && (
+          <>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Identity</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">Badge ID</span><span className="drawer-field__value"><code>{drawerDevice.badgeId}</code></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Type</span><span className="drawer-field__value">{drawerDevice.deviceType || 'sensor'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Device EUI</span><span className="drawer-field__value"><code>{drawerDevice.deviceEui || '—'}</code></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Join EUI</span><span className="drawer-field__value"><code>{drawerDevice.joinEui || '—'}</code></span></div>
+                <div className="drawer-field drawer-field--full"><span className="drawer-field__label">App Key</span><span className="drawer-field__value"><code>{drawerDevice.appKey || '—'}</code></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">LoRaWAN</span><span className="drawer-field__value">{drawerDevice.lorawanVersion || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">PHY</span><span className="drawer-field__value">{drawerDevice.lorawanPhyVersion || '—'}</span></div>
+              </div>
+            </div>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Status</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">Status</span><span className="drawer-field__value"><StatusBadge status={drawerDevice.status || 'offline'} variant="device" /></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Health</span><span className="drawer-field__value"><StatusBadge status={drawerDevice.health || 'healthy'} variant="health" /></span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Battery</span><span className="drawer-field__value">{drawerDevice.battery ?? '—'}%</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Gateway</span><span className="drawer-field__value">{drawerDevice.gatewayName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Assignment</span><span className="drawer-field__value">{hasAssignedLocation(drawerDevice) ? 'Placed' : 'Available'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Last Seen</span><span className="drawer-field__value" style={{ fontSize: 12 }}>{drawerDevice.lastCommunication ? formatDateTime(drawerDevice.lastCommunication) : '—'}</span></div>
+              </div>
+            </div>
+            <div className="drawer-section">
+              <p className="drawer-section__title">Location</p>
+              <div className="drawer-fields">
+                <div className="drawer-field"><span className="drawer-field__label">Site</span><span className="drawer-field__value">{drawerDevice.locationName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Floor</span><span className="drawer-field__value">{drawerDevice.floorName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Restroom</span><span className="drawer-field__value">{drawerDevice.restroomName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Zone</span><span className="drawer-field__value">{drawerDevice.zoneName || '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Latitude</span><span className="drawer-field__value">{drawerDevice.latitude ?? '—'}</span></div>
+                <div className="drawer-field"><span className="drawer-field__label">Longitude</span><span className="drawer-field__value">{drawerDevice.longitude ?? '—'}</span></div>
+              </div>
+            </div>
             {canEdit && (
-              <div className="btn-group">
-                {hasAssignedLocation(selected) && (
-                  <button type="button" className="btn btn--secondary" onClick={() => handleUnassignLocation(selected)}>Unplace</button>
-                )}
-                <button type="button" className="btn btn--secondary" onClick={() => openEdit(selected)}>Edit</button>
-                <button type="button" className="btn btn--secondary" onClick={() => openReplace(selected)}>Replace Badge</button>
-                <button type="button" className="btn btn--secondary" onClick={() => openMap(selected)}>Map Badge</button>
-                <button type="button" className="btn btn--primary" onClick={() => { setTestForm({ feedbackType: 'happy', count: 1 }); setTestResult(null); setTestOpen(true) }}>Test Device</button>
+              <div className="drawer-section">
+                <p className="drawer-section__title">Actions</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {hasAssignedLocation(drawerDevice) && <button type="button" className="btn btn--sm btn--secondary" onClick={() => { handleUnassignLocation(drawerDevice); setDrawerDevice(null) }}>Unplace</button>}
+                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openEdit(drawerDevice); setDrawerDevice(null) }}>Edit</button>
+                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openReplace(drawerDevice); setDrawerDevice(null) }}>Replace Badge</button>
+                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openMap(drawerDevice); setDrawerDevice(null) }}>Map Badge</button>
+                  <button type="button" className="btn btn--sm btn--primary" onClick={() => { setSelected(drawerDevice); setTestForm({ feedbackType: 'happy', count: 1 }); setTestResult(null); setTestOpen(true); setDrawerDevice(null) }}>Test Device</button>
+                  {isSuperAdmin && <button type="button" className="btn btn--sm btn--danger" onClick={() => { setSelected(drawerDevice); setDeleteOpen(true); setDrawerDevice(null) }}>Delete</button>}
+                </div>
               </div>
             )}
-          </aside>
+          </>
         )}
-      </div>
+      </DetailDrawer>
 
       {/* ── Bulk upload modal (spinner + result) ── */}
       <BulkUploadModal
@@ -560,6 +658,38 @@ export default function DeviceManagement() {
         onClose={() => setBulkResult(null)}
         entityName="Device"
       />
+
+      {/* ── Assign to Organisation modal (Super Admin only) ── */}
+      {isSuperAdmin && assignOrgOpen && (
+        <div className="modal-overlay" onClick={() => setAssignOrgOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h3>Assign Device to Organisation</h3>
+            <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 16px' }}>
+              Assign <strong>{assignOrgTarget?.name || assignOrgTarget?.badgeId}</strong> to a vendor organisation.
+              The vendor admin will then see it in their portal.
+            </p>
+            <form onSubmit={handleAssignOrg}>
+              <label>
+                Organisation
+                <select
+                  value={assignOrgId}
+                  onChange={(e) => setAssignOrgId(e.target.value)}
+                  className="select"
+                >
+                  <option value="">— Unassigned (inventory only) —</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="btn-group" style={{ marginTop: 16 }}>
+                <button type="button" className="btn btn--secondary" onClick={() => setAssignOrgOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Assign'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Replace badge modal ── */}
       {replaceOpen && (
