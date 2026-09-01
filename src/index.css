@@ -2110,6 +2110,84 @@ label {
   color: var(--text-muted);
 }
 
+.settings-badge--info {
+  background: rgba(8, 145, 178, 0.15);
+  color: #7dd3fc;
+  border: 1px solid rgba(8, 145, 178, 0.3);
+  margin-left: 8px;
+  vertical-align: middle;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.settings-hint--success {
+  color: #4ade80 !important;
+}
+
+/* ── Teams Power Automate setup guide ──────────────────────────────── */
+.settings-teams-guide {
+  margin: 0 0 20px;
+  padding: 16px 18px;
+  background: rgba(8, 145, 178, 0.06);
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.settings-teams-guide__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.settings-teams-guide__steps {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.settings-teams-guide__steps li {
+  padding-left: 2px;
+}
+
+.settings-teams-guide__steps strong {
+  color: var(--text-h);
+}
+
+.settings-teams-guide__steps em {
+  color: #7dd3fc;
+  font-style: normal;
+}
+
+.settings-teams-guide__steps ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: disc;
+}
+
+.settings-teams-guide__steps code {
+  font-size: 11px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #a5f3fc;
+  word-break: break-all;
+}
+
 /* Webhook test row */
 .settings-input-row {
   display: flex;

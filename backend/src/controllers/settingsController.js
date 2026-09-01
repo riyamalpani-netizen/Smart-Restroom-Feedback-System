@@ -9,6 +9,15 @@ const { logAudit } = require("../utils/auditLogger");
  * - vendor_admin: always returns their own org's settings (ignores query param)
  * - other roles: blocked at the route level
  */
+/**
+ * Strips Teams-webhook fields from a settings object for non-vendor-admin callers.
+ * Teams integration is a vendor-portal-only feature.
+ */
+function stripTeamsFields(settings) {
+  const { teamsWebhook, teamsRecipient, ...rest } = settings;
+  return rest;
+}
+
 async function getSettings(req, res) {
   try {
     const role = req.user?.role;
@@ -25,16 +34,17 @@ async function getSettings(req, res) {
 
     if (!settings) {
       // Return sensible defaults if no record exists yet
+      const defaults = {
+        organizationId: organizationId || null,
+        teamsWebhook: "",
+        teamsRecipient: "Operations Teams channel",
+        reportFrequency: "daily",
+        sessionTimeout: 28800,
+        passwordPolicy: "min 8 chars, 1 uppercase, 1 number",
+      };
       return res.status(200).json({
         message: "Settings not found – defaults returned",
-        settings: {
-          organizationId: organizationId || null,
-          teamsWebhook: "",
-          teamsRecipient: "Operations Teams channel",
-          reportFrequency: "daily",
-          sessionTimeout: 28800,
-          passwordPolicy: "min 8 chars, 1 uppercase, 1 number",
-        },
+        settings: role === "super_admin" ? stripTeamsFields(defaults) : defaults,
       });
     }
 
@@ -43,7 +53,9 @@ async function getSettings(req, res) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    res.status(200).json({ message: "Settings fetched successfully", settings });
+    // Super admin does not use the Teams integration — strip those fields
+    const payload = role === "super_admin" ? stripTeamsFields(settings) : settings;
+    res.status(200).json({ message: "Settings fetched successfully", settings: payload });
   } catch (error) {
     console.error("Get settings error:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -83,13 +95,17 @@ async function updateSettings(req, res) {
 
     const { teamsWebhook, teamsRecipient, reportFrequency, sessionTimeout, passwordPolicy } = req.body;
 
-    // Build the update payload — vendor_admin is restricted from passwordPolicy
+    // Teams webhook is a vendor-portal-only feature.
+    // Super admin cannot set or clear the webhook for any org.
     const updatePayload = {
-      teamsWebhook,
-      teamsRecipient,
       reportFrequency,
       sessionTimeout,
     };
+
+    if (role !== "super_admin") {
+      updatePayload.teamsWebhook = teamsWebhook;
+      updatePayload.teamsRecipient = teamsRecipient;
+    }
 
     if (role === "super_admin" && passwordPolicy !== undefined) {
       updatePayload.passwordPolicy = passwordPolicy;
@@ -125,8 +141,8 @@ async function updateSettings(req, res) {
 /**
  * POST /api/settings/test-teams-webhook
  *
- * - super_admin: unrestricted
- * - vendor_admin: can only test their own org's webhook
+ * Vendor-portal only — super_admin is blocked (403).
+ * vendor_admin can only test the webhook stored for their own org.
  */
 async function testTeamsWebhook(req, res) {
   try {
@@ -139,18 +155,23 @@ async function testTeamsWebhook(req, res) {
       return res.status(400).json({ message: "Teams webhook URL is required" });
     }
 
-    // For vendor_admin, verify the webhook URL matches what is stored for their org
-    if (role === "vendor_admin") {
-      const stored = await prisma.settings.findFirst({
-        where: { organizationId: callerOrgId },
-        select: { teamsWebhook: true },
+    // Teams webhook is a vendor-portal-only feature — super admin cannot test it.
+    if (role === "super_admin") {
+      return res.status(403).json({
+        message: "Teams webhook integration is only available for vendor admin organisations",
       });
-      // Allow if URL matches stored value OR if no stored value (first-time test)
-      if (stored?.teamsWebhook && stored.teamsWebhook !== teamsWebhook) {
-        return res.status(403).json({
-          message: "You can only test the webhook for your own organisation",
-        });
-      }
+    }
+    // Verify the webhook URL matches what is stored for this vendor_admin's org
+    // (prevents testing a URL they don't own).
+    const stored = await prisma.settings.findFirst({
+      where: { organizationId: callerOrgId },
+      select: { teamsWebhook: true },
+    });
+    // Allow if URL matches stored value OR if no stored value (first-time test)
+    if (stored?.teamsWebhook && stored.teamsWebhook !== teamsWebhook) {
+      return res.status(403).json({
+        message: "You can only test the webhook for your own organisation",
+      });
     }
 
     const result = await sendTeamsWebhook(teamsWebhook, {

@@ -13,21 +13,15 @@ function startCronJobs() {
 
   const daily = cron.schedule("0 8 * * *", async () => {
     await generateDailyReport();
-  }, {
-    timezone: "UTC",
-  });
+  }, { timezone: "UTC" });
 
   const weekly = cron.schedule("0 8 * * 1", async () => {
     await generateWeeklyReport();
-  }, {
-    timezone: "UTC",
-  });
+  }, { timezone: "UTC" });
 
   const monthly = cron.schedule("0 8 1 * *", async () => {
     await generateMonthlyReport();
-  }, {
-    timezone: "UTC",
-  });
+  }, { timezone: "UTC" });
 
   cronJobs = [daily, weekly, monthly];
   logger.info("Cron jobs started");
@@ -41,6 +35,30 @@ function stopCronJobs() {
   }
 }
 
+/**
+ * Returns only Settings rows that belong to a vendor-admin organisation.
+ * Digest reports are a vendor-portal feature — super-admin orgs are excluded.
+ */
+async function getVendorOrgSettings() {
+  // Find all orgs that have at least one active vendor_admin
+  const vendorOrgs = await prisma.user.findMany({
+    where: { role: "vendor_admin", active: true },
+    select: { organizationId: true },
+    distinct: ["organizationId"],
+  });
+
+  if (!vendorOrgs.length) return [];
+
+  const orgIds = vendorOrgs.map((u) => u.organizationId);
+
+  return prisma.settings.findMany({
+    where: {
+      organizationId: { in: orgIds },
+      teamsWebhook: { not: null },
+    },
+  });
+}
+
 async function generateDailyReport() {
   try {
     logger.info("Generating daily report...");
@@ -50,14 +68,16 @@ async function generateDailyReport() {
     const today = new Date(yesterday);
     today.setDate(today.getDate() + 1);
 
-    const feedback = await prisma.feedback.findMany({
-      where: { timestamp: { gte: yesterday, lt: today } },
-      include: { restroom: true },
-    });
-
-    const alerts = await prisma.alert.findMany({
-      where: { createdAt: { gte: yesterday, lt: today } },
-    });
+    const [feedback, alerts, vendorSettings] = await Promise.all([
+      prisma.feedback.findMany({
+        where: { timestamp: { gte: yesterday, lt: today } },
+        include: { restroom: true },
+      }),
+      prisma.alert.findMany({
+        where: { createdAt: { gte: yesterday, lt: today } },
+      }),
+      getVendorOrgSettings(),
+    ]);
 
     const report = {
       period: "daily",
@@ -70,14 +90,18 @@ async function generateDailyReport() {
         emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
       },
       alertsCreated: alerts.length,
-      alertsResolved: alerts.filter((a) => a.resolvedAt && a.resolvedAt >= yesterday && a.resolvedAt < today).length,
+      alertsResolved: alerts.filter(
+        (a) => a.resolvedAt && a.resolvedAt >= yesterday && a.resolvedAt < today
+      ).length,
     };
 
-    const settings = await prisma.settings.findFirst();
-    if (settings?.teamsWebhook) {
-      await sendTeamsWebhook(settings.teamsWebhook, {
-        report,
-      });
+    // Send to every vendor-admin org that has a webhook configured
+    for (const settings of vendorSettings) {
+      try {
+        await sendTeamsWebhook(settings.teamsWebhook, { report });
+      } catch (err) {
+        logger.error(`Daily report webhook failed for org ${settings.organizationId}:`, err);
+      }
     }
 
     logger.info("Daily report generated", { report });
@@ -97,9 +121,12 @@ async function generateWeeklyReport() {
     startOfWeek.setDate(startOfWeek.getDate() - 6);
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const feedback = await prisma.feedback.findMany({
-      where: { timestamp: { gte: startOfWeek, lte: endOfWeek } },
-    });
+    const [feedback, vendorSettings] = await Promise.all([
+      prisma.feedback.findMany({
+        where: { timestamp: { gte: startOfWeek, lte: endOfWeek } },
+      }),
+      getVendorOrgSettings(),
+    ]);
 
     const report = {
       period: "weekly",
@@ -113,6 +140,14 @@ async function generateWeeklyReport() {
         emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
       },
     };
+
+    for (const settings of vendorSettings) {
+      try {
+        await sendTeamsWebhook(settings.teamsWebhook, { report });
+      } catch (err) {
+        logger.error(`Weekly report webhook failed for org ${settings.organizationId}:`, err);
+      }
+    }
 
     logger.info("Weekly report generated", { report });
     return report;
@@ -128,9 +163,12 @@ async function generateMonthlyReport() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const feedback = await prisma.feedback.findMany({
-      where: { timestamp: { gte: startOfMonth, lte: endOfMonth } },
-    });
+    const [feedback, vendorSettings] = await Promise.all([
+      prisma.feedback.findMany({
+        where: { timestamp: { gte: startOfMonth, lte: endOfMonth } },
+      }),
+      getVendorOrgSettings(),
+    ]);
 
     const report = {
       period: "monthly",
@@ -143,6 +181,14 @@ async function generateMonthlyReport() {
         emergency: feedback.filter((f) => f.feedbackType === "emergency").length,
       },
     };
+
+    for (const settings of vendorSettings) {
+      try {
+        await sendTeamsWebhook(settings.teamsWebhook, { report });
+      } catch (err) {
+        logger.error(`Monthly report webhook failed for org ${settings.organizationId}:`, err);
+      }
+    }
 
     logger.info("Monthly report generated", { report });
     return report;

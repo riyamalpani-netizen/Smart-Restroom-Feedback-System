@@ -159,56 +159,90 @@ export default function Settings() {
           </div>
         </section>
 
-        {/* ── Notifications ─────────────────────────────────────────────── */}
-        <section className="settings-card">
-          <div className="settings-card__header">
-            <span className="settings-card__icon">🔔</span>
-            <div>
-              <h3 className="settings-card__title">Notifications</h3>
-              <p className="settings-card__desc">Configure how alerts are delivered to your team.</p>
-              {settings.teamsWebhook && (
-                <p className="settings-hint" style={{ marginTop: 8, color: '#15803d' }}>
-                  ✓ Connected to: {settings.teamsRecipient || 'Operations Teams channel'}
+        {/* ── Notifications — vendor admin portal only ──────────────────── */}
+        {isVendorAdmin && (
+          <section className="settings-card">
+            <div className="settings-card__header">
+              <span className="settings-card__icon">🔔</span>
+              <div>
+                <h3 className="settings-card__title">Microsoft Teams Notifications</h3>
+                <p className="settings-card__desc">
+                  Receive a real-time Teams alert every time an unhappy or emergency complaint is submitted.
                 </p>
-              )}
-            </div>
-          </div>
-          <div className="settings-grid">
-            <div className="settings-field settings-field--full">
-              <label className="settings-label">Microsoft Teams Webhook URL</label>
-              <div className="settings-input-row">
-                <input
-                  value={settings.teamsWebhook}
-                  onChange={(e) => handleChange('teamsWebhook', e.target.value)}
-                  placeholder="https://outlook.office.com/webhook/..."
-                  type="url"
-                  className="settings-input"
-                />
-                <button
-                  type="button"
-                  className={`btn settings-test-btn ${webhookStatus === 'ok' ? 'btn--success' : webhookStatus === 'error' ? 'btn--danger' : 'btn--secondary'}`}
-                  onClick={handleTestWebhook}
-                  disabled={!settings.teamsWebhook || webhookTesting}
-                >
-                  {webhookTesting ? 'Sending…' : webhookStatus === 'ok' ? '✓ Sent' : webhookStatus === 'error' ? '✗ Failed' : 'Test'}
-                </button>
+                {settings.teamsWebhook && (
+                  <p className="settings-hint settings-hint--success" style={{ marginTop: 8 }}>
+                    ✓ Webhook active — alerts will be posted to: <strong>{settings.teamsRecipient || 'your Teams channel'}</strong>
+                  </p>
+                )}
               </div>
-              <p className="settings-hint">
-                Paste a Teams incoming webhook URL to receive alert notifications in your Teams channel.
+            </div>
+
+            {/* ── How to get the URL ──────────────────────────────────── */}
+            <div className="settings-teams-guide">
+              <p className="settings-teams-guide__title">
+                How to generate your Power Automate webhook URL <span className="settings-badge settings-badge--info">One-time setup · ~3 min</span>
+              </p>
+              <ol className="settings-teams-guide__steps">
+                <li>Open <strong>Microsoft Teams</strong> → click <strong>Workflows</strong> in the left sidebar</li>
+                <li>Click <strong>New flow</strong> → search for <em>"When a Teams webhook request is received"</em> → select it</li>
+                <li>Add action: <strong>Parse JSON</strong> — use schema: <code>{'{"type":"object","properties":{"adaptiveCard":{"type":"object"}}}'}</code></li>
+                <li>Add action: <strong>Post adaptive card in a chat or channel</strong>
+                  <ul>
+                    <li>Post as: <em>Flow bot</em></li>
+                    <li>Post in: <em>Chat</em> → select your name or a group chat</li>
+                    <li>Card: <code>{'@{json(string(body(\'Parse_JSON\')?[\'adaptiveCard\']))}'}</code></li>
+                  </ul>
+                </li>
+                <li>Click <strong>Save</strong> → copy the generated <code>https://prod-xx…</code> URL → paste below</li>
+              </ol>
+              <p className="settings-hint" style={{ marginTop: 4 }}>
+                ⚠️ Old <code>webhook.office.com</code> connector URLs no longer work — Microsoft retired them in May 2026. Only Power Automate Workflow URLs are supported.
               </p>
             </div>
-            <div className="settings-field">
-              <label className="settings-label">Teams notification recipient</label>
-              <input
-                value={settings.teamsRecipient}
-                onChange={(e) => handleChange('teamsRecipient', e.target.value)}
-                placeholder="Operations Teams channel"
-                className="settings-input"
-              />
-              <p className="settings-hint">Name the channel and on-call team that receives unhappy-event alerts.</p>
+
+            <div className="settings-grid">
+              <div className="settings-field settings-field--full">
+                <label className="settings-label">Power Automate Workflow URL</label>
+                <div className="settings-input-row">
+                  <input
+                    value={settings.teamsWebhook}
+                    onChange={(e) => handleChange('teamsWebhook', e.target.value)}
+                    placeholder="https://prod-xx.westus.logic.azure.com:443/workflows/..."
+                    type="url"
+                    className="settings-input"
+                  />
+                  <button
+                    type="button"
+                    className={`btn settings-test-btn ${
+                      webhookStatus === 'ok'    ? 'btn--success' :
+                      webhookStatus === 'error' ? 'btn--danger'  : 'btn--secondary'
+                    }`}
+                    onClick={handleTestWebhook}
+                    disabled={!settings.teamsWebhook || webhookTesting}
+                  >
+                    {webhookTesting          ? 'Sending…' :
+                     webhookStatus === 'ok'  ? '✓ Sent'   :
+                     webhookStatus === 'error' ? '✗ Failed' : 'Send test'}
+                  </button>
+                </div>
+                <p className="settings-hint">
+                  Paste the URL from your Power Automate Workflow. Unhappy and emergency complaints will immediately POST an Adaptive Card alert to your Teams chat.
+                </p>
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Recipient label</label>
+                <input
+                  value={settings.teamsRecipient}
+                  onChange={(e) => handleChange('teamsRecipient', e.target.value)}
+                  placeholder="e.g. Anshu Puri — Operations"
+                  className="settings-input"
+                />
+                <p className="settings-hint">Shown inside the Teams card so recipients know who the alert is for.</p>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* ── Reports ───────────────────────────────────────────────────── */}
         <section className="settings-card">
