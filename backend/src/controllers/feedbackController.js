@@ -1,6 +1,6 @@
 const prisma = require("../config/database");
 const { getIO } = require("../utils/socket");
-const { sendTeamsWebhook } = require("../services/teamsWebhookService");
+const { notifyTeamsForAlert } = require("../services/teamsAlertService");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -22,17 +22,9 @@ async function createAlertForFeedback(feedback, device) {
       },
     });
 
-    const recentEmergencies = await prisma.feedback.count({
-      where: {
-        restroomId: feedback.restroomId,
-        feedbackType: "emergency",
-        timestamp: { gte: oneHourAgo },
-      },
-    });
-
     let priority = "low";
 
-    if (feedback.feedbackType === "emergency" || recentEmergencies > 0) {
+    if (feedback.feedbackType === "emergency") {
       priority = "critical";
     } else if (feedback.feedbackType === "needs_cleaning" && recentNeedsCleaning >= 3) {
       priority = "high";
@@ -59,25 +51,15 @@ async function createAlertForFeedback(feedback, device) {
       },
     });
 
-    await prisma.notification.create({
-      data: {
-        alertId: alert.id,
-        type: "teams",
-        recipient: "",
-        status: "pending",
-      },
-    });
-
-    const settings = await prisma.settings.findFirst();
-    if (settings?.teamsWebhook) {
-      sendTeamsWebhook(settings.teamsWebhook, {
-        restroom: feedback.restroom.name,
-        feedbackType: feedback.feedbackType,
-        priority: alert.priority,
-        battery: feedback.battery,
-        timestamp: feedback.timestamp,
-        alertId: alert.id,
-      });
+    // Every unhappy event is delivered immediately after its alert is created.
+    // The Test button is only for validating a configured webhook.
+    if (feedback.feedbackType === "emergency" || feedback.feedbackType === "needs_cleaning") {
+      try {
+        await notifyTeamsForAlert({ alert, feedback, restroom: feedback.restroom });
+      } catch (notificationError) {
+        // A delivery problem must never discard the newly created alert.
+        console.error("Teams notification error:", notificationError);
+      }
     }
 
     return alert;

@@ -16,7 +16,7 @@ async function getSettings(req, res) {
 
     // Vendor admin is always scoped to their own org
     const organizationId = role === "super_admin"
-      ? (req.query.organizationId || undefined)
+      ? (req.query.organizationId || callerOrgId)
       : callerOrgId;
 
     const settings = await prisma.settings.findFirst({
@@ -30,6 +30,7 @@ async function getSettings(req, res) {
         settings: {
           organizationId: organizationId || null,
           teamsWebhook: "",
+          teamsRecipient: "Operations Teams channel",
           reportFrequency: "daily",
           sessionTimeout: 28800,
           passwordPolicy: "min 8 chars, 1 uppercase, 1 number",
@@ -80,11 +81,12 @@ async function updateSettings(req, res) {
       });
     }
 
-    const { teamsWebhook, reportFrequency, sessionTimeout, passwordPolicy } = req.body;
+    const { teamsWebhook, teamsRecipient, reportFrequency, sessionTimeout, passwordPolicy } = req.body;
 
     // Build the update payload — vendor_admin is restricted from passwordPolicy
     const updatePayload = {
       teamsWebhook,
+      teamsRecipient,
       reportFrequency,
       sessionTimeout,
     };

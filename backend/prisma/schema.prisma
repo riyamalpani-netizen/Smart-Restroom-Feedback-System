@@ -284,6 +284,7 @@ model Settings {
   id              String       @id @default(cuid())
   organizationId  String       @unique
   teamsWebhook    String?
+  teamsRecipient  String?      @default("Operations Teams channel")
   reportFrequency String?      @default("daily")
   sessionTimeout  Int?         @default(28800)
   passwordPolicy  String?      @default("min 8 chars, 1 uppercase, 1 number")

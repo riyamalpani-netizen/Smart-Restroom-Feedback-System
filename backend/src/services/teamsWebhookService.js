@@ -36,6 +36,7 @@ async function sendTeamsWebhook(webhookUrl, data) {
                   { title: "Priority:", value: priorityLabel },
                   { title: "Battery:", value: batteryText },
                   { title: "Time:", value: timeText },
+                  ...(data.recipient ? [{ title: "Notified channel:", value: data.recipient }] : []),
                   ...(data.alertId ? [{ title: "Alert ID:", value: data.alertId }] : []),
                 ],
               },

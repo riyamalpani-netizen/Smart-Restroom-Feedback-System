@@ -14,6 +14,7 @@ export default function Settings() {
     officeName: '',
     timeZone: 'UTC',
     teamsWebhook: '',
+    teamsRecipient: 'Operations Teams channel',
     reportFrequency: 'daily',
     sessionTimeout: 28800,
     passwordPolicy: 'min 8 chars, 1 uppercase, 1 number',
@@ -31,11 +32,15 @@ export default function Settings() {
     async function load() {
       setLoading(true)
       try {
-        const data = await api.get('/api/settings')
+        const settingsUrl = isSuperAdmin && user?.organizationId
+          ? `/api/settings?organizationId=${encodeURIComponent(user.organizationId)}`
+          : '/api/settings'
+        const data = await api.get(settingsUrl)
         if (mounted && data.settings) {
           setSettings((prev) => ({
             ...prev,
             teamsWebhook: data.settings.teamsWebhook || '',
+            teamsRecipient: data.settings.teamsRecipient || 'Operations Teams channel',
             reportFrequency: data.settings.reportFrequency || 'daily',
             sessionTimeout: data.settings.sessionTimeout || 28800,
             passwordPolicy: data.settings.passwordPolicy || 'min 8 chars, 1 uppercase, 1 number',
@@ -57,7 +62,7 @@ export default function Settings() {
     }
     load()
     return () => { mounted = false }
-  }, [user?.organizationId])
+  }, [isSuperAdmin, user?.organizationId])
 
   function handleChange(field, value) {
     setSettings((s) => ({ ...s, [field]: value }))
@@ -72,6 +77,7 @@ export default function Settings() {
       const payload = {
         organizationId: user?.organizationId,
         teamsWebhook: settings.teamsWebhook,
+        teamsRecipient: settings.teamsRecipient,
         reportFrequency: settings.reportFrequency,
         sessionTimeout: settings.sessionTimeout,
       }
@@ -160,6 +166,11 @@ export default function Settings() {
             <div>
               <h3 className="settings-card__title">Notifications</h3>
               <p className="settings-card__desc">Configure how alerts are delivered to your team.</p>
+              {settings.teamsWebhook && (
+                <p className="settings-hint" style={{ marginTop: 8, color: '#15803d' }}>
+                  ✓ Connected to: {settings.teamsRecipient || 'Operations Teams channel'}
+                </p>
+              )}
             </div>
           </div>
           <div className="settings-grid">
@@ -185,6 +196,16 @@ export default function Settings() {
               <p className="settings-hint">
                 Paste a Teams incoming webhook URL to receive alert notifications in your Teams channel.
               </p>
+            </div>
+            <div className="settings-field">
+              <label className="settings-label">Teams notification recipient</label>
+              <input
+                value={settings.teamsRecipient}
+                onChange={(e) => handleChange('teamsRecipient', e.target.value)}
+                placeholder="Operations Teams channel"
+                className="settings-input"
+              />
+              <p className="settings-hint">Name the channel and on-call team that receives unhappy-event alerts.</p>
             </div>
           </div>
         </section>

@@ -1,6 +1,6 @@
 const mqtt = require("mqtt");
 const prisma = require("../config/database");
-const { sendTeamsWebhook } = require("./teamsWebhookService");
+const { notifyTeamsForAlert } = require("./teamsAlertService");
 const logger = require("../middleware/logger");
 const { TTN_MQTT_BROKER, TTN_MQTT_PORT, TTN_MQTT_USERNAME, TTN_MQTT_PASSWORD, TTN_MQTT_TOPIC } = require("../config/env");
 
@@ -236,17 +236,9 @@ async function createAlertForFeedback(feedback, device) {
       },
     });
 
-    const recentEmergencies = await prisma.feedback.count({
-      where: {
-        restroomId: feedback.restroomId,
-        feedbackType: "emergency",
-        timestamp: { gte: oneHourAgo },
-      },
-    });
-
     let priority = "low";
 
-    if (feedback.feedbackType === "emergency" || recentEmergencies > 0) {
+    if (feedback.feedbackType === "emergency") {
       priority = "critical";
     } else if (feedback.feedbackType === "needs_cleaning" && recentNeedsCleaning >= 3) {
       priority = "high";
@@ -273,25 +265,14 @@ async function createAlertForFeedback(feedback, device) {
       },
     });
 
-    await prisma.notification.create({
-      data: {
-        alertId: alert.id,
-        type: "teams",
-        recipient: "",
-        status: "pending",
-      },
-    });
-
-    const settings = await prisma.settings.findFirst();
-    if (settings?.teamsWebhook) {
-      sendTeamsWebhook(settings.teamsWebhook, {
-        restroom: feedback.restroom.name,
-        feedbackType: feedback.feedbackType,
-        priority: alert.priority,
-        battery: feedback.battery,
-        timestamp: feedback.timestamp,
-        alertId: alert.id,
-      });
+    // The same immediate-notification policy is used for device and API feedback.
+    if (feedback.feedbackType === "emergency" || feedback.feedbackType === "needs_cleaning") {
+      try {
+        await notifyTeamsForAlert({ alert, feedback, restroom: feedback.restroom });
+      } catch (notificationError) {
+        // A delivery problem must never discard the newly created alert.
+        logger.error("Teams notification error:", notificationError);
+      }
     }
 
     logger.info(`Alert created: ${alert.id} for restroom ${feedback.restroom.name} with priority ${priority}`);
