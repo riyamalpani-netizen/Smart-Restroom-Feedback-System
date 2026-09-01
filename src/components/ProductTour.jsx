@@ -746,7 +746,17 @@ export default function ProductTour() {
         const { tutorialStatus } = await api.get('/api/auth/tutorial')
         if (cancelled) return
         updateUser({ tutorialStatus })
-        if (tutorialStatus === 'pending') startTour()
+        if (tutorialStatus === 'pending') {
+          // Show the spotlight beacon on the navbar button first,
+          // then auto-start the tour after a short pause so the user
+          // sees the highlight before it begins.
+          window.dispatchEvent(new CustomEvent('srfs-tour-spotlight-on'))
+          setTimeout(() => {
+            if (cancelled) return
+            window.dispatchEvent(new CustomEvent('srfs-tour-spotlight-off'))
+            startTour()
+          }, 2800)
+        }
       } catch (err) {
         console.warn('Unable to load tutorial status:', err)
       }

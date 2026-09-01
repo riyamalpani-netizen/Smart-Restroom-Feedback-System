@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
@@ -68,6 +69,23 @@ export default function Navbar({ onMenuToggle }) {
   const breadcrumbs = BREADCRUMBS[normalizedPath] ?? BREADCRUMBS['/dashboard']
   const restartTour = () => window.dispatchEvent(new CustomEvent('srfs-tour-restart'))
 
+  // Show a spotlight beacon on the button when the tour hasn't been seen yet.
+  // ProductTour fires 'srfs-tour-spotlight' with { active: true } when it detects
+  // a pending tutorial, and { active: false } once the tour actually begins.
+  const [spotlit, setSpotlit] = useState(false)
+  const tourBtnRef = useRef(null)
+
+  useEffect(() => {
+    const on  = () => setSpotlit(true)
+    const off = () => setSpotlit(false)
+    window.addEventListener('srfs-tour-spotlight-on',  on)
+    window.addEventListener('srfs-tour-spotlight-off', off)
+    return () => {
+      window.removeEventListener('srfs-tour-spotlight-on',  on)
+      window.removeEventListener('srfs-tour-spotlight-off', off)
+    }
+  }, [])
+
   return (
     <header className="navbar">
       <button
@@ -100,9 +118,24 @@ export default function Navbar({ onMenuToggle }) {
       <div className="navbar__spacer" />
 
       <div className="navbar__actions">
-        <button type="button" className="navbar__tour-btn" onClick={restartTour}>
-          Take a tour
-        </button>
+        <div className={`navbar__tour-wrap${spotlit ? ' is-spotlit' : ''}`}>
+          <button
+            ref={tourBtnRef}
+            type="button"
+            className="navbar__tour-btn"
+            onClick={() => {
+              setSpotlit(false)
+              restartTour()
+            }}
+          >
+            Take a tour
+          </button>
+          {spotlit && (
+            <span className="navbar__tour-hint" aria-live="polite">
+              Start here →
+            </span>
+          )}
+        </div>
         <Link to="/profile" className="navbar__profile">
           <span className="navbar__avatar" aria-hidden="true">
             {user?.name?.charAt(0) ?? 'U'}
