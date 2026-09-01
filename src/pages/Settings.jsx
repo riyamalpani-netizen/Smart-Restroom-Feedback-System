@@ -105,6 +105,10 @@ export default function Settings() {
     }
   }
 
+  function handleRestartTour() {
+    window.dispatchEvent(new CustomEvent('srfs-tour-restart'))
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -285,6 +289,19 @@ export default function Settings() {
             </div>
           </section>
         )}
+
+        <section className="settings-card">
+          <div className="settings-card__header">
+            <span className="settings-card__icon">🧭</span>
+            <div>
+              <h3 className="settings-card__title">Product tour</h3>
+              <p className="settings-card__desc">Revisit the main navigation and features available to your role.</p>
+            </div>
+          </div>
+          <button type="button" className="btn btn--secondary" onClick={handleRestartTour}>
+            Restart / Take a Tour
+          </button>
+        </section>
 
         {/* ── Save bar ──────────────────────────────────────────────────── */}
         <div className="settings-save-bar">

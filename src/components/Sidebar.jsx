@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { NAV_ITEMS, ROLES, canAccessRoute } from '../utils/constants'
@@ -59,6 +59,13 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   const activeGroup = visibleItems.find((i) => i.path === location.pathname)?.group ?? groups[0]
   const [openGroups, setOpenGroups] = useState(() => new Set([activeGroup]))
+  const [tourActive, setTourActive] = useState(false)
+
+  useEffect(() => {
+    const updateTourState = (event) => setTourActive(Boolean(event.detail?.active))
+    window.addEventListener('srfs-tour-state', updateTourState)
+    return () => window.removeEventListener('srfs-tour-state', updateTourState)
+  }, [])
 
   function toggleGroup(group) {
     setOpenGroups((prev) => {
@@ -95,7 +102,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* ── Navigation ── */}
       <nav className="sidebar__nav" aria-label="Main navigation">
         {groups.map((group) => {
-          const isOpen = collapsed || openGroups.has(group)
+          const isOpen = collapsed || tourActive || openGroups.has(group)
           const items = visibleItems.filter((i) => i.group === group)
           const hasActive = items.some((i) => i.path === location.pathname)
 
@@ -124,6 +131,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                     <NavLink
                       key={item.path}
                       to={item.path}
+                      data-tour-id={item.path}
                       className={({ isActive }) =>
                         `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
                       }
