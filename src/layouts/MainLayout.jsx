@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
-import ProductTour from '../components/ProductTour'
+import OnboardingModal from '../components/OnboardingModal'
 
 export default function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -28,7 +28,7 @@ export default function MainLayout() {
           <Outlet />
         </main>
       </div>
-      <ProductTour />
+      <OnboardingModal />
     </div>
   )
 }
