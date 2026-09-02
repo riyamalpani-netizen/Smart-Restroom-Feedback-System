@@ -83,7 +83,7 @@ const EV_LABELS = {
   gateway_offline:'Gateway Offline', system_alert:'System Alert',
 }
 const ALL_EVENTS = Object.keys(EV_LABELS)
-const STEPS = ['Channel','Provider','Configure','Recipients','Events','Template','Review']
+const STEPS = ['Channel','Provider','Configure','Recipients','Template','Review']
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getAuthModes(meta, ct, p) {
@@ -341,24 +341,8 @@ function Wizard({ meta, editCh, onSave, onClose }) {
             </div>
           )}
 
-          {/* 4 – events */}
+          {/* 4 – template */}
           {step===4&&(
-            <div>
-              <p className="nc-step-desc">Which events trigger notifications through this channel?</p>
-              <div className="nc-ev-list">
-                {ALL_EVENTS.map(ev=>(
-                  <label key={ev} className="nc-ev-row">
-                    <input type="checkbox" checked={events.includes(ev)}
-                      onChange={()=>setEvents(s=>s.includes(ev)?s.filter(x=>x!==ev):[...s,ev])}/>
-                    <strong>{EV_LABELS[ev]}</strong>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 5 – templates */}
-          {step===5&&(
             <div>
               <p className="nc-step-desc">
                 Customise message templates. Supports <code>{'{{variable}}'}</code> — siteName, floorName, restroomName, deviceId, feedbackType, priority, timestamp.
@@ -385,15 +369,14 @@ function Wizard({ meta, editCh, onSave, onClose }) {
             </div>
           )}
 
-          {/* 6 – review */}
-          {step===6&&(
+          {/* 5 – review */}
+          {step===5&&(
             <div className="nc-review">
               {[
                 ['Channel', CH_LABELS[ct]||ct],
                 ['Provider', meta?.[ct]?.providers?.[prov]?.label||prov],
                 ['Name', name],
                 ['Recipients', `${recips.length} configured`],
-                ['Events', events.map(e=>EV_LABELS[e]).join(', ')||'None'],
                 ['Custom Templates', Object.keys(tmpls).length?Object.keys(tmpls).join(', '):'Using defaults'],
               ].map(([k,v])=>(
                 <div key={k} className="nc-review-row">

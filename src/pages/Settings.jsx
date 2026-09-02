@@ -15,7 +15,7 @@ const EV_LABELS = {
   gateway_offline:'Gateway Offline', system_alert:'System Alert',
 }
 const ALL_EVENTS = Object.keys(EV_LABELS)
-const STEPS = ['Channel','Provider','Configure','Recipients','Events','Template','Review']
+const STEPS = ['Channel','Provider','Configure','Recipients','Template','Review']
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getAuthModes(meta, ct, p) {
@@ -128,7 +128,9 @@ function Wizard({ meta, editCh, onSave, onClose }) {
             <div>
               <p className="nc-step-desc">Select the type of notification channel.</p>
               <div className="nc-ch-grid">
-                {meta&&Object.entries(meta).map(([c,info])=>(
+                {!meta
+                  ? <p className="nc-hint">Loading channel types…</p>
+                  : Object.entries(meta).map(([c,info])=>(
                   <button key={c} className={`nc-ch-opt${ct===c?' nc-ch-opt--sel':''}`} onClick={()=>pickCt(c)}>
                     <span className="nc-ch-opt-icon">{CH_ICONS[c]||'🔔'}</span>
                     <span>{info.label}</span>
@@ -215,20 +217,6 @@ function Wizard({ meta, editCh, onSave, onClose }) {
           )}
           {step===4&&(
             <div>
-              <p className="nc-step-desc">Which events trigger notifications through this channel?</p>
-              <div className="nc-ev-list">
-                {ALL_EVENTS.map(ev=>(
-                  <label key={ev} className="nc-ev-row">
-                    <input type="checkbox" checked={events.includes(ev)}
-                      onChange={()=>setEvents(s=>s.includes(ev)?s.filter(x=>x!==ev):[...s,ev])}/>
-                    <strong>{EV_LABELS[ev]}</strong>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-          {step===5&&(
-            <div>
               <p className="nc-step-desc">Customise message templates. Supports <code>{'{{variable}}'}</code> — siteName, floorName, restroomName, deviceId, feedbackType, priority, timestamp.</p>
               {events.map(ev=>(
                 <div key={ev} className="nc-tmpl-block">
@@ -251,14 +239,13 @@ function Wizard({ meta, editCh, onSave, onClose }) {
               <p className="nc-hint">Leave empty to use built-in defaults.</p>
             </div>
           )}
-          {step===6&&(
+          {step===5&&(
             <div className="nc-review">
               {[
                 ['Channel',CH_LABELS[ct]||ct],
                 ['Provider',meta?.[ct]?.providers?.[prov]?.label||prov],
                 ['Name',name],
                 ['Recipients',`${recips.length} configured`],
-                ['Events',events.map(e=>EV_LABELS[e]).join(', ')||'None'],
                 ['Custom Templates',Object.keys(tmpls).length?Object.keys(tmpls).join(', '):'Using defaults'],
               ].map(([k,v])=>(
                 <div key={k} className="nc-review-row">
@@ -393,11 +380,12 @@ function NotificationChannelsSection() {
 
   const load = useCallback(async()=>{
     setLoading(true)
-    try{
-      const [cr,mr]=await Promise.all([ncApi.getChannels(),ncApi.getMetadata()])
-      setChannels(cr.channels||[]);setMeta(mr.metadata||null)
-    }catch(e){toast.error(e.message)}
-    finally{setLoading(false)}
+    const [cr,mr]=await Promise.allSettled([ncApi.getChannels(),ncApi.getMetadata()])
+    if(cr.status==='fulfilled') setChannels(cr.value?.channels||[])
+    else toast.error(cr.reason?.message||'Failed to load channels')
+    if(mr.status==='fulfilled') setMeta(mr.value?.metadata||null)
+    else console.error('Failed to load notification metadata:',mr.reason)
+    setLoading(false)
   },[toast])
 
   useEffect(()=>{load()},[load])

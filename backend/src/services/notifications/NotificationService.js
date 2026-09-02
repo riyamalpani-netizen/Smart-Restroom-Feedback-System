@@ -353,7 +353,7 @@ function getProviderMetadata() {
             smtp_auth: {
               label: "SMTP Auth with App Password",
               fields: [
-                { key: "smtpUser", label: "Microsoft 365 Email", type: "email", required: true, placeholder: "you@yourdomain.com" },
+                { key: "smtpUser", label: "Sender Email", type: "email", required: true, placeholder: "you@yourdomain.com" },
                 { key: "smtpPassword", label: "App Password", type: "password", required: true, hint: "Microsoft 365 Admin Center → Users → Active users → Manage email apps → Enable SMTP AUTH" },
                 { key: "fromName", label: "From Name", type: "text", required: false, placeholder: "Smart Restroom Alerts" },
               ],
