@@ -19,6 +19,17 @@ async function sendTeamsWebhook(webhookUrl, data) {
       return { success: false, error: "Webhook URL not configured" };
     }
 
+    // Patch Power Platform URLs that have api-version=1 placeholder
+    let fixedUrl = webhookUrl;
+    try {
+      const u = new URL(webhookUrl);
+      const v = u.searchParams.get("api-version");
+      if (!v || v === "1" || v === "1.0") {
+        u.searchParams.set("api-version", "2024-10-01");
+        fixedUrl = u.toString();
+      }
+    } catch { /* keep original if URL parse fails */ }
+
     const restroomLabel = data.restroom || data.restroomName || "Unknown Restroom";
     const feedbackType  = data.feedbackType || "unknown";
     const statusLabel   = feedbackType
@@ -106,7 +117,7 @@ async function sendTeamsWebhook(webhookUrl, data) {
       ],
     };
 
-    const response = await axios.post(webhookUrl, payload, {
+    const response = await axios.post(fixedUrl, payload, {
       headers: { "Content-Type": "application/json" },
       timeout: 15000,
     });

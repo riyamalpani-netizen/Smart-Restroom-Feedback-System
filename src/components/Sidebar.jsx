@@ -5,7 +5,7 @@ import { NAV_ITEMS, ROLES, canAccessRoute } from '../utils/constants'
 import {
   IconDashboard, IconLiveFeedback, Iconsidemap, IconReports,
   IconSiteConfig, IconGateway, IconDevice, IconRestroom,
-  IconAlerts, IconDisaster, IconUsers, IconAudit, IconSettings,
+  IconAlerts, IconDisaster, IconUsers, IconAudit, IconSettings, IconNotifications,
   IconOverview, IconMonitoring, IconInfrastructure,
   IconRestroomOps, IconAlertsSafety, IconAdmin,
 } from './SidebarIcons'
@@ -25,6 +25,7 @@ function NavIcon({ name }) {
     case 'users':        return <IconUsers />
     case 'audit':        return <IconAudit />
     case 'settings':     return <IconSettings />
+    case 'notifications': return <IconNotifications />
     default:             return <span>{name}</span>
   }
 }

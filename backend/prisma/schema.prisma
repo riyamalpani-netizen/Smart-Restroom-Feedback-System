@@ -14,12 +14,13 @@ model Organization {
   logo      String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  auditLogs AuditLog[]
-  locations Location[]
-  restrooms Restroom[] @relation("OrganizationRestrooms")
-  settings  Settings?
-  users     User[]
-  devices   Device[]
+  auditLogs            AuditLog[]
+  locations            Location[]
+  restrooms            Restroom[]            @relation("OrganizationRestrooms")
+  settings             Settings?
+  users                User[]
+  devices              Device[]
+  notificationChannels NotificationChannel[]
 
   @@map("organizations")
 }
@@ -302,6 +303,102 @@ model gateway_status {
   lastSeen    DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime
+}
+
+// ── Notification Channel Management ───────────────────────────────────────────
+
+model NotificationChannel {
+  id             String                   @id @default(cuid())
+  organizationId String
+  channelType    NotificationChannelType
+  provider       String                   // gmail, microsoft365, smtp, teams_workflow, slack, webhook, other
+  name           String                   // display name set by admin
+  enabled        Boolean                  @default(true)
+  // Encrypted JSON config stored as text — secrets are AES-256 encrypted before persisting
+  configuration  String                   @default("{}")
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  organization   Organization             @relation(fields: [organizationId], references: [id])
+  recipients     NotificationRecipient[]
+  templates      NotificationTemplate[]
+  logs           NotificationLog[]
+
+  @@map("notification_channels")
+}
+
+model NotificationRecipient {
+  id                    String              @id @default(cuid())
+  notificationChannelId String
+  recipientType         String              // email, teams_user, slack_channel, webhook_url, phone
+  recipientValue        String              // actual address/identifier
+  label                 String?             // friendly display name
+  enabled               Boolean             @default(true)
+  // Which alert event types this recipient is subscribed to (JSON array, null = all)
+  eventTypes            String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  channel               NotificationChannel @relation(fields: [notificationChannelId], references: [id], onDelete: Cascade)
+
+  @@map("notification_recipients")
+}
+
+model NotificationTemplate {
+  id                    String              @id @default(cuid())
+  notificationChannelId String
+  eventType             NotificationEvent
+  subject               String?             // used by email channels
+  body                  String              // supports {{variable}} placeholders
+  format                String              @default("text") // text, html, json, markdown
+  enabled               Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  channel               NotificationChannel @relation(fields: [notificationChannelId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationChannelId, eventType])
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  notificationChannelId String?
+  eventType             NotificationEvent
+  channelType           NotificationChannelType
+  provider              String
+  recipient             String
+  status                NotificationLogStatus @default(pending)
+  errorMessage          String?
+  sentAt                DateTime?
+  metadata              String?             // JSON string with extra context
+  createdAt             DateTime            @default(now())
+  channel               NotificationChannel? @relation(fields: [notificationChannelId], references: [id], onDelete: SetNull)
+
+  @@map("notification_logs")
+}
+
+enum NotificationChannelType {
+  email
+  teams
+  slack
+  webhook
+  sms
+  push
+}
+
+enum NotificationEvent {
+  unhappy_feedback
+  device_offline
+  low_battery
+  gateway_offline
+  system_alert
+  emergency_feedback
+}
+
+enum NotificationLogStatus {
+  pending
+  sent
+  failed
+  skipped
 }
 
 enum FeedbackType {

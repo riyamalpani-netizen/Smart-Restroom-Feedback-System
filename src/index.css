@@ -3842,3 +3842,38 @@ label {
   pointer-events: auto;
 }
 
+
+/* ── Notification Channels inline (Settings page) ─────────────────────────── */
+.settings-nc-section { margin-top: 4px; }
+
+.settings-nc-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+
+.settings-nc-card {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  background: var(--input-bg, #111225); border: 1px solid var(--border, #252740);
+  border-radius: 8px; padding: 12px 14px; transition: border-color .2s;
+}
+.settings-nc-card:hover { border-color: #7774f1; }
+.settings-nc-card--off  { opacity: .6; }
+
+.settings-nc-card__left  { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.settings-nc-card__icon  { font-size: 20px; flex-shrink: 0; }
+.settings-nc-card__name  { font-size: 13px; font-weight: 700; color: var(--text, #e8e9f1); margin: 0 0 2px; }
+.settings-nc-card__meta  { font-size: 11px; color: var(--text-muted, #949ab1); margin: 0; }
+
+.settings-nc-card__right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.settings-nc-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+.settings-nc-badge--on  { background: rgba(16,185,129,.15); color: #10b981; }
+.settings-nc-badge--off { background: rgba(148,154,177,.12); color: #949ab1; }
+
+.settings-nc-empty { padding: 12px 0; }
+.settings-nc-empty p { font-size: 13px; color: var(--text, #e8e9f1); margin: 0 0 4px; }
+
+.settings-nc-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+.settings-nc-confirm {
+  margin-top: 10px; padding: 12px 14px;
+  background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+  border-radius: 8px; font-size: 13px; color: var(--text, #e8e9f1);
+}
