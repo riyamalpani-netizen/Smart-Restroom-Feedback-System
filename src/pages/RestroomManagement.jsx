@@ -149,6 +149,7 @@ export default function RestroomManagement() {
                 <button type="button" className="btn btn--ghost" onClick={cancelEdit}>Cancel Edit</button>
               )}
               <button
+                data-tour="restroom-add-btn"
                 type="button"
                 className="btn btn--primary"
                 onClick={() => {
@@ -232,7 +233,7 @@ export default function RestroomManagement() {
       {/* ── Main layout: table + detail panel ── */}
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 380px' : '1fr', gap: 16 }}>
         {/* Table */}
-        <div className="card">
+        <div className="card" data-tour="restroom-table">
           {loading ? (
             <div className="loader"><div className="loader__spinner" /></div>
           ) : (

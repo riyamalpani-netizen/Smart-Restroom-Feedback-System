@@ -71,7 +71,7 @@ export default function Navbar({ onMenuToggle }) {
   }
 
   return (
-    <header className="navbar">
+    <header className="navbar" data-tour="navbar">
       <button
         type="button"
         className="navbar__menu-btn"
@@ -112,7 +112,7 @@ export default function Navbar({ onMenuToggle }) {
             Take a tour
           </button>
         </div>
-        <Link to="/profile" className="navbar__profile">
+        <Link to="/profile" className="navbar__profile" data-tour="navbar-profile">
           <span className="navbar__avatar" aria-hidden="true">
             {user?.name?.charAt(0) ?? 'U'}
           </span>

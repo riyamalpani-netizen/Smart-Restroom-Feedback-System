@@ -164,7 +164,7 @@ export default function Settings() {
         </section>
 
         {/* ── Notifications ─────────────────────────────────────────────── */}
-        <section className="settings-card">
+        <section className="settings-card" data-tour="settings-notifications">
           <div className="settings-card__header">
             <span className="settings-card__icon">🔔</span>
             <div>
@@ -290,7 +290,7 @@ export default function Settings() {
           </section>
         )}
 
-        <section className="settings-card">
+        <section className="settings-card" data-tour="settings-tour-card">
           <div className="settings-card__header">
             <span className="settings-card__icon">🧭</span>
             <div>

@@ -167,7 +167,7 @@ export default function AlertManagement() {
   return (
     <div className="page">
       {/* ── Tabs ── */}
-      <div className="tabs" style={{ marginBottom: 12 }}>
+      <div className="tabs" style={{ marginBottom: 12 }} data-tour="alert-tabs">
         {TABS.map((t) => (
           <button
             key={t}
@@ -181,7 +181,7 @@ export default function AlertManagement() {
       </div>
 
       {/* ── Filters ── */}
-      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }} data-tour="alert-filters">
         <SearchBar value={search} onChange={setSearch} placeholder="Search alerts…" />
 
         {tab === 'active' && (
@@ -223,7 +223,7 @@ export default function AlertManagement() {
       </div>
 
       {/* ── Table ── */}
-      <div className="card">
+      <div className="card" data-tour="alert-table">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>
         ) : (

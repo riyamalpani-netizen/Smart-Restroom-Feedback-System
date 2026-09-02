@@ -1175,7 +1175,10 @@ export default function OnboardingModal() {
   }, [user?.id])
 
   useEffect(() => {
-    const handler = () => { setIndex(0); setOpen(true) }
+    // OnboardingModal only opens on first login (pending status).
+    // The srfs-tour-restart event is handled exclusively by ProductTour (Driver.js).
+    // Do NOT open the slideshow on restart — that would conflict with the contextual tour.
+    const handler = () => { /* no-op: Driver.js tour handles restart */ }
     window.addEventListener('srfs-tour-restart', handler)
     return () => window.removeEventListener('srfs-tour-restart', handler)
   }, [])
@@ -1217,6 +1220,8 @@ export default function OnboardingModal() {
     } finally {
       savingRef.current = false
     }
+    // After first-login slideshow closes, fire the contextual (Driver.js) tour
+    window.dispatchEvent(new CustomEvent('srfs-onboarding-closed', { detail: { status } }))
   }, [updateUser])
 
   const handleFinish = useCallback(() => handleClose('completed'), [handleClose])

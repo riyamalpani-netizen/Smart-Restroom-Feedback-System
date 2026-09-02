@@ -4220,6 +4220,134 @@ body.srfs-tour-active .restroom-geo-map__canvas {
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   DRIVER.JS THEME — matches the app's dark teal design system
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Popover card */
+.driver-popover.srfs-driver-popover {
+  background: linear-gradient(160deg, #162329 0%, #0f1c22 100%);
+  border: 1px solid rgba(8, 145, 178, 0.4);
+  border-radius: 16px;
+  box-shadow:
+    0 32px 64px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(8, 145, 178, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e8f0f2;
+  font-family: var(--sans, system-ui, sans-serif);
+  max-width: 360px;
+  padding: 20px 22px 16px;
+}
+
+/* Arrow */
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #162329; }
+
+/* Title */
+.driver-popover.srfs-driver-popover .driver-popover-title {
+  color: #f2fbff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+  line-height: 1.25;
+}
+
+/* Description */
+.driver-popover.srfs-driver-popover .driver-popover-description {
+  color: #94b4be;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+/* Progress text */
+.driver-popover.srfs-driver-popover .driver-popover-progress-text {
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(8, 145, 178, 0.15);
+  border: 1px solid rgba(8, 145, 178, 0.25);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+/* Footer / buttons row */
+.driver-popover.srfs-driver-popover .driver-popover-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Close (×) button */
+.driver-popover.srfs-driver-popover .driver-popover-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  color: #8ba3ad;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-close-btn:hover {
+  background: rgba(8,145,178,0.2);
+  color: #f2fbff;
+}
+
+/* Prev button */
+.driver-popover.srfs-driver-popover .driver-popover-prev-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: #8ba3ad;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-prev-btn:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.28);
+  color: #e8f0f2;
+}
+
+/* Next / Done button */
+.driver-popover.srfs-driver-popover .driver-popover-next-btn {
+  background: linear-gradient(135deg, #0891b2, #0e7490);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 16px;
+  margin-left: auto;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-next-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+/* Spotlight ring */
+.driver-overlay .driver-active-element {
+  outline: 2px solid rgba(8, 145, 178, 0.7) !important;
+  outline-offset: 3px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    ONBOARDING MODAL  (video-style fullscreen walkthrough)
    ═══════════════════════════════════════════════════════════════════ */
 

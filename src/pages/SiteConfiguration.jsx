@@ -633,6 +633,16 @@ export default function SiteConfiguration() {
   const geoJsonRef = useRef(null)
   const planImgRef = useRef(null) // shared ref between RotatableImageOverlay and DraggablePlanOverlay
   const [step, setStep] = useState(1)
+
+  // Listen for tour-driven wizard step changes
+  useEffect(() => {
+    function handleTourStep(e) {
+      const s = e.detail?.step
+      if (s >= 1 && s <= 6) setStep(s)
+    }
+    window.addEventListener('srfs-site-config-step', handleTourStep)
+    return () => window.removeEventListener('srfs-site-config-step', handleTourStep)
+  }, [])
   const [site, setSite] = useState(null)
   const [floors, setFloors] = useState([])
   const [floor, setFloor] = useState(null)
@@ -1867,7 +1877,9 @@ export default function SiteConfiguration() {
         )}
       </header>
 
-      <Stepper currentStep={step} setCurrentStep={setStep} />
+      <div data-tour="site-config-wizard">
+        <Stepper currentStep={step} setCurrentStep={setStep} />
+      </div>
 
       <div className="planner-progress" aria-hidden="true">
         <div className="planner-progress__bar" style={{ width: `${progress}%` }} />
@@ -1885,7 +1897,7 @@ export default function SiteConfiguration() {
         <div className="planner-stage-wrap">
           <section className="planner-form-card">
             <div className="planner-form-layout">
-               <div className="planner-form">
+               <div className="planner-form" data-tour="sc-site-form">
                 {selectedLocationId ? (
                   <label>
                     <span>Editing site</span>
@@ -1906,7 +1918,7 @@ export default function SiteConfiguration() {
                 <label>Site Type <b>*</b><select value={siteForm.type} onChange={(e) => setSiteForm({ ...siteForm, type: e.target.value })}><option value="">Select a site type...</option><option>Office</option><option>Hospital</option><option>School</option><option>Retail</option><option>Home</option></select></label>
                 <label>Location <b>*</b><input value={siteForm.location} placeholder="e.g. Chandigarh, India" onChange={(e) => setSiteForm({ ...siteForm, location: e.target.value })} /></label>
                 <label>Description <em>(optional)</em><textarea value={siteForm.description} placeholder="e.g. Main campus building" onChange={(e) => setSiteForm({ ...siteForm, description: e.target.value })} /></label>
-                <div className="planner-coordinates">
+                <div className="planner-coordinates" data-tour="sc-coordinates">
                   <strong>Coordinates <b>*</b></strong>
                   <p>Provide the site&apos;s GPS centre point. Use &ldquo;Mark centre on map&rdquo; to pick visually.</p>
                   <div>
@@ -1916,7 +1928,7 @@ export default function SiteConfiguration() {
                   <button type="button" className="planner-button planner-button--dark" onClick={() => setPickerOpen(true)}>⌖ Mark centre on map</button>
                 </div>
               </div>
-               <div className="planner-form-layout__preview">
+               <div className="planner-form-layout__preview" data-tour="sc-site-preview">
                  <PreviewPanel title="Site preview" empty={!siteForm.name && !previewCoords ? 'Fill in the form to see a live preview of your site.' : null}>
                    <div className="planner-preview-grid">
                      {siteForm.name && <div className="planner-preview-card"><span className="planner-preview-card__label">Name</span><span className="planner-preview-card__value">{siteForm.name}</span></div>}
@@ -2040,7 +2052,7 @@ export default function SiteConfiguration() {
 
               {/* Alignment controls — shown once a plan is uploaded */}
               {plan && (
-                <div className="planner-align">
+                <div className="planner-align" data-tour="sc-align-controls">
                   <strong>Align floor plan</strong>
                   <small>Drag ✥ to move · use nudge buttons to fine-tune position & size.</small>
 
@@ -2308,7 +2320,7 @@ export default function SiteConfiguration() {
 
 
               {step === 3 && (
-                <div className="planner-toolbox">
+                <div className="planner-toolbox" data-tour="sc-zone-toolbox">
                   <strong>{editingZoneId ? 'Edit zone' : 'Draw zones'}</strong>
                   {editingZoneId ? (
                     <>
@@ -2404,7 +2416,7 @@ export default function SiteConfiguration() {
               )}
 
               {step === 4 && (
-                <div className="planner-placement">
+                <div className="planner-placement" data-tour="sc-device-placement">
                   <strong>Device placement</strong>
                   <p>Select an existing device from Device Management and click on the map to place it. Restrooms saved in the previous step are listed below.</p>
                     {selectedDeviceId && (() => {
@@ -2459,7 +2471,7 @@ export default function SiteConfiguration() {
               )}
 
               {step === 5 && (
-                <div className="planner-placement">
+                <div className="planner-placement" data-tour="sc-gateway-placement">
                   <strong>Gateway placement</strong>
                   <p>Select an existing gateway from Gateway Management and click on the map to place it.</p>
                    {selectedGatewayId && (() => {
@@ -2565,7 +2577,7 @@ export default function SiteConfiguration() {
       {/* Step 6 — Review */}
       {step === 6 && (
         <div className="planner-stage-wrap">
-          <section className="planner-review">
+          <section className="planner-review" data-tour="sc-review">
             <h2>Review site configuration</h2>
             <p>All floors, zones, devices and gateways configured for this site.</p>
 

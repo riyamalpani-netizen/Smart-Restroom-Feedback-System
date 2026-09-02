@@ -82,7 +82,7 @@ export default function Sidebar({ collapsed, onToggle }) {
     null
 
   return (
-    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`} data-tour="sidebar">
       {/* ── Brand ── */}
       <div className="sidebar__brand">
         <span className="sidebar__logo" aria-hidden="true">
@@ -132,6 +132,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                       key={item.path}
                       to={item.path}
                       data-tour-id={item.path}
+                      data-tour={`nav-${item.path}`}
                       className={({ isActive }) =>
                         `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
                       }

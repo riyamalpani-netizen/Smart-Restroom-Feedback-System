@@ -392,10 +392,11 @@ export default function GatewayManagement() {
         }
       />
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Search gateways..." />
-
+      <div data-tour="gateway-search">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search gateways..." />
+      </div>
       <div className="device-layout">
-        <div className="card">
+        <div className="card" data-tour="gateway-table">
           {loading ? (
             <div className="loader-wrap"><div className="loader" /></div>
           ) : (

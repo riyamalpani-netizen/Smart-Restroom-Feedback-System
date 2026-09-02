@@ -187,7 +187,7 @@ export default function Dashboard() {
   return (
     <div className="page dashboard-page">
       {/* ── Filters ── */}
-      <div className="filters card dashboard-filters">
+      <div className="filters card dashboard-filters" data-tour="dashboard-filters">
         <div className="dashboard-filters__title">
           <span style={{ fontWeight: 600, color: 'white', fontSize: 13 }}>Filters</span>
           {hasActiveFilters && (
@@ -251,7 +251,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <DashboardCards stats={dashboardData.stats} />
+      <div data-tour="dashboard-kpi-cards">
+        <DashboardCards stats={dashboardData.stats} />
+      </div>
 
       {/* ── Feedback Trend + Battery ── */}
       <div className="dashboard-grid dashboard-grid--overview">
@@ -262,7 +264,9 @@ export default function Dashboard() {
       {/* ── Restroom Map + Alerts ── */}
       <div className="dashboard-grid">
         <RestroomMap restrooms={dashboardData.restrooms} />
-        <AlertWidget alerts={dashboardData.alerts} onAcknowledge={handleAcknowledge} onResolve={handleResolve} />
+        <div data-tour="dashboard-alerts">
+          <AlertWidget alerts={dashboardData.alerts} onAcknowledge={handleAcknowledge} onResolve={handleResolve} />
+        </div>
       </div>
 
       {/* ── Device Health + Site Performance ── */}

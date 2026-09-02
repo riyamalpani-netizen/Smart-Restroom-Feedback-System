@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 import OnboardingModal from '../components/OnboardingModal'
+import ProductTour from '../components/ProductTour'
 
 export default function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -29,6 +30,7 @@ export default function MainLayout() {
         </main>
       </div>
       <OnboardingModal />
+      <ProductTour />
     </div>
   )
 }
