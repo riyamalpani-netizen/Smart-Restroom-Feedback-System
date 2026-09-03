@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "studio": "node node_modules/@prisma/cli-standard/build/index.js studio --schema prisma/schema.prisma --port 5556",
     "test": "jest --forceExit --detectOpenHandles",
     "test:watch": "jest --watch --forceExit --detectOpenHandles",
     "test:coverage": "jest --coverage --forceExit --detectOpenHandles"
@@ -37,9 +38,11 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@prisma/cli-standard": "npm:prisma@^5.22.0",
     "jest": "^30.4.2",
     "jest-mock-extended": "^4.0.1",
     "nodemon": "^3.1.14",
+    "prisma-cli": "npm:prisma@5.22.0",
     "supertest": "^7.2.2"
   }
 }
