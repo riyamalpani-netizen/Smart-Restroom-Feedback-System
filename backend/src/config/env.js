@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 module.exports = {
-  DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:Postgres%40123@localhost:5432/smart_restroom?schema=public",
   JWT_SECRET: process.env.JWT_SECRET || "smart-restroom-secret-key",
   PORT: process.env.PORT || 5000,
   TTN_MQTT_BROKER: process.env.TTN_MQTT_BROKER || "eu1.cloud.thethings.network",
