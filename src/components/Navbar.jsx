@@ -62,12 +62,16 @@ const BREADCRUMBS = {
 export default function Navbar({ onMenuToggle }) {
   const { user, logout } = useAuth()
   const location = useLocation()
-  const pageTitle = PAGE_TITLES[location.pathname] ?? 'Smart Restroom'
-  const pageSubtitle = PAGE_SUBTITLES[location.pathname] ?? ''
-  const breadcrumbs = BREADCRUMBS[location.pathname] ?? [{ label: pageTitle }]
+  const normalizedPath = location.pathname === '/' ? '/dashboard' : location.pathname
+  const pageSubtitle = PAGE_SUBTITLES[normalizedPath] ?? PAGE_SUBTITLES['/dashboard']
+  const breadcrumbs = BREADCRUMBS[normalizedPath] ?? BREADCRUMBS['/dashboard']
+
+  function openTour() {
+    window.dispatchEvent(new CustomEvent('srfs-tour-restart'))
+  }
 
   return (
-    <header className="navbar">
+    <header className="navbar" data-tour="navbar">
       <button
         type="button"
         className="navbar__menu-btn"
@@ -98,7 +102,17 @@ export default function Navbar({ onMenuToggle }) {
       <div className="navbar__spacer" />
 
       <div className="navbar__actions">
-        <Link to="/profile" className="navbar__profile">
+        <div className="navbar__tour-wrap">
+          <button
+            type="button"
+            className="navbar__tour-btn"
+            onClick={openTour}
+            aria-label="Open application walkthrough"
+          >
+            Take a tour
+          </button>
+        </div>
+        <Link to="/profile" className="navbar__profile" data-tour="navbar-profile">
           <span className="navbar__avatar" aria-hidden="true">
             {user?.name?.charAt(0) ?? 'U'}
           </span>

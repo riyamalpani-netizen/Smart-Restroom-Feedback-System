@@ -129,7 +129,7 @@ export default function AuditHistory() {
       </div>
 
       {/* ── Filters bar ──────────────────────────────────────────────── */}
-      <div className="audit-filters card">
+      <div className="audit-filters card" data-tour="audit-filters">
         <div className="audit-filters__grid">
           <div className="audit-filters__field">
             <span className="audit-filters__label">Module</span>
@@ -191,7 +191,7 @@ export default function AuditHistory() {
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────── */}
-      <div className="card audit-table-card">
+      <div className="card audit-table-card" data-tour="audit-table">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>
         ) : error ? (

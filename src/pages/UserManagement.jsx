@@ -155,7 +155,7 @@ export default function UserManagement() {
     <div className="page">
       <PageHeader
         action={
-          <button type="button" className="btn btn--primary" onClick={openAdd}>
+          <button data-tour="user-add-btn" type="button" className="btn btn--primary" onClick={openAdd}>
             Add User
           </button>
         }
@@ -163,7 +163,7 @@ export default function UserManagement() {
 
       {/* ── Vendor Admin role-section tabs ── */}
       {isVendorAdmin && (
-        <div className="tabs" style={{ marginBottom: 12 }}>
+        <div className="tabs" style={{ marginBottom: 12 }} data-tour="user-role-tabs">
           {ROLE_SECTIONS.map((s) => (
             <button
               key={s.key}
@@ -330,7 +330,7 @@ export default function UserManagement() {
       )}
 
       {/* ── Table ── */}
-      <div className="card">
+      <div className="card" data-tour="user-table">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>
         ) : error ? (

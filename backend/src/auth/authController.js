@@ -35,6 +35,7 @@ async function login(req, res) {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
+        tutorialStatus: user.tutorialStatus,
       },
       JWT_SECRET,
       { expiresIn: "8h" }
@@ -49,6 +50,7 @@ async function login(req, res) {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
+        tutorialStatus: user.tutorialStatus,
       },
     });
   } catch (error) {
@@ -115,6 +117,8 @@ async function getProfile(req, res) {
         createdAt: true,
         updatedAt: true,
         organizationId: true,
+        tutorialStatus: true,
+        tutorialCompletedAt: true,
       },
     });
 
@@ -132,9 +136,45 @@ async function getProfile(req, res) {
   }
 }
 
+async function getTutorialStatus(req, res) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.sub },
+      select: { tutorialStatus: true, tutorialCompletedAt: true },
+    });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.json({ tutorialStatus: user.tutorialStatus, tutorialCompletedAt: user.tutorialCompletedAt });
+  } catch (error) {
+    console.error("Get tutorial status error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+async function updateTutorialStatus(req, res) {
+  const { tutorialStatus } = req.body || {};
+  if (!["completed", "skipped"].includes(tutorialStatus)) {
+    return res.status(400).json({ message: "Tutorial status must be completed or skipped" });
+  }
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.user.sub },
+      data: { tutorialStatus, tutorialCompletedAt: new Date() },
+      select: { tutorialStatus: true, tutorialCompletedAt: true },
+    });
+    return res.json({ message: "Tutorial status updated", ...user });
+  } catch (error) {
+    console.error("Update tutorial status error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
 module.exports = {
   login,
   logout,
   refreshToken,
   getProfile,
+  getTutorialStatus,
+  updateTutorialStatus,
 };

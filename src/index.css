@@ -99,6 +99,431 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Product Tour Tooltip ─────────────────────────────────────────── */
+.srfs-tour-tooltip {
+  width: min(380px, calc(100vw - 32px));
+  background: linear-gradient(160deg, #162329 0%, #0f1c22 100%);
+  border: 1px solid rgba(8, 145, 178, 0.35);
+  border-radius: 20px;
+  padding: 22px 22px 16px;
+  box-shadow:
+    0 32px 64px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(8, 145, 178, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--dark-text);
+  position: relative;
+  overflow: hidden;
+  font-family: var(--sans);
+}
+
+/* Top-left ambient glow */
+.srfs-tour-tooltip__glow {
+  position: absolute;
+  inset: -40px auto auto -40px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.16) 0%, rgba(8, 145, 178, 0.06) 50%, transparent 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+/* Bottom-right subtle accent */
+.srfs-tour-tooltip::after {
+  content: '';
+  position: absolute;
+  inset: auto -20px -20px auto;
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.srfs-tour-tooltip__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.srfs-tour-tooltip__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(8, 145, 178, 0.15);
+  border: 1px solid rgba(8, 145, 178, 0.25);
+  color: #7dd3fc;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.srfs-tour-tooltip__eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(8, 145, 178, 0.8);
+}
+
+.srfs-tour-tooltip__progress {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.srfs-tour-tooltip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transition: width 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.srfs-tour-tooltip__dot.is-active {
+  width: 18px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  box-shadow: 0 0 8px rgba(8, 145, 178, 0.5);
+}
+
+.srfs-tour-tooltip__title {
+  position: relative;
+  color: #f2fbff;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 10px;
+  letter-spacing: -0.025em;
+}
+
+.srfs-tour-tooltip__content {
+  position: relative;
+  color: rgba(232, 240, 242, 0.78);
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* Workflow / action tip — shown below the description */
+.srfs-tour-tooltip__tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(8, 145, 178, 0.08);
+  border: 1px solid rgba(8, 145, 178, 0.18);
+  color: rgba(186, 230, 253, 0.85);
+  font-size: 12.5px;
+  line-height: 1.6;
+  position: relative;
+}
+
+.srfs-tour-tooltip__tip-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.srfs-tour-tooltip__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
+}
+
+/* Skip sits on the far left */
+.srfs-tour-tooltip__footer .srfs-tour-btn--muted {
+  margin-right: auto;
+}
+
+.srfs-tour-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+  white-space: nowrap;
+}
+
+.srfs-tour-btn:hover {
+  transform: translateY(-1px);
+}
+
+.srfs-tour-btn:active {
+  transform: translateY(0);
+}
+
+.srfs-tour-btn--primary {
+  background: linear-gradient(135deg, var(--primary) 0%, #0ea5c9 50%, var(--accent) 100%);
+  background-size: 200% 200%;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(8, 145, 178, 0.35);
+}
+
+.srfs-tour-btn--primary:hover {
+  box-shadow: 0 6px 20px rgba(8, 145, 178, 0.5);
+  background-position: right center;
+}
+
+.srfs-tour-btn--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8dde6;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.srfs-tour-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8f0f2;
+}
+
+.srfs-tour-btn--muted {
+  background: transparent;
+  color: rgba(200, 221, 230, 0.55);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.srfs-tour-btn--muted:hover {
+  color: rgba(200, 221, 230, 0.85);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Tour page preview ───────────────────────────────────────────── */
+.srfs-tour-preview-wrap {
+  margin-top: 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  background: #0b1419;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  position: relative;
+}
+
+/* subtle scan-line overlay for a "screen" feel */
+.srfs-tour-preview-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.06) 3px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  border-radius: 10px;
+}
+
+.srfs-tour-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* max height so it doesn't grow too tall */
+  max-height: 150px;
+}
+
+/* ── Navbar "Take a tour" button ─────────────────────────────────── */
+.navbar__tour-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(8, 145, 178, 0.35);
+  background: rgba(8, 145, 178, 0.08);
+  color: #7dd3fc;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    box-shadow var(--transition);
+}
+
+.navbar__tour-btn::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+  transition: box-shadow var(--transition);
+}
+
+.navbar__tour-btn:hover {
+  background: rgba(8, 145, 178, 0.15);
+  border-color: rgba(8, 145, 178, 0.55);
+  color: #bae6fd;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12);
+}
+
+.navbar__tour-btn:hover::before {
+  box-shadow: 0 0 8px rgba(8, 145, 178, 0.8);
+}
+
+/* ── Tour spotlight beacon on the navbar button ──────────────────────
+   When tutorialStatus is 'pending', ProductTour fires srfs-tour-spotlight-on
+   which adds .is-spotlit to .navbar__tour-wrap. This creates:
+     1. A dimming backdrop across the whole viewport
+     2. A punched-out "hole" revealing only the button
+     3. Pulsing concentric rings drawing the eye
+     4. A floating label underneath                                      */
+
+/* The wrap positions the rings and hint label */
+.navbar__tour-wrap {
+  position: relative;
+}
+
+/* Full-screen dim layer — sits above content but below navbar actions */
+.navbar__tour-wrap.is-spotlit::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 14, 18, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 9000;
+  animation: srfs-spotlight-fade-in 0.4s ease forwards;
+  pointer-events: none;
+}
+
+/* Ring 1 — tight, fast */
+.navbar__tour-wrap.is-spotlit::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 14px;
+  border: 2px solid rgba(8, 145, 178, 0.9);
+  z-index: 9002;
+  animation: srfs-ring-pulse 1.4s ease-out infinite;
+  pointer-events: none;
+}
+
+/* The button itself floats above the backdrop */
+.navbar__tour-wrap.is-spotlit .navbar__tour-btn {
+  position: relative;
+  z-index: 9003;
+  background: rgba(8, 145, 178, 0.2);
+  border-color: rgba(8, 145, 178, 0.8);
+  color: #bae6fd;
+  box-shadow:
+    0 0 0 4px rgba(8, 145, 178, 0.18),
+    0 0 28px rgba(8, 145, 178, 0.45),
+    0 0 60px rgba(8, 145, 178, 0.2);
+  animation: srfs-btn-breathe 1.8s ease-in-out infinite;
+}
+
+/* Ring 2 — wide, slow */
+.navbar__tour-hint {
+  display: none;
+}
+.navbar__tour-wrap.is-spotlit .navbar__tour-hint {
+  display: block;
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: linear-gradient(135deg, #0f2836 0%, #0b1c28 100%);
+  border: 1px solid rgba(8, 145, 178, 0.45);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7dd3fc;
+  letter-spacing: 0.04em;
+  z-index: 9003;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(8, 145, 178, 0.12);
+  animation: srfs-hint-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  pointer-events: none;
+}
+
+/* Arrow pointing up at the button */
+.navbar__tour-wrap.is-spotlit .navbar__tour-hint::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: rgba(8, 145, 178, 0.45);
+}
+.navbar__tour-wrap.is-spotlit .navbar__tour-hint::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: #0f2836;
+}
+
+/* Keyframes */
+@keyframes srfs-spotlight-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes srfs-ring-pulse {
+  0%   { transform: scale(1);    opacity: 0.9; }
+  60%  { transform: scale(1.18); opacity: 0.3; }
+  100% { transform: scale(1.32); opacity: 0;   }
+}
+
+@keyframes srfs-btn-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px rgba(8, 145, 178, 0.18),
+      0 0 28px rgba(8, 145, 178, 0.45),
+      0 0 60px rgba(8, 145, 178, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(8, 145, 178, 0.1),
+      0 0 40px rgba(8, 145, 178, 0.65),
+      0 0 80px rgba(8, 145, 178, 0.3);
+  }
+}
+
+@keyframes srfs-hint-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.94); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)   scale(1);    }
+}
+
 body::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -3842,7 +4267,6 @@ label {
   pointer-events: auto;
 }
 
-
 /* ── Notification Channels inline (Settings page) ─────────────────────────── */
 .settings-nc-section { margin-top: 4px; }
 
@@ -3876,4 +4300,598 @@ label {
   margin-top: 10px; padding: 12px 14px;
   background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
   border-radius: 8px; font-size: 13px; color: var(--text, #e8e9f1);
+}
+
+/* ── Suppress Leaflet stacking context during the product tour ───
+   Leaflet creates a new stacking context on .leaflet-container via
+   transform/position, which traps the Joyride overlay behind it
+   even though Joyride is at z-index:10000.
+   When the tour is running we flatten all Leaflet panes below the
+   overlay so nothing bleeds through.                               */
+body.srfs-tour-active .leaflet-container {
+  z-index: 0 !important;
+}
+body.srfs-tour-active .leaflet-pane,
+body.srfs-tour-active .leaflet-tile-pane,
+body.srfs-tour-active .leaflet-shadow-pane,
+body.srfs-tour-active .leaflet-overlay-pane,
+body.srfs-tour-active .leaflet-marker-pane,
+body.srfs-tour-active .leaflet-tooltip-pane,
+body.srfs-tour-active .leaflet-popup-pane {
+  z-index: 0 !important;
+}
+body.srfs-tour-active .leaflet-control-container,
+body.srfs-tour-active .leaflet-control-zoom {
+  z-index: 0 !important;
+}
+/* also flatten any inline zIndex set by SideMap overlays */
+body.srfs-tour-active .side-map__map-wrap,
+body.srfs-tour-active .restroom-geo-map__canvas {
+  z-index: 0 !important;
+  isolation: auto !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DRIVER.JS THEME — matches the app's dark teal design system
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Popover card */
+.driver-popover.srfs-driver-popover {
+  background: linear-gradient(160deg, #162329 0%, #0f1c22 100%);
+  border: 1px solid rgba(8, 145, 178, 0.4);
+  border-radius: 16px;
+  box-shadow:
+    0 32px 64px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(8, 145, 178, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e8f0f2;
+  font-family: var(--sans, system-ui, sans-serif);
+  max-width: 360px;
+  padding: 20px 22px 16px;
+}
+
+/* Arrow */
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #162329; }
+.driver-popover.srfs-driver-popover .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #162329; }
+
+/* Title */
+.driver-popover.srfs-driver-popover .driver-popover-title {
+  color: #f2fbff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+  line-height: 1.25;
+}
+
+/* Description */
+.driver-popover.srfs-driver-popover .driver-popover-description {
+  color: #94b4be;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+/* Progress text */
+.driver-popover.srfs-driver-popover .driver-popover-progress-text {
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(8, 145, 178, 0.15);
+  border: 1px solid rgba(8, 145, 178, 0.25);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+/* Footer / buttons row */
+.driver-popover.srfs-driver-popover .driver-popover-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Close (×) button */
+.driver-popover.srfs-driver-popover .driver-popover-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  color: #8ba3ad;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-close-btn:hover {
+  background: rgba(8,145,178,0.2);
+  color: #f2fbff;
+}
+
+/* Prev button */
+.driver-popover.srfs-driver-popover .driver-popover-prev-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: #8ba3ad;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-prev-btn:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.28);
+  color: #e8f0f2;
+}
+
+/* Next / Done button */
+.driver-popover.srfs-driver-popover .driver-popover-next-btn {
+  background: linear-gradient(135deg, #0891b2, #0e7490);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 16px;
+  margin-left: auto;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.driver-popover.srfs-driver-popover .driver-popover-next-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+/* Spotlight ring */
+.driver-overlay .driver-active-element {
+  outline: 2px solid rgba(8, 145, 178, 0.7) !important;
+  outline-offset: 3px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ONBOARDING MODAL  (video-style fullscreen walkthrough)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Overlay backdrop ───────────────────────────────────────────── */
+.ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 70% 60% at 30% 20%, rgba(8,145,178,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(20,184,166,0.08) 0%, transparent 70%),
+    #0b1419;
+  font-family: var(--sans);
+  color: var(--dark-text);
+  animation: ob-fade-in 0.28s ease forwards;
+}
+
+@keyframes ob-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Top header bar ─────────────────────────────────────────────── */
+.ob-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.ob-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(232,240,242,0.55);
+  text-transform: uppercase;
+}
+
+.ob-header__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px rgba(8,145,178,0.7);
+  flex-shrink: 0;
+}
+
+.ob-header__close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(232,240,242,0.5);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  line-height: 1;
+}
+
+.ob-header__close:hover {
+  background: rgba(255,255,255,0.09);
+  color: rgba(232,240,242,0.9);
+  border-color: rgba(255,255,255,0.2);
+}
+
+/* ── Thin progress bar ──────────────────────────────────────────── */
+.ob-progress-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.ob-progress-bar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px rgba(8,145,178,0.5);
+}
+
+/* ── Main body — holds the slide ───────────────────────────────── */
+.ob-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+/* ── Slide ──────────────────────────────────────────────────────── */
+.ob-slide {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+}
+
+/* enter animation */
+.ob-slide--enter {
+  animation: ob-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* exit to the left (going forward) */
+.ob-slide--exit-left {
+  animation: ob-slide-out-left 0.22s ease forwards;
+  pointer-events: none;
+}
+
+/* exit to the right (going back) */
+.ob-slide--exit-right {
+  animation: ob-slide-out-right 0.22s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes ob-slide-in {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ob-slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-28px); }
+}
+
+@keyframes ob-slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(28px); }
+}
+
+/* ── Left text column ───────────────────────────────────────────── */
+.ob-slide__text {
+  padding: 48px 52px 48px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  height: 100%;
+}
+
+.ob-slide__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(8,145,178,0.14);
+  border: 1px solid rgba(8,145,178,0.28);
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+
+.ob-slide__tag::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 5px rgba(8,145,178,0.8);
+}
+
+.ob-slide__title {
+  font-size: clamp(28px, 3.2vw, 44px);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  color: #f2fbff;
+  margin: 0 0 10px;
+  /* subtle gradient on text */
+  background: linear-gradient(135deg, #f2fbff 0%, #7dd3fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ob-slide__subtitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.01em;
+  margin: 0 0 18px;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.ob-slide__body {
+  font-size: 15.5px;
+  line-height: 1.72;
+  color: rgba(232,240,242,0.72);
+  margin: 0 0 36px;
+  max-width: 480px;
+}
+
+/* ── Step dots ──────────────────────────────────────────────────── */
+.ob-slide__steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ob-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  cursor: pointer;
+  padding: 0;
+  transition: width 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.ob-step-dot--active {
+  width: 24px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  box-shadow: 0 0 8px rgba(8,145,178,0.55);
+}
+
+.ob-step-dot:hover:not(.ob-step-dot--active) {
+  background: rgba(255,255,255,0.3);
+}
+
+/* ── Right visual column ────────────────────────────────────────── */
+.ob-slide__visual {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 48px 40px 24px;
+  position: relative;
+}
+
+/* subtle vertical divider */
+.ob-slide__visual::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10%;
+  height: 80%;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(8,145,178,0.2) 20%,
+    rgba(8,145,178,0.2) 80%,
+    transparent
+  );
+}
+
+.ob-slide__screen {
+  width: 100%;
+  max-width: 560px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0b1419;
+  border: 1px solid rgba(8,145,178,0.22);
+  box-shadow:
+    0 0 0 1px rgba(8,145,178,0.08),
+    0 24px 60px rgba(0,0,0,0.6),
+    0 8px 20px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+  position: relative;
+  /* faint scan-line overlay for "screen" feel */
+}
+
+.ob-slide__screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.05) 3px,
+    rgba(0,0,0,0.05) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* fake "window chrome" bar at the top of the screen mock */
+.ob-slide__screen::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 10px;
+  border-radius: 16px 16px 0 0;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  z-index: 2;
+}
+
+.ob-slide__illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+.ob-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  gap: 12px;
+  background: rgba(11,20,25,0.6);
+}
+
+.ob-footer__left,
+.ob-footer__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ob-footer__counter {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(139, 163, 173, 0.6);
+  letter-spacing: 0.05em;
+  min-width: 36px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.ob-btn:hover { transform: translateY(-1px); }
+.ob-btn:active { transform: translateY(0); }
+
+.ob-btn--primary {
+  background: linear-gradient(135deg, var(--primary) 0%, #0ea5c9 50%, var(--accent) 100%);
+  background-size: 200% 200%;
+  color: #fff;
+  border-color: rgba(255,255,255,0.1);
+  box-shadow: 0 4px 14px rgba(8,145,178,0.35);
+  padding: 11px 24px;
+}
+
+.ob-btn--primary:hover {
+  box-shadow: 0 6px 22px rgba(8,145,178,0.55);
+  background-position: right center;
+}
+
+.ob-btn--ghost {
+  background: rgba(255,255,255,0.05);
+  color: #c8dde6;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.ob-btn--ghost:hover {
+  background: rgba(255,255,255,0.1);
+  color: #e8f0f2;
+}
+
+.ob-btn--muted {
+  background: transparent;
+  color: rgba(200,221,230,0.45);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.ob-btn--muted:hover {
+  color: rgba(200,221,230,0.8);
+  background: rgba(255,255,255,0.04);
+}
+
+/* ── Responsive — collapse to single column on small screens ──── */
+@media (max-width: 860px) {
+  .ob-slide {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+
+  .ob-slide__text {
+    padding: 32px 24px 20px;
+    gap: 0;
+  }
+
+  .ob-slide__body { margin-bottom: 20px; }
+
+  .ob-slide__visual {
+    padding: 16px 24px 32px;
+  }
+
+  .ob-slide__visual::before { display: none; }
+
+  .ob-slide__title {
+    font-size: clamp(24px, 5vw, 32px);
+  }
+}
+
+@media (max-width: 540px) {
+  .ob-header { padding: 12px 16px; }
+  .ob-footer  { padding: 12px 16px; }
+  .ob-btn--primary { padding: 10px 18px; }
 }

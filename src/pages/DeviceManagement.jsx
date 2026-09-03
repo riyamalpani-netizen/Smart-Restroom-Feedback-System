@@ -498,11 +498,13 @@ export default function DeviceManagement() {
         }
       />
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Search devices…" />
+      <div data-tour="device-search">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search devices…" />
+      </div>
 
       <div className="device-layout">
         {/* ── Device table ── */}
-        <div className="card">
+        <div className="card" data-tour="device-table">
           {loading ? (
             <div className="loader-wrap"><div className="loader" /></div>
           ) : (

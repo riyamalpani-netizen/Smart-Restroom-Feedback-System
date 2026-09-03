@@ -235,7 +235,7 @@ export default function Reports() {
     <div className="page">
       <PageHeader
         action={
-          <div className="btn-group">
+          <div className="btn-group" data-tour="reports-export">
             <button type="button" className="btn btn--secondary" onClick={handleExportCsv} disabled={!tableData.length}>
               Export CSV
             </button>
@@ -261,7 +261,7 @@ export default function Reports() {
       )}
 
       {/* ── Filters ── */}
-      <div className="filters card" style={{ flexWrap: 'wrap', gap: 12 }}>
+      <div className="filters card" style={{ flexWrap: 'wrap', gap: 12 }} data-tour="reports-filters">
         <label>
           Date Range
           <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="select">
@@ -365,7 +365,7 @@ export default function Reports() {
         <div className="loader-wrap"><div className="loader" /></div>
       ) : (
         <>
-          <div className="report-summary">
+          <div className="report-summary" data-tour="reports-summary">
             {summary.map((item) => (
               <div key={item.label} className="report-summary__item card">
                 <span className="report-summary__value">{item.value}</span>

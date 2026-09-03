@@ -244,7 +244,7 @@ export default function LiveFeedback() {
   return (
     <div className="page">
       {/* ── Filters toolbar ── */}
-      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8 }} data-tour="live-feedback-toolbar">
         <SearchBar value={search} onChange={handleSearch} placeholder="Search by restroom, badge, or type…" />
 
         <select value={filter} onChange={handleFilterChange(setFilter)} className="select" aria-label="Feedback type">
@@ -311,7 +311,7 @@ export default function LiveFeedback() {
         </span>
       </div>
 
-      <div className="card">
+      <div className="card" data-tour="live-feedback-table">
         {loading ? (
           <div className="loader-wrap"><div className="loader" /></div>
         ) : (
