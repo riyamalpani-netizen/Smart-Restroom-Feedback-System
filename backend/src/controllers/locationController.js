@@ -24,19 +24,33 @@ async function searchLocations(req, res) {
       return res.status(200).json(cached.value);
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(key)}`;
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "SmartRestroomFeedbackSystem/1.0",
-        Accept: "application/json",
-      },
-    });
+    const queries = [key];
+    const normalizedAddress = key.replace(/[\s,;|]+/g, " ").trim();
+    if (normalizedAddress !== key) queries.push(normalizedAddress);
 
-    if (!response.ok) {
-      return res.status(response.status).json({ message: "Geocoding service unavailable" });
+    const addressParts = key.split(/[,;|]+/).map((part) => part.trim()).filter(Boolean);
+    if (addressParts.length > 1) queries.push(addressParts.slice(-2).join(", "));
+
+    const postalCode = normalizedAddress.match(/\b\d{4,6}\b/)?.[0];
+    if (postalCode) queries.push(postalCode);
+
+    let data = [];
+    for (const query of [...new Set(queries)]) {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(query)}`;
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "SmartRestroomFeedbackSystem/1.0",
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).json({ message: "Geocoding service unavailable" });
+      }
+
+      data = await response.json();
+      if (data.length > 0) break;
     }
-
-    const data = await response.json();
     const payload = { results: data };
     searchCache.set(key, { ts: Date.now(), value: payload });
     return res.status(200).json(payload);

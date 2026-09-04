@@ -568,10 +568,10 @@ function FloorSidebar({ floors, floor, onSelect, onAdd, onDelete }) {
   )
 }
 
-function CenterPicker({ initial, onCancel, onSave }) {
+function CenterPicker({ initial, initialQuery = '', onCancel, onSave }) {
   const [selected, setSelected] = useState(initial || null)
   const [focus, setFocus] = useState(initial || DEFAULT_CENTER)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [results, setResults] = useState([])
 
   async function searchLocation() {
@@ -599,7 +599,12 @@ function CenterPicker({ initial, onCancel, onSave }) {
           {results.length > 0 && (
             <div className="planner-location-results">
               {results.map((result) => (
-                <button type="button" key={result.place_id} onClick={() => { setFocus([Number(result.lat), Number(result.lon)]); setResults([]) }}>
+                <button type="button" key={result.place_id} onClick={() => {
+                  const addressPoint = [Number(result.lat), Number(result.lon)]
+                  setSelected(addressPoint)
+                  setFocus(addressPoint)
+                  setResults([])
+                }}>
                   {result.display_name}
                 </button>
               ))}
@@ -860,6 +865,28 @@ export default function SiteConfiguration() {
   function setCoords(coords) {
     setSiteForm((v) => ({ ...v, latitude: String(coords[0]), longitude: String(coords[1]) }))
     setPickerOpen(false)
+  }
+
+  const [geocoding, setGeocoding] = useState(false)
+  async function geocodeAddress() {
+    const query = [siteForm.description, siteForm.location].filter(Boolean).join(', ')
+    if (!query.trim()) { setNotice('Enter a location or description first.'); return }
+    setGeocoding(true)
+    try {
+      const token = localStorage.getItem('srfs_token')
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      const response = await fetch(`${API_URL}/api/locations/search?q=${encodeURIComponent(query)}`, { headers })
+      if (!response.ok) throw new Error('Search failed')
+      const data = await response.json()
+      const first = data.results?.[0]
+      if (!first) { setNotice('No coordinates found for that address. Try a more specific address.'); return }
+      setSiteForm((v) => ({ ...v, latitude: String(Number(first.lat).toFixed(6)), longitude: String(Number(first.lon).toFixed(6)) }))
+      setNotice(`Coordinates set from address: ${first.display_name || query}`)
+    } catch {
+      setNotice('Could not fetch coordinates. Check your address and try again.')
+    } finally {
+      setGeocoding(false)
+    }
   }
 
   const siteRef = useRef(site)
@@ -1563,7 +1590,13 @@ export default function SiteConfiguration() {
       })
       setAllDevices((prev) => prev.map((device) => device.id === deviceId ? { ...device, ...placedDevice } : device))
       invalidateFloorCache()
-      setNotice(`Device placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zone?.restroomId ? ` — assigned to restroom: ${zone.name}` : zoneId ? ` in zone: ${zone?.name}` : ' (no zone detected — click inside a drawn zone to assign restroom)'}.`)
+      const ttnStatus = data.ttnRegistration
+      const registrationMessage = ttnStatus?.registered
+        ? ' TTN registration completed.'
+        : ttnStatus?.error
+          ? ` TTN registration failed: ${ttnStatus.error}`
+          : ''
+      setNotice(`Device placed at ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}${zone?.restroomId ? ` — assigned to restroom: ${zone.name}` : zoneId ? ` in zone: ${zone?.name}` : ' (no zone detected — click inside a drawn zone to assign restroom)'}.${registrationMessage}`)
       return true
     } catch (error) {
       setNotice(error.message || 'Unable to place device.')
@@ -1920,12 +1953,19 @@ export default function SiteConfiguration() {
                 <label>Description <em>(optional)</em><textarea value={siteForm.description} placeholder="e.g. Main campus building" onChange={(e) => setSiteForm({ ...siteForm, description: e.target.value })} /></label>
                 <div className="planner-coordinates" data-tour="sc-coordinates">
                   <strong>Coordinates <b>*</b></strong>
-                  <p>Provide the site&apos;s GPS centre point. Use &ldquo;Mark centre on map&rdquo; to pick visually.</p>
+                  <p>Provide the site&apos;s GPS centre point. Use &ldquo;Save coordinates from address&rdquo; to auto-fill from the address, or pick visually on the map.</p>
                   <div>
                     <label>Latitude<input value={siteForm.latitude} placeholder="-90 to 90" onChange={(e) => setSiteForm({ ...siteForm, latitude: e.target.value })} /></label>
                     <label>Longitude<input value={siteForm.longitude} placeholder="-180 to 180" onChange={(e) => setSiteForm({ ...siteForm, longitude: e.target.value })} /></label>
                   </div>
-                  <button type="button" className="planner-button planner-button--dark" onClick={() => setPickerOpen(true)}>⌖ Mark centre on map</button>
+                  <div className="planner-coordinates__actions">
+                    {(siteForm.location || siteForm.description) && (
+                      <button type="button" className="planner-button" onClick={geocodeAddress} disabled={geocoding}>
+                        {geocoding ? '⏳ Fetching…' : '📍 Save coordinates from address'}
+                      </button>
+                    )}
+                    <button type="button" className="planner-button planner-button--dark" onClick={() => setPickerOpen(true)}>⌖ Mark centre on map</button>
+                  </div>
                 </div>
               </div>
                <div className="planner-form-layout__preview" data-tour="sc-site-preview">
@@ -2699,6 +2739,7 @@ export default function SiteConfiguration() {
       {pickerOpen && (
         <CenterPicker
           initial={siteForm.latitude ? [Number(siteForm.latitude), Number(siteForm.longitude)] : null}
+          initialQuery={siteForm.location}
           onCancel={() => setPickerOpen(false)}
           onSave={setCoords}
         />

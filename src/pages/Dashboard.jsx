@@ -240,14 +240,16 @@ export default function Dashboard() {
 
       {/* ── Map + Unhappy Events ── */}
       <div className="dashboard-top">
-        <div className="dashboard-map">
+        <div className="dashboard-map" data-tour="dashboard-map">
           <RestroomGeoMap restrooms={allRestroomsForMap} mapConfig={mapConfig} />
         </div>
-        <UnhappyEventsPanel
-          aggregatedComplaints={aggregatedComplaints}
-          onAcknowledge={handleAcknowledge}
-          onResolve={handleResolve}
-        />
+        <div data-tour="dashboard-unhappy">
+          <UnhappyEventsPanel
+            aggregatedComplaints={aggregatedComplaints}
+            onAcknowledge={handleAcknowledge}
+            onResolve={handleResolve}
+          />
+        </div>
       </div>
 
       {/* ── KPI Cards ── */}

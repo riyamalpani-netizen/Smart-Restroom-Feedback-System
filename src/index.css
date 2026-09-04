@@ -4375,6 +4375,26 @@ body.srfs-tour-active .restroom-geo-map__canvas {
   margin-bottom: 14px;
 }
 
+.driver-popover.srfs-driver-popover .driver-popover-description ul {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.driver-popover.srfs-driver-popover .driver-popover-description li {
+  padding-left: 3px;
+  margin-bottom: 5px;
+  line-height: 1.5;
+}
+
+.driver-popover.srfs-driver-popover .driver-popover-description li:last-child {
+  margin-bottom: 0;
+}
+
+.driver-popover.srfs-driver-popover .driver-popover-description li::marker {
+  color: #22d3ee;
+}
+
 /* Progress text */
 .driver-popover.srfs-driver-popover .driver-popover-progress-text {
   color: #7dd3fc;

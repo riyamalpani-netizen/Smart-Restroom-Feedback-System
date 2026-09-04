@@ -13,7 +13,7 @@ const ALL_STEPS = [
     route: '/dashboard',
     popover: {
       title: '👋 Welcome to your Vendor Portal',
-      description: 'This short tour walks you through every page — Dashboard, Live Feedback, Alerts, Devices, Users and more. Takes about 2 minutes.',
+      description: '<ul><li>Covers every page — Dashboard, Live Feedback, Alerts, Devices, Users and more</li><li>Takes about 2 minutes to complete</li><li>You can relaunch this tour any time from the top bar</li></ul>',
     },
   },
   {
@@ -21,7 +21,7 @@ const ALL_STEPS = [
     route: '/dashboard',
     popover: {
       title: 'Top Navigation Bar',
-      description: 'Shows your current page, breadcrumb, and quick actions — including the "Take a tour" button.',
+      description: '<ul><li>Shows your current page and breadcrumb trail</li><li>Quick-access profile link and logout button</li><li>"Take a tour" button relaunches this walkthrough any time</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -30,8 +30,26 @@ const ALL_STEPS = [
     route: '/dashboard',
     popover: {
       title: 'Dashboard Filters',
-      description: 'Narrow all KPI cards, charts, and the map to a specific site, floor, or zone. Select a site first — Floor and Zone cascade automatically.',
+      description: '<ul><li>Narrows all KPI cards, charts, and the map to a specific scope</li><li>Select a <strong>Site</strong> first — Floor and Zone cascade automatically</li><li>Clear all filters with the "Clear" button to return to the full view</li></ul>',
       side: 'bottom', align: 'start',
+    },
+  },
+  {
+    element: '[data-tour="dashboard-map"]',
+    route: '/dashboard',
+    popover: {
+      title: 'Site Location Map',
+      description: '<ul><li>Every configured site is pinned on a live map</li><li>Click a marker to see the site name and location</li><li>Use the filters above to focus the map on a specific site</li></ul>',
+      side: 'bottom', align: 'start',
+    },
+  },
+  {
+    element: '[data-tour="dashboard-unhappy"]',
+    route: '/dashboard',
+    popover: {
+      title: 'Unhappy Complaints',
+      description: '<ul><li>Aggregated list of restrooms with the most recent unhappy feedback</li><li>Acknowledge or Resolve complaints directly from this panel</li><li>Unresolved complaints escalate automatically into active alerts</li></ul>',
+      side: 'left', align: 'start',
     },
   },
   {
@@ -39,7 +57,7 @@ const ALL_STEPS = [
     route: '/dashboard',
     popover: {
       title: 'Live KPI Cards',
-      description: "Refresh every 30 s — today's Happy / Unhappy / Okay counts, active alerts, and device health at a glance.",
+      description: "<ul><li>Auto-refreshes every 30 seconds</li><li>Shows today's Happy, Unhappy, and Okay feedback counts</li><li>Includes active alert count and overall device health score</li></ul>",
       side: 'bottom', align: 'start',
     },
   },
@@ -48,7 +66,7 @@ const ALL_STEPS = [
     route: '/dashboard',
     popover: {
       title: 'Active Alerts Widget',
-      description: 'Most urgent open alerts listed here. Acknowledge or Resolve directly — or go to Alert Management for the full table.',
+      description: '<ul><li>Lists the most urgent open alerts at a glance</li><li>Acknowledge or Resolve alerts directly from this widget</li><li>Go to Alert Management for the full table and filters</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -57,7 +75,7 @@ const ALL_STEPS = [
     route: '/live-feedback',
     popover: {
       title: 'Live Feedback Filters',
-      description: 'Filter real-time feedback by type, site, floor, zone, or device. Updates instantly via Socket.IO — no page refresh needed.',
+      description: '<ul><li>Filter real-time feedback by type, site, floor, zone, or device</li><li>Updates instantly via Socket.IO — no page refresh needed</li><li>Combine filters to isolate a specific restroom or event type</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -66,7 +84,7 @@ const ALL_STEPS = [
     route: '/live-feedback',
     popover: {
       title: 'Feedback Event Stream',
-      description: 'Every button press appears here in real time. New rows appear at the top highlighted red when a visitor presses "Unhappy".',
+      description: '<ul><li>Every button press from every badge device appears here in real time</li><li>New rows appear at the top — highlighted red for Unhappy events</li><li>Shows device, restroom, floor, zone, and timestamp per event</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -75,7 +93,7 @@ const ALL_STEPS = [
     route: '/reports',
     popover: {
       title: 'Report Filters',
-      description: 'Choose date range, report type (Feedback Trends, Alerts, Device Health, Battery), site, floor, or restroom.',
+      description: '<ul><li>Choose a date range to scope the report period</li><li>Select report type: Feedback Trends, Alerts, Device Health, or Battery</li><li>Narrow further by site, floor, or restroom</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -84,7 +102,7 @@ const ALL_STEPS = [
     route: '/reports',
     popover: {
       title: 'Export Reports',
-      description: 'Download the current report as CSV or Excel. The export reflects your active filters exactly.',
+      description: '<ul><li>Download the current report as CSV or Excel</li><li>Export reflects your active filters exactly</li><li>Use CSV for custom analysis, Excel for formatted sharing</li></ul>',
       side: 'bottom', align: 'end',
     },
   },
@@ -94,7 +112,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Site Configuration — 6-Step Wizard',
-      description: 'Configure your estate in 6 steps: Define Site → Floor Plans → Draw Zones → Place Devices → Place Gateways → Review. Click any step number to jump to it.',
+      description: '<ul><li>Define Site → Floor Plans → Draw Zones → Place Devices → Place Gateways → Review</li><li>Click any step number to jump directly to it</li><li>Progress is saved automatically at each step</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -105,7 +123,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 1 — Define Your Site',
-      description: 'Fill in the Site Name (e.g. "Pune HQ"), Site Type (Office / Hospital…), and the Location city. These details appear on all reports and the Floor Map.',
+      description: '<ul><li>Enter a <strong>Site Name</strong> (e.g. "Pune HQ") and select a Site Type (Office, Hospital…)</li><li>Add the city or location — this appears on all reports and the Floor Map</li><li>Optionally add a description for internal reference</li></ul>',
       side: 'right', align: 'start',
     },
   },
@@ -115,7 +133,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'GPS Coordinates',
-      description: 'Enter latitude and longitude — or click "Mark centre on map" to drop a pin visually. This anchors your floor plans to real geography.',
+      description: '<ul><li>Enter latitude and longitude manually, or use "Save coordinates from address" to auto-fill</li><li>Click "Mark centre on map" to drop a pin visually on the satellite map</li><li>Coordinates anchor your floor plans to real-world geography</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -125,7 +143,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Live Site Preview',
-      description: 'As you fill in the form a live preview updates here — site name, type, location, and a mini map pin. When it looks right click "Save & Continue →".',
+      description: '<ul><li>Updates in real time as you fill in the form</li><li>Shows site name, type, location, and a mini map pin</li><li>When it looks correct, click "Save &amp; Continue →" to proceed</li></ul>',
       side: 'left', align: 'start',
     },
   },
@@ -137,7 +155,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 2 — Upload & Align Floor Plan',
-      description: 'Click "Upload floor plan" to add a PNG/JPG image. Then drag the ✥ handle to move it, use corner handles to resize, and the rotation slider to rotate it precisely over the satellite map.',
+      description: '<ul><li>Click "Upload floor plan" to add a PNG or JPG image of the floor</li><li>Drag the ✥ handle to move the plan, use corner handles to resize</li><li>Use the rotation slider to align it precisely over the satellite map</li></ul>',
       side: 'left', align: 'start',
     },
   },
@@ -149,7 +167,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 3 — Draw Zones',
-      description: 'Click "Draw polygon" or "Draw rectangle", then click on the map to trace each restroom boundary. Name the zone, choose its type, and save. A linked Restroom record is created automatically for Restroom-type zones.',
+      description: '<ul><li>Click "Draw polygon" or "Draw rectangle", then click the map to trace the boundary</li><li>Name the zone and choose its type (Restroom, Corridor, etc.)</li><li>A Restroom record is created automatically for Restroom-type zones</li></ul>',
       side: 'left', align: 'start',
     },
   },
@@ -161,7 +179,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 4 — Place Devices on the Map',
-      description: 'Select a registered badge device from the dropdown, then click its physical location on the floor plan. Drop it inside a drawn zone to auto-assign it to that restroom.',
+      description: '<ul><li>Select a registered badge device from the dropdown</li><li>Click its physical location on the floor plan to drop it</li><li>Dropping inside a drawn zone auto-assigns it to that restroom</li></ul>',
       side: 'left', align: 'start',
     },
   },
@@ -173,7 +191,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 5 — Place Gateways on the Map',
-      description: 'Select a LoRaWAN gateway and click its physical location on the floor plan. Gateways receive signals from badge devices and forward them to the network.',
+      description: '<ul><li>Select a LoRaWAN gateway from the dropdown</li><li>Click its physical location on the floor plan to place it</li><li>Gateways receive signals from badge devices and forward them to the network</li></ul>',
       side: 'left', align: 'start',
     },
   },
@@ -185,7 +203,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER],
     popover: {
       title: 'Step 6 — Review & Finish',
-      description: 'Review every floor, zone, device, and gateway. Delete or unlink items here if needed. Click "Finish & go to dashboard" — your site is live and devices will start sending data.',
+      description: '<ul><li>Review every floor, zone, device, and gateway in one place</li><li>Delete or unlink any item here if needed before going live</li><li>Click "Finish &amp; go to dashboard" — devices will start sending data immediately</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -194,7 +212,7 @@ const ALL_STEPS = [
     route: '/gateways',
     popover: {
       title: 'Search Gateways',
-      description: 'Find registered LoRaWAN gateways by name or EUI. If a gateway goes offline all devices behind it stop sending data.',
+      description: '<ul><li>Find registered LoRaWAN gateways by name or EUI</li><li>If a gateway goes offline, all devices behind it stop sending data</li><li>Use this to quickly check a specific gateway&#39;s status</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -203,7 +221,7 @@ const ALL_STEPS = [
     route: '/gateways',
     popover: {
       title: 'Gateway List',
-      description: 'Name, EUI, site/floor, online status, TTN status, device count, and last-seen time. Eye icon opens the detail drawer.',
+      description: '<ul><li>Shows name, EUI, site/floor, online status, and TTN status</li><li>Device count and last-seen timestamp per gateway</li><li>Eye icon opens the detail drawer for full information</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -212,7 +230,7 @@ const ALL_STEPS = [
     route: '/devices',
     popover: {
       title: 'Search Devices',
-      description: 'Find any badge device by name or Badge ID. These are the physical 3-button hardware installed in each restroom.',
+      description: '<ul><li>Find any badge device by name or Badge ID</li><li>These are the physical 3-button hardware units installed in restrooms</li><li>Use search to locate a specific device before editing or reassigning it</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -221,7 +239,7 @@ const ALL_STEPS = [
     route: '/devices',
     popover: {
       title: 'Device Registry',
-      description: 'Name, Badge ID, site/floor/restroom, battery %, status, health, and last communication. Use "Edit" to assign a device to a restroom.',
+      description: '<ul><li>Shows name, Badge ID, site/floor/restroom, and battery %</li><li>Displays status, health score, and last communication time</li><li>Use "Edit" to assign a device to a different restroom</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -230,7 +248,7 @@ const ALL_STEPS = [
     route: '/restrooms',
     popover: {
       title: 'Add a Restroom',
-      description: 'Register a new restroom — name, floor, optional zone, and gender. Then assign a badge device from Device Management.',
+      description: '<ul><li>Register a new restroom with a name, floor, and gender</li><li>Optionally link it to an existing zone</li><li>Assign a badge device from Device Management after creation</li></ul>',
       side: 'bottom', align: 'end',
     },
   },
@@ -239,7 +257,7 @@ const ALL_STEPS = [
     route: '/restrooms',
     popover: {
       title: 'Restroom Registry',
-      description: 'Every restroom with its site, floor, zone, gender, and status. Click any row for the last 20 feedback events and assigned devices.',
+      description: '<ul><li>Lists every restroom with its site, floor, zone, gender, and status</li><li>Click any row to view the last 20 feedback events</li><li>Shows assigned devices per restroom inline</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -248,7 +266,7 @@ const ALL_STEPS = [
     route: '/alerts',
     popover: {
       title: 'Active Alerts vs History',
-      description: '"Active Alerts" = open/assigned/in-progress. "Alert History" = all resolved alerts. Check Active daily.',
+      description: '<ul><li><strong>Active Alerts</strong> — open, assigned, or in-progress incidents</li><li><strong>Alert History</strong> — all fully resolved alerts</li><li>Check the Active tab daily to stay on top of issues</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -257,7 +275,7 @@ const ALL_STEPS = [
     route: '/alerts',
     popover: {
       title: 'Alert Filters',
-      description: 'Filter by status, priority, site, floor, zone, or device. Use Priority → Critical for the most urgent incidents first.',
+      description: '<ul><li>Filter by status, priority, site, floor, zone, or device</li><li>Use Priority → Critical to surface the most urgent incidents first</li><li>Combine filters to narrow down alerts for a specific area</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -266,7 +284,7 @@ const ALL_STEPS = [
     route: '/alerts',
     popover: {
       title: 'Alert Table',
-      description: 'Trigger time, restroom, type, priority, and status per alert. Assign directly from this table and add notes for the audit trail.',
+      description: '<ul><li>Shows trigger time, restroom, alert type, priority, and current status</li><li>Assign alerts directly from this table to a team member</li><li>Add notes to build an audit trail for each incident</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -276,7 +294,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'User Role Sections',
-      description: 'Users grouped by role. Switch tabs to manage Regional Managers, Vendor Managers, Site Incharges, Facility Managers, and Viewers.',
+      description: '<ul><li>Users are grouped by role for easy management</li><li>Switch tabs to manage Regional Managers, Vendor Managers, Site Incharges, Facility Managers, and Viewers</li><li>Each role has a different level of access across the system</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -286,7 +304,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'Add a User',
-      description: 'Create a new user. The role pre-fills from the active tab. Remind users to change their password on first login.',
+      description: '<ul><li>Create a new user — role pre-fills from the active tab</li><li>Set a temporary password and remind the user to change it on first login</li><li>Assign the user to specific sites if their role requires it</li></ul>',
       side: 'bottom', align: 'end',
     },
   },
@@ -296,7 +314,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'User List',
-      description: 'Name, email, role, and active/inactive status. Edit to update or Deactivate to suspend access without deleting the account.',
+      description: '<ul><li>Shows name, email, role, and active/inactive status</li><li>Edit to update details or change role assignments</li><li>Deactivate to suspend access without permanently deleting the account</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -306,7 +324,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'Audit Log Filters',
-      description: 'Filter by module, action type (create/update/delete), or date range to investigate any change.',
+      description: '<ul><li>Filter by module (Sites, Devices, Users, etc.)</li><li>Filter by action type: create, update, or delete</li><li>Set a date range to investigate changes in a specific window</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -316,7 +334,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'Audit Trail',
-      description: 'Every action by every user — actor, timestamp, module, action, description. Immutable compliance record.',
+      description: '<ul><li>Every action by every user is logged here</li><li>Shows actor, timestamp, module, action type, and description</li><li>Immutable compliance record — entries cannot be edited or deleted</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -326,7 +344,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: 'Teams Notifications',
-      description: 'Paste your Microsoft Teams webhook URL here. When an Unhappy alert fires, an instant notification goes to your ops channel.',
+      description: '<ul><li>Paste your Microsoft Teams webhook URL to enable instant alerts</li><li>A notification is sent to your ops channel whenever an Unhappy alert fires</li><li>Test the webhook with the "Send test" button after saving</li></ul>',
       side: 'bottom', align: 'start',
     },
   },
@@ -336,7 +354,7 @@ const ALL_STEPS = [
     roles: [ROLES.VENDOR_ADMIN, ROLES.SUPER_ADMIN],
     popover: {
       title: "🎉 You're all set!",
-      description: 'Relaunch this tour any time from here or via "Take a tour" in the top bar — great for onboarding new team members.',
+      description: '<ul><li>Your system is fully configured and ready to go</li><li>Relaunch this tour any time from this card or via "Take a tour" in the top bar</li><li>Great for onboarding new team members quickly</li></ul>',
       side: 'top', align: 'start',
     },
   },
@@ -430,6 +448,7 @@ export default function ProductTour() {
       stageRadius: 10,
       popoverClass: 'srfs-driver-popover',
       showButtons: ['next', 'previous', 'close'],
+      disableButtons: [],
       nextBtnText: 'Next →',
       prevBtnText: idx === 0 ? '' : '← Back',
       doneBtnText: 'Next →',
@@ -443,11 +462,12 @@ export default function ProductTour() {
             ...step.popover,
             onPopoverRender: (popover) => {
               popover.closeButton.textContent = '×'
+              popover.closeButton.style.display = 'grid'
               popover.closeButton.setAttribute('aria-label', 'Cancel tour')
               popover.closeButton.setAttribute('title', 'Cancel tour')
               popover.previousButton.textContent = '← Back'
               popover.previousButton.style.display = idx === 0 ? 'none' : ''
-              popover.previousButton.disabled = idx === 0
+              popover.previousButton.disabled = false
             },
             onNextClick: () => {
               if (!activeRef.current) return

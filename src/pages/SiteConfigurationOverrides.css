@@ -24,3 +24,11 @@
 
 .planner-stage--empty strong { color: #202338; }
 .planner-stage--empty p { color: #646a7a; }
+
+/* Coordinates action buttons row */
+.planner-coordinates__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}

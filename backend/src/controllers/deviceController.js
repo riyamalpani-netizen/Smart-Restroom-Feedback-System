@@ -1236,7 +1236,7 @@ async function updateDevice(req, res) {
     const isBeingPlaced = placement?.changed && wasUnplaced;
     if (isBeingPlaced && device.deviceEui && device.appKey) {
       try {
-        await registerOtanDevice({
+        await registerOtaaDevice({
           deviceEui: device.deviceEui,
           deviceId: `device-${device.deviceEui.toLowerCase()}`,
           joinEui: device.joinEui || "0000000000000000",

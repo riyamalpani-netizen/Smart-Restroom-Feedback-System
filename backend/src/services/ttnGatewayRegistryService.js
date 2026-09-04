@@ -166,13 +166,16 @@ function makeGatewayId(gatewayEui, requestedId) {
 
 function getConfiguration() {
   const apiBaseUrl = TTN_API_BASE_URL || (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
+  // TTN_GATEWAY_API_KEY should be a key with Gateway Read/Write rights.
+  // TTN_API_KEY is the application key — it does NOT have gateway rights by default.
+  // If no dedicated gateway key is set, fall back to TTN_API_KEY but it may fail with 403.
   const apiKey = TTN_GATEWAY_API_KEY || TTN_API_KEY || TTN_MQTT_PASSWORD;
   const ownerType = TTN_GATEWAY_OWNER_TYPE;
   const ownerId = TTN_GATEWAY_OWNER_ID;
 
   if (!apiBaseUrl || !apiKey || !TTN_FREQUENCY_PLAN_ID || !ownerType || !ownerId) {
     throw new Error(
-      "TTN gateway registration is not configured. Set TTN_API_BASE_URL, TTN_GATEWAY_API_KEY, TTN_FREQUENCY_PLAN_ID, TTN_GATEWAY_OWNER_TYPE, and TTN_GATEWAY_OWNER_ID."
+      "TTN gateway registration is not configured. Set TTN_API_BASE_URL, TTN_GATEWAY_API_KEY (with gateway rights), TTN_FREQUENCY_PLAN_ID, TTN_GATEWAY_OWNER_TYPE, and TTN_GATEWAY_OWNER_ID in your .env"
     );
   }
   if (!["user", "organization"].includes(ownerType)) {
@@ -232,6 +235,16 @@ async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, la
   }
 
   const createText = await createResponse.text();
+
+  // 403 means the API key lacks gateway rights
+  if (createResponse.status === 403) {
+    throw new Error(
+      `TTN API key does not have Gateway rights (403). ` +
+      `Go to TTN Console → your account → API Keys → create a new key with "Write gateways" right, ` +
+      `then set TTN_GATEWAY_API_KEY in your .env file.`
+    );
+  }
+
   if (createResponse.status === 409 || createText.includes("already exists")) {
     const updateResponse = await fetch(updateUrl, {
       method: "PUT",
@@ -251,19 +264,21 @@ async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, la
     });
 
     if (updateResponse.ok) {
-      console.log(`[TTN] Gateway updated: ${resolvedGatewayId}`);
-      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan };
+      console.log(`[TTN] Gateway updated: ${resolvedGatewayId}`)
+      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan }
     }
 
-    const updateStatus = updateResponse.status;
-    const updateText = await updateResponse.text();
+    const updateStatus = updateResponse.status
+    const updateText = await updateResponse.text()
 
+    // 403 on update means the gateway exists on TTN but belongs to someone else
+    // or the key lacks update rights — still treat as registered since it exists
     if (updateStatus === 403) {
-      console.warn(`[TTN] Gateway ${resolvedGatewayId} already exists but cannot be updated (403). Treating as already registered.`);
-      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan };
+      console.warn(`[TTN] Gateway ${resolvedGatewayId} exists on TTN but cannot be updated (403) — treating as registered.`)
+      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan }
     }
 
-    throw new Error(`TTN gateway registration failed: PUT ${updateUrl} failed (${updateStatus}): ${updateText}`);
+    throw new Error(`TTN gateway registration failed: PUT ${updateUrl} failed (${updateStatus}): ${updateText}`)
   }
 
   throw new Error(`TTN gateway registration failed: POST ${createUrl} failed (${createResponse.status}): ${createText}`);
