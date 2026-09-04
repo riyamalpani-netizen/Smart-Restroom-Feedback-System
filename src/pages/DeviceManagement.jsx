@@ -9,6 +9,7 @@ import { formatDateTime } from '../utils/formatters'
 import api, { deviceAPI, gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../context/ToastContext'
+import { TTN_FREQUENCY_PLANS } from '../utils/constants'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -69,13 +70,13 @@ export default function DeviceManagement() {
   const [form, setForm] = useState({ badgeId: '', deviceEui: '', restroomId: '' })
   const [editForm, setEditForm] = useState({
     name: '', deviceType: 'sensor', locationId: '', restroomId: '',
-    floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '',
-    latitude: '', longitude: '',
+    floorId: '', batteryLevel: '', deviceEui: '', appKey: '', gatewayId: '', badgeId: '',
+    frequencyPlanId: 'IN_865_867', latitude: '', longitude: '',
   })
   const [newDevice, setNewDevice] = useState({
     name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '',
-    lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '',
-    latitude: '', longitude: '',
+    lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', badgeId: '',
+    frequencyPlanId: 'IN_865_867', latitude: '', longitude: '',
   })
   const canEdit = user?.role !== 'viewer'
   const isSuperAdmin = user?.role === 'super_admin'
@@ -319,14 +320,16 @@ export default function DeviceManagement() {
         deviceType: newDevice.deviceType,
         restroomId: newDevice.restroomId || null,
         floorId: newDevice.floorId || null,
+        badgeId: newDevice.badgeId || undefined,
         deviceEui: newDevice.deviceEui || undefined,
         appKey: newDevice.appKey || undefined,
         lorawanVersion: newDevice.lorawanVersion || undefined,
         lorawanPhyVersion: newDevice.lorawanPhyVersion || undefined,
+        frequencyPlanId: newDevice.frequencyPlanId || undefined,
         latitude: newDevice.latitude || undefined,
         longitude: newDevice.longitude || undefined,
       })
-      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', latitude: '', longitude: '' })
+      setNewDevice({ name: '', deviceType: 'sensor', locationId: '', floorId: '', restroomId: '', lorawanVersion: 'MAC_V1_0_3', lorawanPhyVersion: '', deviceEui: '', appKey: '', badgeId: '', frequencyPlanId: 'IN_865_867', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadDevices()
       toast.success('Device created successfully.')
@@ -349,6 +352,8 @@ export default function DeviceManagement() {
       deviceEui: device.deviceEui || '',
       appKey: device.appKey || '',
       gatewayId: device.gatewayId || '',
+      badgeId: device.badgeId || '',
+      frequencyPlanId: device.frequencyPlanId || 'IN_865_867',
       latitude: device.latitude ?? '',
       longitude: device.longitude ?? '',
     })
@@ -365,11 +370,13 @@ export default function DeviceManagement() {
         deviceType: editForm.deviceType,
         restroomId: editForm.restroomId || null,
         floorId: editForm.floorId || null,
+        badgeId: editForm.badgeId || undefined,
         zoneId: null,
         batteryLevel: editForm.batteryLevel ? Number(editForm.batteryLevel) : undefined,
         deviceEui: editForm.deviceEui || undefined,
         appKey: editForm.appKey || undefined,
         gatewayId: editForm.gatewayId || null,
+        frequencyPlanId: editForm.frequencyPlanId || undefined,
         latitude: editForm.latitude === '' ? null : Number(editForm.latitude),
         longitude: editForm.longitude === '' ? null : Number(editForm.longitude),
       })
@@ -547,7 +554,7 @@ export default function DeviceManagement() {
                           type="button"
                           className="btn-icon"
                           title="View details"
-                          onClick={() => { setDrawerDevice(device); setSelected(device) }}
+                          onClick={() => { setDrawerDevice(device); setSelected(device); loadOrganizations() }}
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -559,9 +566,16 @@ export default function DeviceManagement() {
                         <td onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
                             {isSuperAdmin && (
-                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(device)}>
-                                {device.organizationId ? 'Reassign' : 'Assign Org'}
-                              </button>
+                              <>
+                                {device.organizationId && (
+                                  <span style={{ padding: '3px 8px', fontSize: 11, background: 'var(--success-bg, #dcfce7)', color: 'var(--success, #16a34a)', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    ✓ Assigned
+                                  </span>
+                                )}
+                                <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(device)}>
+                                  {device.organizationId ? 'Reassign' : 'Assign Org'}
+                                </button>
+                              </>
                             )}
                             <button type="button" className={`btn btn--sm ${device.health === 'critical' ? 'btn--primary' : 'btn--secondary'}`} style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleToggleDeviceActive(device)} disabled={saving}>
                               {device.health === 'critical' ? 'Activate' : 'Deactivate'}
@@ -622,7 +636,20 @@ export default function DeviceManagement() {
                 <div className="drawer-field"><span className="drawer-field__label">Battery</span><span className="drawer-field__value">{drawerDevice.battery ?? '—'}%</span></div>
                 <div className="drawer-field"><span className="drawer-field__label">Gateway</span><span className="drawer-field__value">{drawerDevice.gatewayName || '—'}</span></div>
                 <div className="drawer-field"><span className="drawer-field__label">Assignment</span><span className="drawer-field__value">{hasAssignedLocation(drawerDevice) ? 'Placed' : 'Available'}</span></div>
-                <div className="drawer-field"><span className="drawer-field__label">Last Seen</span><span className="drawer-field__value" style={{ fontSize: 12 }}>{drawerDevice.lastCommunication ? formatDateTime(drawerDevice.lastCommunication) : '—'}</span></div>
+                <div className="drawer-field">
+                  <span className="drawer-field__label">Vendor</span>
+                  <span className="drawer-field__value">
+                    {drawerDevice.organizationId
+                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                            {organizations.find(o => o.id === drawerDevice.organizationId)?.name || 'Assigned'}
+                          </span>
+                        </span>
+                      : <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
+                    }
+                  </span>
+                </div>                <div className="drawer-field"><span className="drawer-field__label">Last Seen</span><span className="drawer-field__value" style={{ fontSize: 12 }}>{drawerDevice.lastCommunication ? formatDateTime(drawerDevice.lastCommunication) : '—'}</span></div>
               </div>
             </div>
             <div className="drawer-section">
@@ -771,9 +798,16 @@ export default function DeviceManagement() {
                 </select>
               </label>
               <label>Device EUI *<input type="text" value={newDevice.deviceEui} onChange={(e) => setNewDevice((d) => ({ ...d, deviceEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" required /></label>
+              <label>Badge ID *<input type="text" value={newDevice.badgeId} onChange={(e) => setNewDevice((d) => ({ ...d, badgeId: e.target.value }))} placeholder="e.g. BADGE-001" required /></label>
               <label>App Key *<input type="text" value={newDevice.appKey} onChange={(e) => setNewDevice((d) => ({ ...d, appKey: e.target.value }))} placeholder="32 hex chars" required /></label>
               <label>LoRaWAN Version<input type="text" value={newDevice.lorawanVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanVersion: e.target.value }))} placeholder="MAC_V1_0_3" /></label>
               <label>PHY Version <span style={{ color: '#64748b' }}>(optional)</span><input type="text" value={newDevice.lorawanPhyVersion} onChange={(e) => setNewDevice((d) => ({ ...d, lorawanPhyVersion: e.target.value }))} placeholder="e.g. PHY_V1_0_3" /></label>
+              <label>
+                Frequency Plan *
+                <select value={newDevice.frequencyPlanId} onChange={(e) => setNewDevice((d) => ({ ...d, frequencyPlanId: e.target.value }))}>
+                  {TTN_FREQUENCY_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </label>
               <div className="btn-group">
                 <button type="button" className="btn btn--secondary" onClick={() => setAddOpen(false)}>Cancel</button>
                 <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering in TTN…' : 'Add Device'}</button>
@@ -820,8 +854,15 @@ export default function DeviceManagement() {
                 </select>
               </label>
               <label>Battery Level<input type="number" min="0" max="100" value={editForm.batteryLevel} onChange={(e) => setEditForm((f) => ({ ...f, batteryLevel: e.target.value }))} /></label>
-              <label>Device EUI<input type="text" value={editForm.deviceEui} onChange={(e) => setEditForm((f) => ({ ...f, deviceEui: e.target.value }))} /></label>
+              <label>Device EUI<input type="text" value={editForm.deviceEui} onChange={(e) => setEditForm((f) => ({ ...f, deviceEui: e.target.value }))} placeholder="e.g. 70B3D57ED00001AA" /></label>
+              <label>Badge ID<input type="text" value={editForm.badgeId} onChange={(e) => setEditForm((f) => ({ ...f, badgeId: e.target.value }))} placeholder="e.g. BADGE-001" /></label>
               <label>App Key<input type="text" value={editForm.appKey} onChange={(e) => setEditForm((f) => ({ ...f, appKey: e.target.value }))} /></label>
+              <label>
+                Frequency Plan
+                <select value={editForm.frequencyPlanId} onChange={(e) => setEditForm((f) => ({ ...f, frequencyPlanId: e.target.value }))}>
+                  {TTN_FREQUENCY_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </label>
               <label>
                 Gateway
                 <select value={editForm.gatewayId} onChange={(e) => setEditForm((f) => ({ ...f, gatewayId: e.target.value }))}>

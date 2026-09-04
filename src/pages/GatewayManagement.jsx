@@ -9,6 +9,7 @@ import { formatDateTime } from '../utils/formatters'
 import { gatewayAPI, locationAPI, floorAPI, zoneAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../context/ToastContext'
+import { TTN_FREQUENCY_PLANS } from '../utils/constants'
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -94,9 +95,9 @@ export default function GatewayManagement() {
     })
   }
 
-  const [form, setForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
-  const [editForm, setEditForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', status: 'offline', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
-  const [registerForm, setRegisterForm] = useState({ ttnGatewayId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '', description: '' })
+  const [form, setForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'IN_865_867', latitude: '', longitude: '' })
+  const [editForm, setEditForm] = useState({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', status: 'offline', frequencyPlanId: 'IN_865_867', latitude: '', longitude: '' })
+  const [registerForm, setRegisterForm] = useState({ ttnGatewayId: '', frequencyPlanId: 'IN_865_867', latitude: '', longitude: '', description: '' })
 
   const loadGateways = useCallback(async () => {
     setLoading(true)
@@ -156,6 +157,7 @@ export default function GatewayManagement() {
 
   const loadDetail = useCallback(async (id) => {
     setLoading(true)
+    loadOrganizations()
     try {
       const [detail, devicesData, uplinksData, eventsData] = await Promise.all([
         gatewayAPI.getById(id),
@@ -164,6 +166,7 @@ export default function GatewayManagement() {
         gatewayAPI.getEvents(id, 50),
       ])
       setSelected(detail.gateway)
+      setDrawerGw(detail.gateway)
       setDevices(devicesData.devices || [])
       setUplinks(uplinksData.uplinks || [])
       setEvents(eventsData.events || [])
@@ -178,7 +181,7 @@ export default function GatewayManagement() {
     e.preventDefault()
     setSaving(true)
     try {
-      await gatewayAPI.create({
+      const data = await gatewayAPI.create({
         name: form.name, gatewayId: form.gatewayId || undefined, gatewayEui: form.gatewayEui,
         locationId: form.locationId || null, floorId: form.floorId || null, zoneId: form.zoneId || null,
         frequencyPlanId: form.frequencyPlanId || null,
@@ -187,7 +190,11 @@ export default function GatewayManagement() {
       setForm({ name: '', gatewayId: '', gatewayEui: '', locationId: '', floorId: '', zoneId: '', frequencyPlanId: 'EU_863_870', latitude: '', longitude: '' })
       setAddOpen(false)
       await loadGateways()
-      toast.success('Gateway created successfully.')
+      if (data?.ttnError) {
+        toast.warning(`Gateway saved, but TTN registration failed: ${data.ttnError}. You can retry registration from the gateway actions.`)
+      } else {
+        toast.success('Gateway created and registered in TTN successfully.')
+      }
     } catch (e) {
       toast.error(e.message || 'Failed to create gateway.')
     } finally {
@@ -271,11 +278,15 @@ export default function GatewayManagement() {
     if (!selected) return
     setDeleting(true)
     try {
-      await gatewayAPI.delete(selected.id)
+      const data = await gatewayAPI.delete(selected.id)
       setGateways((prev) => prev.filter((g) => g.id !== selected.id))
       setSelected(null)
       setDeleteOpen(false)
-      toast.success('Gateway deleted.')
+      if (data?.ttnDeleted) {
+        toast.success('Gateway deleted from app and TTN.')
+      } else {
+        toast.warning(`Gateway deleted from app. TTN delete failed: ${data?.ttnDeleteError || 'unknown error'}. Please remove it manually from TTN Console.`)
+      }
     } catch (e) {
       toast.error(e.message || 'Failed to delete gateway.')
     } finally {
@@ -445,9 +456,16 @@ export default function GatewayManagement() {
                         <td onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
                             {isSuperAdmin && (
-                              <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(gw)}>
-                                {gw.organizationId ? 'Reassign' : 'Assign Org'}
-                              </button>
+                              <>
+                                {gw.organizationId && (
+                                  <span style={{ padding: '3px 8px', fontSize: 11, background: 'var(--success-bg, #dcfce7)', color: 'var(--success, #16a34a)', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    ✓ Assigned
+                                  </span>
+                                )}
+                                <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(gw)}>
+                                  {gw.organizationId ? 'Reassign' : 'Assign Org'}
+                                </button>
+                              </>
                             )}
                             <button type="button" className={`btn btn--sm ${gw.status === 'online' ? 'btn--secondary' : 'btn--primary'}`} style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => handleToggleActive(gw)} disabled={saving}>
                               {gw.status === 'online' ? 'Deactivate' : 'Activate'}
@@ -487,7 +505,7 @@ export default function GatewayManagement() {
               <label>Site<select value={form.locationId} onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value, floorId: '', zoneId: '' }))}><option value="">Select site</option>{locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.officeName || loc.city}</option>)}</select></label>
               <label>Floor<select value={form.floorId} onChange={(e) => setForm((f) => ({ ...f, floorId: e.target.value, zoneId: '' }))} disabled={!form.locationId}><option value="">Select floor</option>{floors.filter((f) => !form.locationId || f.locationId === form.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}</select></label>
               <label>Zone<select value={form.zoneId} onChange={(e) => setForm((f) => ({ ...f, zoneId: e.target.value }))} disabled={!form.floorId}><option value="">Select zone</option>{zones.filter((z) => !form.floorId || z.floorId === form.floorId).map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}</select></label>
-              <label>Frequency Plan<input type="text" value={form.frequencyPlanId} onChange={(e) => setForm((f) => ({ ...f, frequencyPlanId: e.target.value }))} /></label>
+              <label>Frequency Plan<select value={form.frequencyPlanId} onChange={(e) => setForm((f) => ({ ...f, frequencyPlanId: e.target.value }))}>{TTN_FREQUENCY_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
               <label>Latitude<input type="text" value={form.latitude} onChange={(e) => setForm((f) => ({ ...f, latitude: e.target.value }))} /></label>
               <label>Longitude<input type="text" value={form.longitude} onChange={(e) => setForm((f) => ({ ...f, longitude: e.target.value }))} /></label>
               <div className="btn-group">
@@ -511,7 +529,7 @@ export default function GatewayManagement() {
               <label>Floor<select value={editForm.floorId} onChange={(e) => setEditForm((f) => ({ ...f, floorId: e.target.value, zoneId: '' }))} disabled={!editForm.locationId}><option value="">Select floor</option>{floors.filter((f) => !editForm.locationId || f.locationId === editForm.locationId).map((floor) => <option key={floor.id} value={floor.id}>{floor.floorName}</option>)}</select></label>
               <label>Zone<select value={editForm.zoneId} onChange={(e) => setEditForm((f) => ({ ...f, zoneId: e.target.value }))} disabled={!editForm.floorId}><option value="">Select zone</option>{zones.filter((z) => !editForm.floorId || z.floorId === editForm.floorId).map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}</select></label>
               <label>Status<select value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}><option value="online">Online</option><option value="offline">Offline</option><option value="degraded">Degraded</option></select></label>
-              <label>Frequency Plan<input type="text" value={editForm.frequencyPlanId} onChange={(e) => setEditForm((f) => ({ ...f, frequencyPlanId: e.target.value }))} /></label>
+              <label>Frequency Plan<select value={editForm.frequencyPlanId} onChange={(e) => setEditForm((f) => ({ ...f, frequencyPlanId: e.target.value }))}>{TTN_FREQUENCY_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
               <label>Latitude<input type="text" value={editForm.latitude} onChange={(e) => setEditForm((f) => ({ ...f, latitude: e.target.value }))} /></label>
               <label>Longitude<input type="text" value={editForm.longitude} onChange={(e) => setEditForm((f) => ({ ...f, longitude: e.target.value }))} /></label>
               <div className="btn-group">
@@ -532,7 +550,7 @@ export default function GatewayManagement() {
             <h3>Register Gateway in TTN</h3>
             <form onSubmit={handleRegisterTTN}>
               <label>TTN Gateway ID<input type="text" value={registerForm.ttnGatewayId} onChange={(e) => setRegisterForm((f) => ({ ...f, ttnGatewayId: e.target.value }))} /></label>
-              <label>Frequency Plan<input type="text" value={registerForm.frequencyPlanId} onChange={(e) => setRegisterForm((f) => ({ ...f, frequencyPlanId: e.target.value }))} /></label>
+              <label>Frequency Plan<select value={registerForm.frequencyPlanId} onChange={(e) => setRegisterForm((f) => ({ ...f, frequencyPlanId: e.target.value }))}>{TTN_FREQUENCY_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
               <label>Latitude<input type="text" value={registerForm.latitude} onChange={(e) => setRegisterForm((f) => ({ ...f, latitude: e.target.value }))} /></label>
               <label>Longitude<input type="text" value={registerForm.longitude} onChange={(e) => setRegisterForm((f) => ({ ...f, longitude: e.target.value }))} /></label>
               <label>Description<input type="text" value={registerForm.description} onChange={(e) => setRegisterForm((f) => ({ ...f, description: e.target.value }))} /></label>
@@ -615,12 +633,57 @@ export default function GatewayManagement() {
               </div>
             </div>
             <div className="drawer-section">
+              <p className="drawer-section__title">LNS Credentials</p>
+              <div className="drawer-fields">
+                <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                  <span className="drawer-field__label">LNS Server</span>
+                  <code style={{ fontSize: 11, wordBreak: 'break-all' }}>wss://eu1.cloud.thethings.network:8887</code>
+                </div>
+                <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                  <span className="drawer-field__label">LNS API Key</span>
+                  {drawerGw.lnsKey ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                      <code style={{ fontSize: 11, wordBreak: 'break-all', flex: 1, background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
+                        {drawerGw.lnsKey}
+                      </code>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--secondary"
+                        style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                        onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('LNS key copied to clipboard.') }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Not generated — register the gateway in TTN first.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="drawer-section">
               <p className="drawer-section__title">Status</p>
               <div className="drawer-fields">
                 <div className="drawer-field"><span className="drawer-field__label">Status</span><span className="drawer-field__value"><StatusBadge status={drawerGw.status || 'offline'} variant="device" /></span></div>
                 <div className="drawer-field"><span className="drawer-field__label">TTN</span><span className="drawer-field__value"><StatusBadge status={drawerGw.ttnStatus === 'registered' ? 'online' : 'offline'} variant="health" /></span></div>
                 <div className="drawer-field"><span className="drawer-field__label">Assignment</span><span className="drawer-field__value">{hasAssignedLocation(drawerGw) ? 'Placed' : 'Available'}</span></div>
                 <div className="drawer-field"><span className="drawer-field__label">Last Seen</span><span className="drawer-field__value" style={{ fontSize: 12 }}>{drawerGw.lastSeen ? formatDateTime(drawerGw.lastSeen) : '—'}</span></div>
+                <div className="drawer-field">
+                  <span className="drawer-field__label">Vendor</span>
+                  <span className="drawer-field__value">
+                    {drawerGw.organizationId
+                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                            {organizations.find(o => o.id === drawerGw.organizationId)?.name || 'Assigned'}
+                          </span>
+                        </span>
+                      : <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
+                    }
+                  </span>
+                </div>
               </div>
             </div>
             <div className="drawer-section">

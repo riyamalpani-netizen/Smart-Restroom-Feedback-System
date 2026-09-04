@@ -302,4 +302,28 @@ async function deleteGatewayFromTTN({ gatewayEui, gatewayId }) {
   return { gatewayId: resolvedGatewayId, gatewayEui: gEui };
 }
 
-module.exports = { registerGatewayInTTN, deleteGatewayFromTTN };
+async function createGatewayLnsKey(gatewayId) {
+  const { apiBaseUrl, apiKey } = getConfiguration();
+  // gatewayId here is already the resolved TTN gateway ID string
+  const url = `${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(gatewayId)}/api-keys`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "LNS key",
+      rights: ["RIGHT_GATEWAY_LINK"],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`TTN LNS key creation failed for gateway ${gatewayId} (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  // data.key is the full NNSXS.… value — TTN only returns it once
+  return data.key;
+}
+
+module.exports = { registerGatewayInTTN, deleteGatewayFromTTN, createGatewayLnsKey };

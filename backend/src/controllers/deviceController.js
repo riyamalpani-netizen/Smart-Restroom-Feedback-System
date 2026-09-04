@@ -917,7 +917,7 @@ async function createDevice(req, res) {
       name, deviceType, restroomId, batteryLevel, floorId, zoneId,
       floorPlanPosX, floorPlanPosY, latitude, longitude, // ← latitude/longitude added
       deviceEui: providedDeviceEui, ttnDeviceId, joinEui, appKey,
-      lorawanVersion, lorawanPhyVersion, isLayoutAsset = false,
+      lorawanVersion, lorawanPhyVersion, isLayoutAsset = false, badgeId: providedBadgeId, frequencyPlanId,
     } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
@@ -929,6 +929,10 @@ async function createDevice(req, res) {
 
       if (!appKey) {
         return res.status(400).json({ message: "App Key is required" });
+      }
+
+      if (!providedBadgeId || !providedBadgeId.trim()) {
+        return res.status(400).json({ message: "Badge ID is required" });
       }
 
       const normalizedDeviceEui = providedDeviceEui.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
@@ -948,8 +952,7 @@ async function createDevice(req, res) {
     const normalizedAppKey = isLayoutAsset
       ? (appKey || crypto.randomBytes(16).toString("hex"))
       : appKey.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-    const generatedBadgeId = name ? `BADGE-${name.replace(/[^A-Z0-9]/gi, '').slice(0, 8).toUpperCase()}` : `BADGE-${resolvedDeviceEui.slice(0, 8)}`;
-    const resolvedBadgeId = generatedBadgeId;
+    const resolvedBadgeId = providedBadgeId ? providedBadgeId.trim() : (name ? `BADGE-${name.replace(/[^A-Z0-9]/gi, '').slice(0, 8).toUpperCase()}` : `BADGE-${resolvedDeviceEui.slice(0, 8)}`);
     const resolvedJoinEui = joinEui || "0000000000000000";
     const resolvedAppKey = normalizedAppKey;
     const resolvedLorawanVersion = lorawanVersion || "MAC_V1_0_3";
@@ -1002,13 +1005,25 @@ async function createDevice(req, res) {
 
     let ttnRegistration = null;
     try {
-      const resolvedTtnDeviceId = `device-${resolvedDeviceEui.toLowerCase()}`;
+      // Build a human-readable TTN device ID from the device name when available:
+      // "Men's Room Sensor 1" → "mensroomsensor1" → "device-mensroomsensor1-d00001aa"
+      // Falls back to the EUI-only form if no name is given.
+      const nameSlug = name
+        ? name.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 20)
+        : null;
+      const euiSuffix = resolvedDeviceEui.toLowerCase().slice(-8);
+      const resolvedTtnDeviceId = nameSlug
+        ? `device-${nameSlug}-${euiSuffix}`
+        : `device-${resolvedDeviceEui.toLowerCase()}`;
+
       const ttnPayload = {
         deviceEui: resolvedDeviceEui,
         deviceId: resolvedTtnDeviceId,
         joinEui: resolvedJoinEui,
         appKey: resolvedAppKey,
         lorawanVersion: resolvedLorawanVersion,
+        name: name || resolvedTtnDeviceId,
+        frequencyPlanId: frequencyPlanId || undefined,
       };
 
       if (lorawanPhyVersion) {

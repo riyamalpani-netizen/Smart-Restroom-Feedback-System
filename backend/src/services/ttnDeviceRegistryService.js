@@ -38,7 +38,7 @@
 //   return { apiBaseUrl, applicationId, apiKey };
 // }
 
-// async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion }) {
+// async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, frequencyPlanId, name }) {
 //   const { apiBaseUrl, applicationId, apiKey } = getConfiguration();
 
 //   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
@@ -65,7 +65,7 @@
 //           supports_join: true,
 //           lorawan_version: resolvedLorawanVersion,
 //           ...(lorawanPhyVersion ? { lorawan_phy_version: lorawanPhyVersion } : {}),
-//           frequency_plan_id: TTN_FREQUENCY_PLAN_ID,
+//           frequency_plan_id: resolvedFrequencyPlanId,
 //           root_keys: { app_key: { key: resolvedAppKey } },
 //         },
 //       }),
@@ -182,7 +182,7 @@ async function listTtnDevices(apiBaseUrl, applicationId, apiKey) {
  * network_server_address / application_server_address / join_server_address
  * were never set.
  */
-async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion }) {
+async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, frequencyPlanId, name }) {
   const { apiBaseUrl, applicationId, apiKey, clusterHost } = getConfiguration();
 
   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
@@ -191,6 +191,8 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
   const resolvedDeviceId = makeDeviceId(devEui, deviceId);
   const resolvedLorawanVersion = lorawanVersion || TTN_LORAWAN_VERSION || "MAC_V1_0_3";
   const resolvedLorawanPhyVersion = lorawanPhyVersion || TTN_LORAWAN_PHY_VERSION || "PHY_V1_0_3_REV_A";
+  // Per-device frequency plan; falls back to the application-wide env default
+  const resolvedFrequencyPlanId = frequencyPlanId || TTN_FREQUENCY_PLAN_ID;
 
   const ids = {
     device_id: resolvedDeviceId,
@@ -208,12 +210,14 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
       {
         end_device: {
           ids,
+          name: name || resolvedDeviceId,
           network_server_address: clusterHost,
           application_server_address: clusterHost,
           join_server_address: clusterHost,
         },
         field_mask: {
           paths: [
+            "name",
             "network_server_address",
             "application_server_address",
             "join_server_address",
@@ -264,7 +268,7 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
         supports_join: true,
         lorawan_version: resolvedLorawanVersion,
         ids,
-        frequency_plan_id: TTN_FREQUENCY_PLAN_ID,
+        frequency_plan_id: resolvedFrequencyPlanId,
         lorawan_phy_version: resolvedLorawanPhyVersion,
       };
       await ttnRequest(
@@ -419,7 +423,7 @@ async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lora
         supports_join: true,
         lorawan_version: resolvedLorawanVersion,
         ids,
-        frequency_plan_id: TTN_FREQUENCY_PLAN_ID,
+        frequency_plan_id: resolvedFrequencyPlanId,
         lorawan_phy_version: lorawanPhyVersion,
       };
       await ttnRequest(

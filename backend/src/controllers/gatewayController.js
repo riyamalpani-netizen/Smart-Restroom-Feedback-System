@@ -696,7 +696,7 @@
 //   getRecoveryStatus, manualCloseIncident, getAuditLog, getServerStatus, createAuditLog,
 // };
 const prisma = require("../config/database");
-const { registerGatewayInTTN: registerGatewayInTTNService, deleteGatewayFromTTN } = require("../services/ttnGatewayRegistryService");
+const { registerGatewayInTTN: registerGatewayInTTNService, deleteGatewayFromTTN, createGatewayLnsKey } = require("../services/ttnGatewayRegistryService");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -799,6 +799,7 @@ async function getGatewayById(req, res) {
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
         locationId: gateway.locationId, floorId: gateway.floorId, zoneId: gateway.zoneId,
         ttnStatus: gateway.ttnStatus, gatewayId: gateway.gatewayId, ttnDeviceId: gateway.ttnDeviceId, frequencyPlanId: gateway.frequencyPlanId,
+        lnsKey: gateway.lnsKey || null,
         latitude: gateway.latitude, longitude: gateway.longitude, connectedDevices: gateway.connectedDevices,
         organizationId: gateway.organizationId, createdAt: gateway.createdAt, updatedAt: gateway.updatedAt,
         devices: mappedDevices,
@@ -869,6 +870,7 @@ async function createGateway(req, res) {
     let ttnRegistration = null;
     let ttnStatus = "not_registered";
     let ttnErrorMessage = null;
+    let lnsKey = null;
     if (registerGatewayInTTNService && process.env.NODE_ENV !== "test") {
       try {
         ttnRegistration = await registerGatewayInTTNService({
@@ -880,6 +882,16 @@ async function createGateway(req, res) {
           description: gateway.name,
         });
         ttnStatus = "registered";
+
+        // Generate the LNS key for this gateway (RIGHT_GATEWAY_LINK)
+        try {
+          lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId);
+          console.log(`[TTN] LNS key created for gateway ${ttnRegistration.gatewayId}`);
+        } catch (lnsError) {
+          console.error(`[TTN] LNS key creation failed for gateway ${ttnRegistration.gatewayId}:`, lnsError.message);
+          // Non-fatal — gateway is registered, user can recreate the key manually from TTN Console
+          ttnErrorMessage = `Gateway registered in TTN but LNS key generation failed: ${lnsError.message}`;
+        }
       } catch (ttnError) {
         console.error("TTN gateway registration failed:", ttnError.message);
         ttnStatus = "not_registered";
@@ -894,16 +906,18 @@ async function createGateway(req, res) {
         gatewayId: ttnRegistration?.gatewayId || gateway.gatewayId,
         ttnDeviceId: ttnRegistration?.gatewayId || gateway.gatewayId,
         frequencyPlanId: ttnRegistration?.frequencyPlanId || gateway.frequencyPlanId,
+        ...(lnsKey ? { lnsKey } : {}),
       },
     });
 
     res.status(201).json({
-      message: ttnErrorMessage ? "Gateway saved, but TTN registration failed" : "Gateway created successfully",
+      message: ttnErrorMessage ? "Gateway saved, but TTN registration failed" : "Gateway created and registered in TTN successfully",
       ttnError: ttnErrorMessage,
       gateway: { id: updatedGateway.id, name: updatedGateway.name, gatewayEui: updatedGateway.gatewayEui, status: updatedGateway.status, lastSeen: updatedGateway.lastSeen,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null, restroomName: gateway.zone?.restroom?.name || null,
         locationId: updatedGateway.locationId, floorId: updatedGateway.floorId, zoneId: updatedGateway.zoneId,
         ttnStatus: updatedGateway.ttnStatus, gatewayId: updatedGateway.gatewayId, ttnDeviceId: updatedGateway.ttnDeviceId, frequencyPlanId: updatedGateway.frequencyPlanId,
+        lnsKey: updatedGateway.lnsKey || null,
         latitude: updatedGateway.latitude, longitude: updatedGateway.longitude, connectedDevices: updatedGateway.connectedDevices,
         createdAt: updatedGateway.createdAt, updatedAt: updatedGateway.updatedAt },
     });

@@ -99,7 +99,7 @@ async function processFeedback(payload) {
       return { success: false, error: "Invalid payload" };
     }
 
-    const { deviceEui, badgeId, feedbackType, battery, signalStrength, rawPayload } = decoded;
+    const { deviceEui, badgeId, feedbackType, battery, signalStrength, gatewayEui, beacons, rawPayload } = decoded;
 
     const device = await prisma.device.findUnique({
       where: { deviceEui },
@@ -116,7 +116,7 @@ async function processFeedback(payload) {
       data: {
         batteryLevel: battery ?? device.batteryLevel,
         lastSeen: new Date(),
-        healthStatus: (battery ?? 100) < 20 ? "critical" : battery < 50 ? "warning" : "healthy",
+        healthStatus: (battery ?? 100) < 20 ? "critical" : (battery ?? 100) < 50 ? "warning" : "healthy",
       },
     });
 
@@ -129,6 +129,23 @@ async function processFeedback(payload) {
       },
     });
 
+    // Update gateway lastSeen when rx_metadata carries a known gateway EUI
+    if (gatewayEui) {
+      try {
+        const normalizedGwEui = gatewayEui.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+        const gw = await prisma.gateway.findFirst({ where: { gatewayEui: normalizedGwEui } });
+        if (gw) {
+          await prisma.gateway.update({
+            where: { id: gw.id },
+            data: { lastSeen: new Date(), status: "online" },
+          });
+          logger.info(`[MQTT] Gateway ${gw.name} (${normalizedGwEui}) lastSeen updated`);
+        }
+      } catch (gwErr) {
+        logger.warn(`[MQTT] Gateway lastSeen update failed: ${gwErr.message}`);
+      }
+    }
+
     let feedback = null;
     let alert = null;
     try {
@@ -139,7 +156,7 @@ async function processFeedback(payload) {
           feedbackType,
           battery,
           signalStrength,
-          rawPayload: JSON.stringify(rawPayload),
+          rawPayload: JSON.stringify({ ...rawPayload, _parsed: { beacons, gatewayEui } }),
         },
         include: {
           device: true,
@@ -184,34 +201,99 @@ async function processFeedback(payload) {
 
 function decodePayload(payload) {
   try {
-    const decoded = payload.uplink_message?.decoded_payload || payload.decoded_payload || payload;
+    // ── Normalise envelope ─────────────────────────────────────────────────
+    // Shape A: TTN webhook/event format  → { name, data: { end_device_ids, uplink_message } }
+    // Shape B: TTN MQTT format           → { end_device_ids, uplink_message }
+    // Shape C: bare decoded map          → { feedback_type, battery, … }
+    const envelope = payload.data ?? payload;
+    const uplinkMessage = envelope.uplink_message ?? null;
 
-    const envelopeDeviceEui = payload.uplink_message?.ids?.dev_eui || payload.end_device_ids?.dev_eui;
-    const deviceEui = (decoded.device_eui || decoded.deviceEui || decoded.deveui || decoded.devEUI || envelopeDeviceEui || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+    // ── Device EUI ─────────────────────────────────────────────────────────
+    const envelopeDeviceEui =
+      envelope.end_device_ids?.dev_eui ||
+      payload.identifiers?.[0]?.device_ids?.dev_eui ||
+      payload.end_device_ids?.dev_eui ||
+      uplinkMessage?.ids?.dev_eui;
+
+    const decodedApp = uplinkMessage?.decoded_payload ?? payload.decoded_payload ?? payload;
+
+    const deviceEui = (
+      decodedApp.device_eui || decodedApp.deviceEui || decodedApp.deveui || decodedApp.devEUI ||
+      envelopeDeviceEui || ""
+    ).replace(/[^a-fA-F0-9]/g, "").toUpperCase();
 
     if (!deviceEui) {
-      logger.warn("Could not extract DevEUI from TTN payload. Payload keys:", Object.keys(payload));
-    }
-    const badgeId = decoded.badge_id || decoded.badgeId || decoded.badge;
-    const feedbackType = decoded.feedback_type || decoded.feedbackType || decoded.type || "average";
-    const battery = decoded.battery ?? decoded.battery_level ?? null;
-    const signalStrength = decoded.signal_strength ?? decoded.rssi ?? decoded.signalStrength ?? null;
-    const rawPayload = payload;
-
-    if (!deviceEui || !feedbackType) {
+      logger.warn("Could not extract DevEUI from TTN payload. Top-level keys:", Object.keys(payload));
       return null;
     }
 
+    // ── Badge ID ───────────────────────────────────────────────────────────
+    const badgeId = decodedApp.badge_id || decodedApp.badgeId || decodedApp.badge || null;
+
+    // ── Feedback type ──────────────────────────────────────────────────────
+    const rawType = decodedApp.feedback_type || decodedApp.feedbackType || decodedApp.type || "average";
     const validTypes = ["happy", "average", "needs_cleaning", "emergency"];
-    const normalizedType = validTypes.includes(feedbackType) ? feedbackType : "average";
+    const feedbackType = validTypes.includes(rawType) ? rawType : "average";
+
+    // ── Battery ────────────────────────────────────────────────────────────
+    // T1000/Seeed devices report BatteryPercentage (capital B) in decoded_payload
+    const battery =
+      decodedApp.BatteryPercentage ??
+      decodedApp.battery_percentage ??
+      decodedApp.battery ??
+      decodedApp.battery_level ??
+      null;
+
+    // ── Signal strength ────────────────────────────────────────────────────
+    // Prefer real LoRaWAN RSSI from rx_metadata over any app-level field
+    const rxMeta = uplinkMessage?.rx_metadata?.[0];
+    const signalStrength =
+      rxMeta?.rssi ??
+      rxMeta?.channel_rssi ??
+      decodedApp.signal_strength ??
+      decodedApp.rssi ??
+      decodedApp.signalStrength ??
+      null;
+
+    // ── Gateway EUI from rx_metadata ──────────────────────────────────────
+    const gatewayEui = rxMeta?.gateway_ids?.eui ?? null;
+
+    // ── Beacon data (T1000 BLE scan) ──────────────────────────────────────
+    const beacons = [];
+    const beaconCount = decodedApp.BeaconCount ?? 0;
+    for (let i = 1; i <= beaconCount; i++) {
+      const mac  = decodedApp[`BeaconID${i}`] ?? null;
+      const rssi = decodedApp[`Beacon${i}_BleRSSI`] ?? decodedApp[`Beacon${i}_RSSI`] ?? null;
+      if (mac) beacons.push({ mac, rssi });
+    }
+    // Also parse nested decoded.messages BLE Scan entries (Seeed codec format)
+    const codecMessages = decodedApp.decoded?.messages ?? [];
+    for (const msgGroup of codecMessages) {
+      for (const msg of (Array.isArray(msgGroup) ? msgGroup : [msgGroup])) {
+        if (msg.type === "BLE Scan" && Array.isArray(msg.measurementValue)) {
+          for (const entry of msg.measurementValue) {
+            if (entry.mac && !beacons.find((b) => b.mac === entry.mac)) {
+              beacons.push({ mac: entry.mac, rssi: Number(entry.rssi) || null });
+            }
+          }
+        }
+      }
+    }
+
+    logger.info(
+      `[decodePayload] EUI=${deviceEui} | type=${feedbackType} | battery=${battery ?? "?"}% | ` +
+      `rssi=${signalStrength} | gateway=${gatewayEui ?? "unknown"} | beacons=${beacons.length}`
+    );
 
     return {
       deviceEui,
       badgeId,
-      feedbackType: normalizedType,
+      feedbackType,
       battery,
       signalStrength,
-      rawPayload,
+      gatewayEui,
+      beacons: beacons.length ? beacons : null,
+      rawPayload: payload,
     };
   } catch (error) {
     logger.error("Error decoding payload:", error);

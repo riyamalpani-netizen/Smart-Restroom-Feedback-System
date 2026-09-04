@@ -289,3 +289,20 @@ export const DEMO_USERS = [
   { email: 'facility@smartrestroom.com', password: 'Facility@123', role: ROLES.FACILITY_MANAGER, name: 'Facility Manager' },
   { email: 'viewer@smartrestroom.com', password: 'Viewer@123', role: ROLES.VIEWER, name: 'Viewer' },
 ]
+
+// ─── TTN Frequency Plans ─────────────────────────────────────────────────────
+// Matches the official plan IDs from The Things Network v3 Console.
+export const TTN_FREQUENCY_PLANS = [
+  { id: 'EU_863_870',            label: 'Europe 863-870 MHz (SF9 for RX2)' },
+  { id: 'EU_863_870_TTN',        label: 'Europe 863-870 MHz (SF9 for RX2, recommended)' },
+  { id: 'US_902_928',            label: 'United States 902-928 MHz (FSB 2)' },
+  { id: 'AU_915_928',            label: 'Australia 915-928 MHz (FSB 2)' },
+  { id: 'AS_923',                label: 'Asia 923 MHz' },
+  { id: 'AS_923_2',              label: 'Asia 923 MHz (AS2)' },
+  { id: 'AS_923_3',              label: 'Asia 923 MHz (AS3)' },
+  { id: 'IN_865_867',            label: 'India 865-867 MHz' },
+  { id: 'KR_920_923',            label: 'Korea 920-923 MHz' },
+  { id: 'RU_864_870',            label: 'Russia 864-870 MHz' },
+  { id: 'CN_470_510',            label: 'China 470-510 MHz (FSB 11)' },
+  { id: 'CN_779_787',            label: 'China 779-787 MHz' },
+]
