@@ -16,6 +16,8 @@ const PAGE_TITLES = {
   '/settings': 'Settings',
   '/audit-history': 'Audit History',
   '/profile': 'Profile',
+  '/vendors': 'Vendor Configuration',
+  '/subscription-plans': 'Subscription Plans',
 }
 
 const PAGE_SUBTITLES = {
@@ -33,6 +35,8 @@ const PAGE_SUBTITLES = {
   '/settings': 'Configure office, alerts, and notification preferences',
   '/audit-history': 'Track all user actions and configuration changes in your organisation',
   '/profile': 'Your account information',
+  '/vendors': 'Provision vendors, assign subscription plans and TTN/MQTT integrations',
+  '/subscription-plans': 'Define resource limits and feature access for each vendor tier',
 }
 
 // Maps each route to its breadcrumb trail — mirrors the sidebar groups exactly
@@ -57,6 +61,8 @@ const BREADCRUMBS = {
   '/audit-history':  [{ label: 'Administration' }, { label: 'Audit History' }],
   '/settings':       [{ label: 'Administration' }, { label: 'Settings' }],
   '/profile':        [{ label: 'Administration' }, { label: 'Profile' }],
+  '/vendors':             [{ label: 'Administration' }, { label: 'Vendor Configuration' }],
+  '/subscription-plans':  [{ label: 'Administration' }, { label: 'Subscription Plans' }],
 }
 
 export default function Navbar({ onMenuToggle }) {

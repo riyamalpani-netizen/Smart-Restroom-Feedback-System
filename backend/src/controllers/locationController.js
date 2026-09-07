@@ -1,5 +1,7 @@
 const express = require("express");
 const prisma = require("../config/database");
+const { checkPlanLimit } = require("../utils/planLimits");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -126,11 +128,16 @@ async function createLocation(req, res) {
       return res.status(403).json({ message: "You can only create locations in your own organization" });
     }
 
+    // Subscription plan limit check
+    const limitCheck = await checkPlanLimit(organizationId, "sites");
+    if (!limitCheck.allowed) return res.status(403).json({ message: limitCheck.message });
+
     const location = await prisma.location.create({
       data: { organizationId, city, officeName, address, latitude: Number(latitude), longitude: Number(longitude) },
     });
 
     res.status(201).json({ message: "Location created successfully", location });
+    logAudit(req, { module: "Location", action: "CREATE", description: `Created location "${location.officeName}" in ${location.city}` });
   } catch (error) {
     console.error("Create location error:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -161,6 +168,7 @@ async function updateLocation(req, res) {
     });
 
     res.status(200).json({ message: "Location updated successfully", location });
+    logAudit(req, { module: "Location", action: "UPDATE", description: `Updated location "${location.officeName}"` });
   } catch (error) {
     console.error("Update location error:", error);
     res.status(500).json({ message: "Internal server error" });

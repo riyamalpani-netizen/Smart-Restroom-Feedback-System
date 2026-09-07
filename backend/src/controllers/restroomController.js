@@ -1,4 +1,5 @@
 const prisma = require("../config/database");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -89,6 +90,12 @@ async function createRestroom(req, res) {
       await prisma.zone.update({ where: { id: req.body.zoneId }, data: { restroomId: restroom.id } });
     }
 
+    await logAudit(req, {
+      module: "Restroom",
+      action: "CREATE",
+      description: `Created restroom "${restroom.name}"`,
+    });
+
     res.status(201).json({ message: "Restroom created successfully", restroom });
   } catch (error) {
     console.error("Create restroom error:", error);
@@ -127,6 +134,12 @@ async function updateRestroom(req, res) {
       }
     }
 
+    await logAudit(req, {
+      module: "Restroom",
+      action: "UPDATE",
+      description: `Updated restroom "${restroom.name}"`,
+    });
+
     res.status(200).json({ message: "Restroom updated successfully", restroom });
   } catch (error) {
     console.error("Update restroom error:", error);
@@ -156,6 +169,12 @@ async function deleteRestroom(req, res) {
       prisma.feedback.deleteMany({ where: { restroomId: id } }),
       prisma.restroom.delete({ where: { id } }),
     ]);
+
+    await logAudit(req, {
+      module: "Restroom",
+      action: "DELETE",
+      description: `Deleted restroom "${existing.name}"`,
+    });
 
     res.status(200).json({ message: "Restroom deleted successfully" });
   } catch (error) {

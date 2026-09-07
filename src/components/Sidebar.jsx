@@ -6,8 +6,9 @@ import {
   IconDashboard, IconLiveFeedback, Iconsidemap, IconReports,
   IconSiteConfig, IconGateway, IconDevice, IconRestroom,
   IconAlerts, IconDisaster, IconUsers, IconAudit, IconSettings, IconNotifications,
+  IconVendors, IconPlans,
   IconOverview, IconMonitoring, IconInfrastructure,
-  IconRestroomOps, IconAlertsSafety, IconAdmin,
+  IconRestroomOps, IconAlertsSafety, IconAdmin, IconPlatform,
 } from './SidebarIcons'
 
 function NavIcon({ name }) {
@@ -26,10 +27,11 @@ function NavIcon({ name }) {
     case 'audit':        return <IconAudit />
     case 'settings':     return <IconSettings />
     case 'notifications': return <IconNotifications />
+    case 'vendors':      return <IconVendors />
+    case 'plans':        return <IconPlans />
     default:             return <span>{name}</span>
   }
 }
-
 function GroupIcon({ name }) {
   switch (name) {
     case 'Overview':            return <IconOverview />
@@ -38,6 +40,7 @@ function GroupIcon({ name }) {
     case 'Restroom Operations': return <IconRestroomOps />
     case 'Alerts & Safety':     return <IconAlertsSafety />
     case 'Administration':      return <IconAdmin />
+    case 'Platform':            return <IconPlatform />
     default:                    return null
   }
 }

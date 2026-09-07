@@ -153,6 +153,20 @@ export const NAV_ITEMS = [
     group: 'Administration',
     roles: [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN],
   },
+  {
+    path: '/vendors',
+    label: 'Vendor Configuration',
+    icon: 'vendors',
+    group: 'Administration',
+    roles: [ROLES.SUPER_ADMIN],
+  },
+  {
+    path: '/subscription-plans',
+    label: 'Subscription Plans',
+    icon: 'plans',
+    group: 'Administration',
+    roles: [ROLES.SUPER_ADMIN],
+  },
 ]
 
 /**
@@ -175,6 +189,8 @@ export const ROLE_ROUTE_ACCESS = {
     '/settings',
     '/audit-history',
     '/profile',
+    '/vendors',
+    '/subscription-plans',
   ],
   [ROLES.VENDOR_ADMIN]: [
     '/dashboard',

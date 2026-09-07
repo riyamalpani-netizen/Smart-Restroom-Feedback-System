@@ -17,6 +17,8 @@ import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import SiteConfiguration from './pages/SiteConfiguration'
 import AuditHistory from './pages/AuditHistory'
+import VendorManagement from './pages/VendorManagement'
+import SubscriptionPlans from './pages/SubscriptionPlans'
 import NotFound from './pages/NotFound'
 import { ROLES } from './utils/constants'
 
@@ -77,6 +79,12 @@ export default function App() {
         {/* ── Audit History: Super Admin + Vendor Admin (vendor sees own org only) ── */}
         <Route path="audit-history"
           element={<ProtectedRoute allowedRoles={MGMT_ROLES} path="/audit-history"><AuditHistory /></ProtectedRoute>} />
+
+        {/* ── Vendor Configuration + Subscription Plans: Super Admin only ── */}
+        <Route path="vendors"
+          element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/vendors"><VendorManagement /></ProtectedRoute>} />
+        <Route path="subscription-plans"
+          element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/subscription-plans"><SubscriptionPlans /></ProtectedRoute>} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

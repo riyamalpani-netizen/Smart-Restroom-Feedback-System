@@ -1,4 +1,5 @@
 const prisma = require("../config/database");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -84,6 +85,12 @@ async function createFloor(req, res) {
       data: { locationId, floorName, floorNumber: floorNumber ?? null },
     });
 
+    await logAudit(req, {
+      module: "Floor",
+      action: "CREATE",
+      description: `Created floor "${floor.floorName}"`,
+    });
+
     res.status(201).json({ message: "Floor created successfully", floor });
   } catch (error) {
     console.error("Create floor error:", error);
@@ -110,6 +117,12 @@ async function updateFloor(req, res) {
     const floor = await prisma.floor.update({
       where: { id },
       data: { floorName, ...(floorNumber !== undefined ? { floorNumber } : {}) },
+    });
+
+    await logAudit(req, {
+      module: "Floor",
+      action: "UPDATE",
+      description: `Updated floor "${floor.floorName}"`,
     });
 
     res.status(200).json({ message: "Floor updated successfully", floor });
@@ -152,6 +165,12 @@ async function deleteFloor(req, res) {
       prisma.floorPlan.deleteMany({ where: { floorId: id } }),
       prisma.floor.delete({ where: { id } }),
     ]);
+
+    await logAudit(req, {
+      module: "Floor",
+      action: "DELETE",
+      description: `Deleted floor "${existing.floorName}"`,
+    });
 
     res.status(200).json({ message: "Floor deleted successfully" });
   } catch (error) {

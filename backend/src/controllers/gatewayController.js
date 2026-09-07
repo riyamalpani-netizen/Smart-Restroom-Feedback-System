@@ -697,6 +697,7 @@
 // };
 const prisma = require("../config/database");
 const { registerGatewayInTTN: registerGatewayInTTNService, deleteGatewayFromTTN, createGatewayLnsKey } = require("../services/ttnGatewayRegistryService");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -880,12 +881,13 @@ async function createGateway(req, res) {
           latitude: gateway.latitude || undefined,
           longitude: gateway.longitude || undefined,
           description: gateway.name,
+          organizationId: gateway.organizationId || undefined,
         });
         ttnStatus = "registered";
 
         // Generate the LNS key for this gateway (RIGHT_GATEWAY_LINK)
         try {
-          lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId);
+          lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, gateway.organizationId || undefined);
           console.log(`[TTN] LNS key created for gateway ${ttnRegistration.gatewayId}`);
         } catch (lnsError) {
           console.error(`[TTN] LNS key creation failed for gateway ${ttnRegistration.gatewayId}:`, lnsError.message);
@@ -908,6 +910,12 @@ async function createGateway(req, res) {
         frequencyPlanId: ttnRegistration?.frequencyPlanId || gateway.frequencyPlanId,
         ...(lnsKey ? { lnsKey } : {}),
       },
+    });
+
+    await logAudit(req, {
+      module: "Gateway",
+      action: "CREATE",
+      description: `Created gateway "${gateway.name}" (EUI: ${gateway.gatewayEui})`,
     });
 
     res.status(201).json({
@@ -969,7 +977,7 @@ async function bulkCreateGateways(req, res) {
 async function updateGateway(req, res) {
   try {
     const { id } = req.params;
-    const { name, gatewayEui, locationId, floorId, zoneId, status, frequencyPlanId, latitude, longitude, gatewayId } = req.body;
+    const { name, gatewayEui, locationId, floorId, zoneId, status, frequencyPlanId, latitude, longitude, gatewayId, organizationId } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
     const whereClause = { id };
@@ -1002,6 +1010,15 @@ async function updateGateway(req, res) {
     }
     const updateData = {};
     if (name !== undefined) updateData.name = name;
+    // Super admin can assign/unassign a gateway to an organisation
+    if (organizationId !== undefined && userRole === "super_admin") {
+      if (organizationId) {
+        const { checkPlanLimit } = require("../utils/planLimits");
+        const limitCheck = await checkPlanLimit(organizationId, "gateways");
+        if (!limitCheck.allowed) return res.status(403).json({ message: limitCheck.message });
+      }
+      updateData.organizationId = organizationId || null;
+    }
     if (locationId !== undefined || placement) updateData.locationId = placement ? placement.locationId : locationId || null;
     if (floorId !== undefined || placement) updateData.floorId = placement ? placement.floorId : floorId || null;
     if (zoneId !== undefined || placement) updateData.zoneId = placement ? placement.zoneId : zoneId || null;
@@ -1122,6 +1139,12 @@ async function updateGateway(req, res) {
       data: { ttnStatus, gatewayId: resolvedGatewayId },
     });
 
+    await logAudit(req, {
+      module: "Gateway",
+      action: "UPDATE",
+      description: `Updated gateway "${existing.name}" (EUI: ${existing.gatewayEui})`,
+    });
+
     res.status(200).json({
       message: ttnErrorMessage ? "Gateway updated, but TTN sync failed" : "Gateway updated successfully",
       ttnError: ttnErrorMessage,
@@ -1161,7 +1184,7 @@ async function deleteGateway(req, res) {
 
     for (const candidate of candidateIds) {
       try {
-        await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: candidate });
+        await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: candidate, organizationId: existing.organizationId || undefined });
         ttnDeleted = true;
         break;
       } catch (ttnError) {
@@ -1171,6 +1194,13 @@ async function deleteGateway(req, res) {
     }
 
     await prisma.gateway.delete({ where: { id } });
+
+    await logAudit(req, {
+      module: "Gateway",
+      action: "DELETE",
+      description: `Deleted gateway "${existing.name}" (EUI: ${existing.gatewayEui})`,
+    });
+
     res.status(200).json({
       message: ttnDeleted ? "Gateway deleted successfully from app and TTN" : "Gateway deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
       ttnDeleted,
@@ -1523,7 +1553,9 @@ async function createAuditLog(req, res) {
   try {
     const { userId, module, action, description } = req.body;
     if (!module || !action) return res.status(400).json({ message: "Module and action are required" });
-    const log = await prisma.auditLog.create({ data: { userId: userId || null, module, action, description: description || null }, include: { user: { select: { id: true, name: true, email: true, role: true } } } });
+    const organizationId = req.user?.organizationId || null;
+    const resolvedUserId = userId || req.user?.sub || req.user?.id || null;
+    const log = await prisma.auditLog.create({ data: { userId: resolvedUserId, organizationId, module, action, description: description || null }, include: { user: { select: { id: true, name: true, email: true, role: true } } } });
     res.status(201).json({ message: "Audit log created successfully", log });
   } catch (error) {
     console.error("Create audit log error:", error);

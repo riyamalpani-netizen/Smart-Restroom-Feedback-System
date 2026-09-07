@@ -1,4 +1,5 @@
 const prisma = require("../config/database");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -142,6 +143,12 @@ async function createZone(req, res) {
       },
     });
 
+    await logAudit(req, {
+      module: "Zone",
+      action: "CREATE",
+      description: `Created zone "${zone.name}"`,
+    });
+
     res.status(201).json({
       message: "Zone created successfully",
       zone,
@@ -194,6 +201,12 @@ async function updateZone(req, res) {
       },
     });
 
+    await logAudit(req, {
+      module: "Zone",
+      action: "UPDATE",
+      description: `Updated zone "${zone.name}"`,
+    });
+
     res.status(200).json({
       message: "Zone updated successfully",
       zone,
@@ -242,6 +255,12 @@ async function deleteZone(req, res) {
         prisma.restroom.delete({ where: { id: restroomId } }),
       ] : []),
     ]);
+
+    await logAudit(req, {
+      module: "Zone",
+      action: "DELETE",
+      description: `Deleted zone "${existing.name}"`,
+    });
 
     res.status(200).json({
       message: "Zone deleted successfully",

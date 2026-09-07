@@ -8,10 +8,38 @@
  *
  * requireSuperAdmin() — blocks any non-super_admin caller with 403.
  *
+ * stripTTNCredentials(obj) — strips all TTN secret fields from a response object
+ *                            so vendor_admin cannot read infrastructure credentials.
+ *
  * These are thin helpers on top of the existing authorize() middleware; they add
  * *data-level* enforcement so a vendor_admin can never touch another org's records
  * even if a route accidentally allows the wrong role through.
  */
+
+/**
+ * TTN credential fields that Vendor Admin must never read or write.
+ * These are owned exclusively by Super Admin via VendorTTNConfig.
+ */
+const TTN_SECRET_FIELDS = [
+  "ttnApiKey",
+  "ttnGatewayApiKey",
+  "ttnMqttPassword",
+  "lnsKey",
+  "cupsKey",
+];
+
+/**
+ * Strip TTN secret fields from any object before sending to Vendor Admin.
+ * Safe to call even if fields are absent.
+ */
+function stripTTNCredentials(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  const out = { ...obj };
+  for (const f of TTN_SECRET_FIELDS) {
+    if (f in out) out[f] = undefined;
+  }
+  return out;
+}
 
 /**
  * Attach vendor-scoping helpers to req.
@@ -109,4 +137,23 @@ function blockCrossVendorAccess(req, res, next) {
   return next();
 }
 
-module.exports = { requireVendorScope, requireSuperAdmin, blockCrossVendorAccess };
+/**
+ * Middleware that blocks Vendor Admin from writing TTN credential fields
+ * in the request body. Rejects the request with 403 if any secret field is present.
+ *
+ * Use on any write route where TTN config could slip through.
+ */
+function blockVendorTTNWrite(req, res, next) {
+  const role = req.user?.role;
+  if (role === "super_admin") return next();
+
+  const attempted = TTN_SECRET_FIELDS.filter((f) => req.body?.[f] !== undefined);
+  if (attempted.length > 0) {
+    return res.status(403).json({
+      message: `Access denied: TTN credentials (${attempted.join(", ")}) can only be configured by a Super Admin`,
+    });
+  }
+  return next();
+}
+
+module.exports = { requireVendorScope, requireSuperAdmin, blockCrossVendorAccess, blockVendorTTNWrite, stripTTNCredentials, TTN_SECRET_FIELDS };

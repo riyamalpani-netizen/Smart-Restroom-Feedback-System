@@ -1,5 +1,5 @@
 const express = require("express");
-const { getSettings, updateSettings, testTeamsWebhook } = require("../controllers/settingsController");
+const { getSettings, updateSettings, testTeamsWebhook, testTtnConnection } = require("../controllers/settingsController");
 const { authenticate, authorize } = require("../auth/authMiddleware");
 const { blockCrossVendorAccess } = require("../middleware/vendorScope");
 
@@ -14,7 +14,8 @@ router.get(
   getSettings
 );
 
-// PUT — vendor_admin can update their own org settings; super_admin can update any
+// PUT — vendor_admin can update their own org general settings (Teams, report frequency);
+//       TTN fields are rejected by controller with 403 for vendor_admin
 router.put(
   "/",
   authenticate,
@@ -23,12 +24,20 @@ router.put(
   updateSettings
 );
 
-// POST test-webhook — vendor_admin can test their own webhook; super_admin unrestricted
+// POST test-webhook — vendor_admin only (Teams is vendor-only feature)
 router.post(
   "/test-teams-webhook",
   authenticate,
   authorize("super_admin", "vendor_admin"),
   testTeamsWebhook
+);
+
+// POST test-ttn-connection — super_admin only (TTN config owned by super_admin now)
+router.post(
+  "/test-ttn-connection",
+  authenticate,
+  authorize("super_admin"),
+  testTtnConnection
 );
 
 module.exports = router;

@@ -94,6 +94,7 @@ const {
   TTN_MQTT_USERNAME,
   TTN_MQTT_PASSWORD,
 } = require("../config/env");
+const prisma = require("../config/database");
 
 function normalizeHex(value, length, label) {
   const normalized = String(value || "").trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
@@ -111,12 +112,70 @@ function makeDeviceId(deviceEui, requestedId) {
   return value;
 }
 
-function getConfiguration() {
-  const apiBaseUrl = TTN_API_BASE_URL || (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
-  const applicationId = TTN_APPLICATION_ID || String(TTN_MQTT_USERNAME || "").split("@")[0];
-  const apiKey = TTN_API_KEY || TTN_MQTT_PASSWORD;
+/**
+ * Load the vendor's TTN config from VendorTTNConfig (authoritative) then
+ * fall back to the legacy Settings record, then global env vars.
+ * Returns a config object suitable for getConfiguration().
+ */
+async function getOrgTTNSettings(organizationId) {
+  if (!organizationId) return null;
+  try {
+    // VendorTTNConfig is the authoritative source (Super Admin managed)
+    const vendorCfg = await prisma.vendorTTNConfig.findUnique({
+      where: { organizationId },
+      select: {
+        ttnAppId: true, ttnApiKey: true, ttnApiBaseUrl: true,
+        ttnMqttBroker: true, ttnMqttUsername: true, ttnMqttPassword: true,
+        ttnFrequencyPlanId: true, integrationEnabled: true,
+      },
+    });
+    if (vendorCfg?.ttnApiKey || vendorCfg?.ttnAppId) {
+      return {
+        ttnApiBaseUrl: vendorCfg.ttnApiBaseUrl || (vendorCfg.ttnMqttBroker ? `https://${vendorCfg.ttnMqttBroker}` : null),
+        ttnAppId: vendorCfg.ttnAppId,
+        ttnApiKey: vendorCfg.ttnApiKey,
+        ttnMqttUsername: vendorCfg.ttnMqttUsername,
+        ttnMqttPassword: vendorCfg.ttnMqttPassword,
+        ttnFrequencyPlanId: vendorCfg.ttnFrequencyPlanId,
+      };
+    }
+    // Fallback: legacy Settings table
+    const settings = await prisma.settings.findFirst({
+      where: { organizationId },
+      select: {
+        ttnAppId: true, ttnApiKey: true, ttnMqttBroker: true,
+        ttnMqttUsername: true, ttnMqttPassword: true, ttnFrequencyPlanId: true,
+      },
+    });
+    return settings;
+  } catch {
+    return null;
+  }
+}
 
-  if (!apiBaseUrl || !applicationId || !apiKey || !TTN_FREQUENCY_PLAN_ID) {
+function getConfiguration(orgSettings) {
+  // Org-level values override env vars when set
+  const apiBaseUrl =
+    orgSettings?.ttnApiBaseUrl ||
+    (orgSettings?.ttnMqttBroker ? `https://${orgSettings.ttnMqttBroker}` : null) ||
+    TTN_API_BASE_URL ||
+    (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
+
+  const applicationId =
+    orgSettings?.ttnAppId ||
+    TTN_APPLICATION_ID ||
+    String(orgSettings?.ttnMqttUsername || TTN_MQTT_USERNAME || "").split("@")[0];
+
+  const apiKey =
+    orgSettings?.ttnApiKey ||
+    TTN_API_KEY ||
+    orgSettings?.ttnMqttPassword ||
+    TTN_MQTT_PASSWORD;
+
+  const frequencyPlanId =
+    orgSettings?.ttnFrequencyPlanId || TTN_FREQUENCY_PLAN_ID;
+
+  if (!apiBaseUrl || !applicationId || !apiKey || !frequencyPlanId) {
     throw new Error("TTN device registration is not configured. Set TTN_FREQUENCY_PLAN_ID and, if they cannot be derived from your MQTT settings, TTN_API_BASE_URL, TTN_APPLICATION_ID, and TTN_API_KEY.");
   }
 
@@ -126,7 +185,7 @@ function getConfiguration() {
   // cluster" and it will never be able to join.
   const clusterHost = apiBaseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-  return { apiBaseUrl: apiBaseUrl.replace(/\/$/, ""), applicationId, apiKey, clusterHost };
+  return { apiBaseUrl: apiBaseUrl.replace(/\/$/, ""), applicationId, apiKey, clusterHost, frequencyPlanId };
 }
 
 async function ttnRequest(url, apiKey, method, body) {
@@ -182,8 +241,9 @@ async function listTtnDevices(apiBaseUrl, applicationId, apiKey) {
  * network_server_address / application_server_address / join_server_address
  * were never set.
  */
-async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, frequencyPlanId, name }) {
-  const { apiBaseUrl, applicationId, apiKey, clusterHost } = getConfiguration();
+async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, frequencyPlanId, name, organizationId }) {
+  const orgSettings = await getOrgTTNSettings(organizationId);
+  const { apiBaseUrl, applicationId, apiKey, clusterHost, frequencyPlanId: defaultFreqPlan } = getConfiguration(orgSettings);
 
   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
   const resolvedJoinEui = normalizeHex(joinEui || TTN_DEFAULT_JOIN_EUI, 16, "Join EUI");
@@ -191,8 +251,8 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
   const resolvedDeviceId = makeDeviceId(devEui, deviceId);
   const resolvedLorawanVersion = lorawanVersion || TTN_LORAWAN_VERSION || "MAC_V1_0_3";
   const resolvedLorawanPhyVersion = lorawanPhyVersion || TTN_LORAWAN_PHY_VERSION || "PHY_V1_0_3_REV_A";
-  // Per-device frequency plan; falls back to the application-wide env default
-  const resolvedFrequencyPlanId = frequencyPlanId || TTN_FREQUENCY_PLAN_ID;
+  // Per-device frequency plan; falls back to the org-level or application-wide env default
+  const resolvedFrequencyPlanId = frequencyPlanId || orgSettings?.ttnFrequencyPlanId || defaultFreqPlan;
 
   const ids = {
     device_id: resolvedDeviceId,
@@ -306,8 +366,9 @@ async function registerOtaaDevice({ deviceEui, deviceId, joinEui, appKey, lorawa
   return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui, clusterHost, lorawanPhyVersion: resolvedLorawanPhyVersion };
 }
 
-async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion }) {
-  const { apiBaseUrl, applicationId, apiKey, clusterHost } = getConfiguration();
+async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lorawanVersion, lorawanPhyVersion, organizationId }) {
+  const orgSettings = await getOrgTTNSettings(organizationId);
+  const { apiBaseUrl, applicationId, apiKey, clusterHost } = getConfiguration(orgSettings);
 
   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
   const resolvedJoinEui = normalizeHex(joinEui || TTN_DEFAULT_JOIN_EUI, 16, "Join EUI");
@@ -452,8 +513,9 @@ async function repairExistingDevice({ deviceEui, deviceId, joinEui, appKey, lora
   return { applicationId, deviceId: resolvedDeviceIdForSteps, deviceEui: devEui, clusterHost, updatedSteps };
 }
 
-async function deleteDeviceFromTTN({ deviceEui, deviceId }) {
-  const { apiBaseUrl, applicationId, apiKey } = getConfiguration();
+async function deleteDeviceFromTTN({ deviceEui, deviceId, organizationId }) {
+  const orgSettings = await getOrgTTNSettings(organizationId);
+  const { apiBaseUrl, applicationId, apiKey } = getConfiguration(orgSettings);
   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
   const resolvedDeviceId = makeDeviceId(devEui, deviceId);
 
@@ -466,4 +528,4 @@ async function deleteDeviceFromTTN({ deviceEui, deviceId }) {
   return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui };
 }
 
-module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration, deleteDeviceFromTTN };
+module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration, getOrgTTNSettings, deleteDeviceFromTTN };

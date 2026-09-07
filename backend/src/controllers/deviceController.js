@@ -711,6 +711,8 @@ const prisma = require("../config/database");
 const { registerOtaaDevice } = require("../services/ttnDeviceRegistryService");
 const { deleteDeviceFromTTN } = require("../services/ttnDeviceRegistryService");
 const crypto = require("crypto");
+const { checkPlanLimit } = require("../utils/planLimits");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -1003,6 +1005,14 @@ async function createDevice(req, res) {
       return res.status(409).json({ message: "A device with this Device EUI or badge ID already exists" });
     }
 
+    // ── Subscription plan limit check ──────────────────────────────────────
+    if (organizationId) {
+      const limitCheck = await checkPlanLimit(organizationId, "devices");
+      if (!limitCheck.allowed) {
+        return res.status(403).json({ message: limitCheck.message });
+      }
+    }
+
     let ttnRegistration = null;
     try {
       // Build a human-readable TTN device ID from the device name when available:
@@ -1024,6 +1034,7 @@ async function createDevice(req, res) {
         lorawanVersion: resolvedLorawanVersion,
         name: name || resolvedTtnDeviceId,
         frequencyPlanId: frequencyPlanId || undefined,
+        organizationId: organizationId || userOrgId || undefined,
       };
 
       if (lorawanPhyVersion) {
@@ -1078,6 +1089,12 @@ async function createDevice(req, res) {
         data: deviceData,
       });
     }
+
+    await logAudit(req, {
+      module: "Device",
+      action: "CREATE",
+      description: `Created device ${device.badgeId} (EUI: ${device.deviceEui})`,
+    });
 
     res.status(existingDevice ? 200 : 201).json({
       message: existingDevice
@@ -1205,6 +1222,11 @@ async function updateDevice(req, res) {
     if (longitude !== undefined) updateData.longitude = longitude
     // Super admin can assign/unassign a device to an organisation
     if (organizationId !== undefined && userRole === "super_admin") {
+      // Check plan limit before assigning
+      if (organizationId) {
+        const limitCheck = await checkPlanLimit(organizationId, "devices");
+        if (!limitCheck.allowed) return res.status(403).json({ message: limitCheck.message });
+      }
       updateData.organizationId = organizationId || null;
     }
 
@@ -1258,6 +1280,7 @@ async function updateDevice(req, res) {
           appKey: device.appKey,
           lorawanVersion: device.lorawanVersion || undefined,
           lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+          organizationId: device.organizationId || userOrgId || undefined,
         });
         ttnAutoRegistered = true;
         console.log(`[Device] Auto-registered ${device.deviceEui} in TTN on placement`);
@@ -1298,6 +1321,12 @@ async function updateDevice(req, res) {
       lorawanVersion: device.lorawanVersion || null,
       lorawanPhyVersion: device.lorawanPhyVersion || null,
     };
+
+    await logAudit(req, {
+      module: "Device",
+      action: "UPDATE",
+      description: `Updated device ${device.badgeId} (EUI: ${device.deviceEui})`,
+    });
 
     res.status(200).json({
       message: "Device updated successfully",
@@ -1461,6 +1490,7 @@ async function registerDeviceInTTN(req, res) {
         deviceId: ttnDeviceId || existing.deviceEui,
         joinEui: joinEui || "0000000000000000",
         appKey,
+        organizationId: existing.organizationId || undefined,
       });
     } catch (error) {
       if (error.message.includes("409")) {
@@ -1520,16 +1550,35 @@ async function deleteDevice(req, res) {
 
     let ttnDeleted = false;
     let ttnDeleteError = null;
-    try {
-      await deleteDeviceFromTTN({
-        deviceEui: existing.deviceEui,
-        deviceId: `device-${existing.deviceEui.toLowerCase()}`,
-      });
-      ttnDeleted = true;
-      console.log(`[Device] Device ${existing.deviceEui} deleted from TTN successfully`);
-    } catch (ttnError) {
-      ttnDeleteError = ttnError.message;
-      console.warn(`[Device] TTN delete failed for ${existing.deviceEui}: ${ttnError.message}`);
+
+    // Try to delete from TTN — attempt the vendor's app first, then fall back to
+    // the global app. A 404 from TTN means the device isn't in that app, which is
+    // fine — we just move on to the next attempt.
+    const deleteAttempts = [];
+    if (existing.organizationId) deleteAttempts.push(existing.organizationId);
+    deleteAttempts.push(null); // global / env-var fallback
+
+    for (const orgId of deleteAttempts) {
+      try {
+        await deleteDeviceFromTTN({
+          deviceEui: existing.deviceEui,
+          deviceId: `device-${existing.deviceEui.toLowerCase()}`,
+          organizationId: orgId || undefined,
+        });
+        ttnDeleted = true;
+        console.log(`[Device] Device ${existing.deviceEui} deleted from TTN (org: ${orgId || "global"})`);
+        break; // success — stop trying
+      } catch (ttnError) {
+        if (ttnError.message.includes("404") || ttnError.message.includes("not_found")) {
+          // Not in this app — try the next one
+          console.log(`[Device] Device ${existing.deviceEui} not found in TTN app for org ${orgId || "global"} — trying next`);
+          continue;
+        }
+        // Real error on last attempt
+        ttnDeleteError = ttnError.message;
+        console.warn(`[Device] TTN delete failed for ${existing.deviceEui} (org: ${orgId || "global"}): ${ttnError.message}`);
+        break;
+      }
     }
 
     const feedbackIds = await prisma.feedback.findMany({ where: { deviceId: id }, select: { id: true } }).then(f => f.map(x => x.id));
@@ -1553,8 +1602,18 @@ async function deleteDevice(req, res) {
 
     await prisma.device.delete({ where: { id } });
 
+    await logAudit(req, {
+      module: "Device",
+      action: "DELETE",
+      description: `Deleted device ${existing.badgeId} (EUI: ${existing.deviceEui})`,
+    });
+
     res.status(200).json({
-      message: ttnDeleted ? "Device deleted successfully from app and TTN" : "Device deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
+      message: ttnDeleted
+        ? "Device deleted successfully from app and TTN"
+        : ttnDeleteError
+        ? "Device deleted from app, but TTN delete failed. Please remove it manually from TTN Console."
+        : "Device deleted from app. It was not found in any TTN application (may have been manually removed).",
       ttnDeleted,
       ttnDeleteError,
     });

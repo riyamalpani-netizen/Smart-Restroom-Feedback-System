@@ -4,6 +4,7 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const prisma = require("./config/database");
 const { connectMQTT, disconnectMQTT } = require("./services/mqttService");
+const { connectAll: connectAllMQTT, disconnectAll: disconnectAllMQTT } = require("./services/mqttManager");
 const { initializeSocket } = require("./utils/socket");
 const { startCronJobs, stopCronJobs } = require("./services/cronService");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
@@ -26,6 +27,8 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const gatewayRoutes = require("./routes/gatewayRoutes");
 const testModeRoutes = require("./routes/testModeRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
+const vendorRoutes = require("./routes/vendorRoutes");
+const subscriptionPlanRoutes = require("./routes/subscriptionPlanRoutes");
 const { JWT_SECRET, NODE_ENV } = require("./config/env");
 const logger = require("./middleware/logger");
 const http = require("http");
@@ -596,6 +599,8 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/gateway", gatewayRoutes);
 app.use("/api/test-mode", testModeRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/vendors", vendorRoutes);
+app.use("/api/subscription-plans", subscriptionPlanRoutes);
 
 // ── Organizations (Super Admin only — used by device/gateway assignment UI) ──
 app.get("/api/organizations", require("./auth/authMiddleware").authenticate, require("./auth/authMiddleware").authorize("super_admin"), async (req, res) => {
@@ -626,7 +631,8 @@ function startServer(server) {
   const httpServer = http.createServer(app);
   const io = initializeSocket(httpServer);
 
-  connectMQTT(io);
+  connectMQTT(io);          // legacy global env-var connection (kept as fallback)
+  connectAllMQTT(io);       // per-org connections loaded from DB
   startCronJobs();
 
   const PORT = process.env.PORT || 5000;
@@ -638,6 +644,7 @@ function startServer(server) {
   process.on("SIGINT", async () => {
     logger.info("Shutting down server...");
     disconnectMQTT();
+    disconnectAllMQTT();
     stopCronJobs();
     await prisma.$disconnect();
     process.exit(0);
@@ -646,6 +653,7 @@ function startServer(server) {
   process.on("SIGTERM", async () => {
     logger.info("Shutting down server...");
     disconnectMQTT();
+    disconnectAllMQTT();
     stopCronJobs();
     await prisma.$disconnect();
     process.exit(0);

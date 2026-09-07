@@ -489,6 +489,8 @@ export default function Settings() {
   const [settings,setSettings] = useState({
     officeName:'',timeZone:'UTC',reportFrequency:'daily',
     sessionTimeout:28800,passwordPolicy:'min 8 chars, 1 uppercase, 1 number',
+    // read-only TTN status for vendor_admin (populated from ttnIntegrationStatus in API response)
+    ttnIntegrationStatus: null,
   })
   const [orgName,setOrgName]         = useState('')
   const [saved,setSaved]             = useState(false)
@@ -510,6 +512,8 @@ export default function Settings() {
             reportFrequency:data.settings.reportFrequency||'daily',
             sessionTimeout:data.settings.sessionTimeout||28800,
             passwordPolicy:data.settings.passwordPolicy||'min 8 chars, 1 uppercase, 1 number',
+            // vendor_admin read-only integration status
+            ttnIntegrationStatus: data.settings.ttnIntegrationStatus || null,
           }))
         }
         if(user?.organizationId){
@@ -530,8 +534,17 @@ export default function Settings() {
   async function handleSubmit(e){
     e.preventDefault();setSubmitError(null)
     try{
-      const payload={organizationId:user?.organizationId,reportFrequency:settings.reportFrequency,sessionTimeout:settings.sessionTimeout}
+      const payload={
+        organizationId:user?.organizationId,
+        reportFrequency:settings.reportFrequency,
+        sessionTimeout:settings.sessionTimeout,
+      }
       if(isSuperAdmin) payload.passwordPolicy=settings.passwordPolicy
+      // vendor_admin only sends general settings — TTN is Super Admin territory
+      if(isVendorAdmin){
+        payload.teamsWebhook   = settings.teamsWebhook
+        payload.teamsRecipient = settings.teamsRecipient
+      }
       await api.put('/api/settings',payload)
       setSaved(true);setTimeout(()=>setSaved(false),3000);toast.success('Settings saved.')
     }catch(err){setSubmitError(err.message||'Failed to save settings');toast.error(err.message||'Failed to save settings.')}
@@ -645,6 +658,8 @@ export default function Settings() {
             </div>
           </section>
         )}
+
+        {/* ── TTN Integration Status — hidden from Vendor Admin (infrastructure detail) ── */}
 
         {/* ── Save bar ─────────────────────────────────────────── */}
         <div className="settings-save-bar">

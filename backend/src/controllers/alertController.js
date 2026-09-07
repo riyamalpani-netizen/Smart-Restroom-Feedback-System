@@ -1,4 +1,5 @@
 const prisma = require("../config/database");
+const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
   const role = req.user?.role;
@@ -169,6 +170,12 @@ async function createAlert(req, res) {
       include: { feedback: true, restroom: true },
     });
 
+    await logAudit(req, {
+      module: "Alert",
+      action: "CREATE",
+      description: `Created alert for restroom "${restroom.name}" (priority: ${alert.priority})`,
+    });
+
     res.status(201).json({ message: "Alert created successfully", alert });
   } catch (error) {
     console.error("Create alert error:", error);
@@ -209,6 +216,12 @@ async function updateAlert(req, res) {
       include: { feedback: true, restroom: true, assignedTo: true, acknowledgedBy: true },
     });
 
+    await logAudit(req, {
+      module: "Alert",
+      action: "UPDATE",
+      description: `Updated alert ${id} (status: ${alert.status}, priority: ${alert.priority})`,
+    });
+
     res.status(200).json({ message: "Alert updated successfully", alert });
   } catch (error) {
     console.error("Update alert error:", error);
@@ -245,6 +258,12 @@ async function acknowledgeAlert(req, res) {
       where: { id },
       data: { status: "assigned", acknowledgedById: userId },
       include: { feedback: true, restroom: true, acknowledgedBy: { select: { id: true, name: true } } },
+    });
+
+    await logAudit(req, {
+      module: "Alert",
+      action: "ACKNOWLEDGE",
+      description: `Acknowledged alert ${id}`,
     });
 
     res.status(200).json({ message: "Alert acknowledged successfully", alert: updated });
@@ -415,6 +434,12 @@ async function acknowledgeGroup(req, res) {
       },
     });
 
+    await logAudit(req, {
+      module: "Alert",
+      action: "ACKNOWLEDGE",
+      description: `Acknowledged ${updated.count} alerts for location ${locationId} / zone ${zoneId}`,
+    });
+
     res.status(200).json({
       message: `${updated.count} alerts acknowledged successfully`,
       count: updated.count,
@@ -469,6 +494,12 @@ async function resolveGroup(req, res) {
       },
     });
 
+    await logAudit(req, {
+      module: "Alert",
+      action: "RESOLVE",
+      description: `Resolved ${updated.count} alerts for location ${locationId} / zone ${zoneId}`,
+    });
+
     res.status(200).json({
       message: `${updated.count} alerts resolved successfully`,
       count: updated.count,
@@ -503,6 +534,12 @@ async function resolveAlert(req, res) {
       where: { id },
       data: { status: "closed", resolvedAt: new Date() },
       include: { feedback: true, restroom: true, acknowledgedBy: { select: { id: true, name: true } } },
+    });
+
+    await logAudit(req, {
+      module: "Alert",
+      action: "RESOLVE",
+      description: `Resolved alert ${id}`,
     });
 
     res.status(200).json({ message: "Alert resolved successfully", alert: updated });

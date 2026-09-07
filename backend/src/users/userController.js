@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/database");
 const { logAudit } = require("../utils/auditLogger");
+const { checkPlanLimit } = require("../utils/planLimits");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,6 +155,10 @@ const createUser = async (req, res) => {
     if (existingUser) {
       return res.status(409).json({ message: "User with this email already exists" });
     }
+
+    // Subscription plan limit check
+    const limitCheck = await checkPlanLimit(newUserOrgId, "users");
+    if (!limitCheck.allowed) return res.status(403).json({ message: limitCheck.message });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 

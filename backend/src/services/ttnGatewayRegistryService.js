@@ -147,6 +147,7 @@ const {
   TTN_GATEWAY_OWNER_TYPE,
   TTN_GATEWAY_OWNER_ID,
 } = require("../config/env");
+const prisma = require("../config/database");
 
 function normalizeHex(value, length, label) {
   const normalized = String(value || "").trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
@@ -164,18 +165,42 @@ function makeGatewayId(gatewayEui, requestedId) {
   return value;
 }
 
-function getConfiguration() {
-  const apiBaseUrl = TTN_API_BASE_URL || (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
-  // TTN_GATEWAY_API_KEY should be a key with Gateway Read/Write rights.
-  // TTN_API_KEY is the application key — it does NOT have gateway rights by default.
-  // If no dedicated gateway key is set, fall back to TTN_API_KEY but it may fail with 403.
-  const apiKey = TTN_GATEWAY_API_KEY || TTN_API_KEY || TTN_MQTT_PASSWORD;
-  const ownerType = TTN_GATEWAY_OWNER_TYPE;
-  const ownerId = TTN_GATEWAY_OWNER_ID;
+/**
+ * Resolve TTN configuration from:
+ *  1. Org-level settings (from DB) — takes priority when present
+ *  2. Global env-var fallback
+ *
+ * @param {object|null} orgSettings  — a Settings DB row for the gateway's org, or null
+ */
+function getConfiguration(orgSettings) {
+  // Org-level values override env vars when set
+  const apiBaseUrl =
+    orgSettings?.ttnApiBaseUrl ||
+    (orgSettings?.ttnMqttBroker ? `https://${orgSettings.ttnMqttBroker}` : null) ||
+    TTN_API_BASE_URL ||
+    (TTN_MQTT_BROKER ? `https://${TTN_MQTT_BROKER}` : null);
 
-  if (!apiBaseUrl || !apiKey || !TTN_FREQUENCY_PLAN_ID || !ownerType || !ownerId) {
+  const apiKey =
+    orgSettings?.ttnGatewayApiKey ||
+    orgSettings?.ttnApiKey ||
+    TTN_GATEWAY_API_KEY ||
+    TTN_API_KEY ||
+    TTN_MQTT_PASSWORD;
+
+  const frequencyPlanId =
+    orgSettings?.ttnFrequencyPlanId || TTN_FREQUENCY_PLAN_ID;
+
+  const ownerType =
+    orgSettings?.ttnGatewayOwnerType || TTN_GATEWAY_OWNER_TYPE;
+
+  const ownerId =
+    orgSettings?.ttnGatewayOwnerId || TTN_GATEWAY_OWNER_ID;
+
+  if (!apiBaseUrl || !apiKey || !frequencyPlanId || !ownerType || !ownerId) {
     throw new Error(
-      "TTN gateway registration is not configured. Set TTN_API_BASE_URL, TTN_GATEWAY_API_KEY (with gateway rights), TTN_FREQUENCY_PLAN_ID, TTN_GATEWAY_OWNER_TYPE, and TTN_GATEWAY_OWNER_ID in your .env"
+      "TTN gateway registration is not configured. " +
+      "Set TTN credentials in the Organisation Settings page (vendor admin) " +
+      "or in the global .env file."
     );
   }
   if (!["user", "organization"].includes(ownerType)) {
@@ -183,7 +208,57 @@ function getConfiguration() {
   }
 
   const clusterHost = apiBaseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  return { apiBaseUrl: apiBaseUrl.replace(/\/$/, ""), apiKey, clusterHost, ownerType, ownerId };
+  return {
+    apiBaseUrl: apiBaseUrl.replace(/\/$/, ""),
+    apiKey,
+    clusterHost,
+    ownerType,
+    ownerId,
+    frequencyPlanId,
+  };
+}
+
+/**
+ * Load the vendor's TTN config from VendorTTNConfig (authoritative) then
+ * fall back to the legacy Settings record.
+ * Returns null if the org has no config record yet.
+ */
+async function getOrgSettings(organizationId) {
+  if (!organizationId) return null;
+  try {
+    // VendorTTNConfig is the authoritative source (Super Admin managed)
+    const vendorCfg = await prisma.vendorTTNConfig.findUnique({
+      where: { organizationId },
+      select: {
+        ttnAppId: true, ttnApiKey: true, ttnGatewayApiKey: true, ttnApiBaseUrl: true,
+        ttnMqttBroker: true, ttnFrequencyPlanId: true,
+        ttnGatewayOwnerType: true, ttnGatewayOwnerId: true,
+      },
+    });
+    if (vendorCfg?.ttnGatewayApiKey || vendorCfg?.ttnApiKey) {
+      return {
+        ttnApiBaseUrl: vendorCfg.ttnApiBaseUrl || (vendorCfg.ttnMqttBroker ? `https://${vendorCfg.ttnMqttBroker}` : null),
+        ttnGatewayApiKey: vendorCfg.ttnGatewayApiKey,
+        ttnApiKey: vendorCfg.ttnApiKey,
+        ttnFrequencyPlanId: vendorCfg.ttnFrequencyPlanId,
+        ttnGatewayOwnerType: vendorCfg.ttnGatewayOwnerType,
+        ttnGatewayOwnerId: vendorCfg.ttnGatewayOwnerId,
+        // expose broker for getConfiguration compat
+        ttnMqttBroker: vendorCfg.ttnMqttBroker,
+      };
+    }
+    // Fallback: legacy Settings table
+    return await prisma.settings.findFirst({
+      where: { organizationId },
+      select: {
+        ttnAppId: true, ttnApiKey: true, ttnGatewayApiKey: true,
+        ttnMqttBroker: true, ttnFrequencyPlanId: true,
+        ttnGatewayOwnerType: true, ttnGatewayOwnerId: true,
+      },
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function ttnRequest(url, apiKey, method, body) {
@@ -199,11 +274,12 @@ async function ttnRequest(url, apiKey, method, body) {
   return response.status === 204 ? null : response.json();
 }
 
-async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, latitude, longitude, description }) {
-  const { apiBaseUrl, apiKey, clusterHost, ownerType, ownerId } = getConfiguration();
+async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, latitude, longitude, description, organizationId }) {
+  const orgSettings = await getOrgSettings(organizationId);
+  const { apiBaseUrl, apiKey, clusterHost, ownerType, ownerId, frequencyPlanId: defaultFreqPlan } = getConfiguration(orgSettings);
   const gEui = normalizeHex(gatewayEui, 16, "Gateway EUI");
   const resolvedGatewayId = makeGatewayId(gEui, gatewayId);
-  const resolvedFrequencyPlan = frequencyPlanId || TTN_FREQUENCY_PLAN_ID;
+  const resolvedFrequencyPlan = frequencyPlanId || orgSettings?.ttnFrequencyPlanId || defaultFreqPlan;
 
   const gatewayBody = {
     ids: { gateway_id: resolvedGatewayId, eui: gEui },
@@ -284,8 +360,9 @@ async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, la
   throw new Error(`TTN gateway registration failed: POST ${createUrl} failed (${createResponse.status}): ${createText}`);
 }
 
-async function deleteGatewayFromTTN({ gatewayEui, gatewayId }) {
-  const { apiBaseUrl, apiKey } = getConfiguration();
+async function deleteGatewayFromTTN({ gatewayEui, gatewayId, organizationId }) {
+  const orgSettings = await getOrgSettings(organizationId);
+  const { apiBaseUrl, apiKey } = getConfiguration(orgSettings);
   const gEui = normalizeHex(gatewayEui, 16, "Gateway EUI");
   const resolvedGatewayId = makeGatewayId(gEui, gatewayId);
 
@@ -302,9 +379,9 @@ async function deleteGatewayFromTTN({ gatewayEui, gatewayId }) {
   return { gatewayId: resolvedGatewayId, gatewayEui: gEui };
 }
 
-async function createGatewayLnsKey(gatewayId) {
-  const { apiBaseUrl, apiKey } = getConfiguration();
-  // gatewayId here is already the resolved TTN gateway ID string
+async function createGatewayLnsKey(gatewayId, organizationId) {
+  const orgSettings = await getOrgSettings(organizationId);
+  const { apiBaseUrl, apiKey } = getConfiguration(orgSettings);
   const url = `${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(gatewayId)}/api-keys`;
 
   const response = await fetch(url, {
