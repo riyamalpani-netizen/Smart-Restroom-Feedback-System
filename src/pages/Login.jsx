@@ -12,6 +12,7 @@ export default function Login() {
   const [keepSignedIn, setKeepSignedIn] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [supportRequest, setSupportRequest] = useState(null)
 
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
@@ -26,6 +27,39 @@ export default function Login() {
     } else {
       setError(result.error)
     }
+  }
+
+  const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL || 'support@atlasied.com'
+  const apiDocsUrl = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')}/api-docs`
+
+  function openSupportRequest(type) {
+    setSupportRequest({ type, email, name: '', organisation: '' })
+  }
+
+  function supportMailto() {
+    if (!supportRequest) return '#'
+    const subject = {
+      email: 'Smart Restroom: Help finding my account email',
+      password: 'Smart Restroom: Password reset request',
+      access: 'Smart Restroom: Access request',
+      contact: 'Smart Restroom: IT support request',
+    }[supportRequest.type]
+    const body = [
+      `Request type: ${supportRequest.type}`,
+      `Name: ${supportRequest.name || 'Not provided'}`,
+      `Organisation: ${supportRequest.organisation || 'Not provided'}`,
+      `Account email: ${supportRequest.email || 'Not provided'}`,
+      '',
+      'Please describe the assistance required:',
+    ].join('\n')
+    return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  }
+
+  const supportCopy = {
+    email: 'Enter your name and organisation and IT will help you identify the email address registered to your account.',
+    password: 'Enter the account email and IT will verify your identity and arrange a secure password reset.',
+    access: 'New accounts are created by an administrator to ensure the correct organisation and role are assigned.',
+    contact: 'Send a support request to the AtlasIED IT team.',
   }
 
   return (
@@ -81,7 +115,7 @@ export default function Login() {
               <label className="lp__label" htmlFor="lp-email">
                 <span className="lp__label-icon">✉</span>
                 <span>Email</span>
-                <button type="button" className="lp__label-link">Forgot your email?</button>
+                <button type="button" className="lp__label-link" onClick={() => openSupportRequest('email')}>Forgot your email?</button>
               </label>
               <input
                 id="lp-email"
@@ -133,7 +167,7 @@ export default function Login() {
                 />
                 <span>Keep me signed in</span>
               </label>
-              <button type="button" className="lp__label-link">Forgot Password?</button>
+              <button type="button" className="lp__label-link" onClick={() => openSupportRequest('password')}>Forgot Password?</button>
             </div>
 
             <button
@@ -144,7 +178,7 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
 
-            <p className="lp__register">Need to create an account?</p>
+            <button type="button" className="lp__label-link lp__register" onClick={() => openSupportRequest('access')}>Need to create an account?</button>
           </form>
         </div>
       </div>
@@ -161,10 +195,10 @@ export default function Login() {
         <div className="lp__help">
           <p className="lp__help-title">System Context &amp; Help</p>
           <p className="lp__help-sub">Quick-access text links:</p>
-          <a href="#" className="lp__help-link">
+          <a href="#" className="lp__help-link" onClick={(event) => { event.preventDefault(); openSupportRequest('contact') }}>
             <span>💬</span> Contact IT Admin
           </a>
-          <a href="#" className="lp__help-link">
+          <a href={apiDocsUrl} target="_blank" rel="noreferrer" className="lp__help-link">
             <span>📖</span> View Documentation
           </a>
         </div>
@@ -202,6 +236,32 @@ export default function Login() {
           <span className="lp__version">v2.4.0</span>
         </div>
       </div>
+
+      {supportRequest && (
+        <div className="modal-overlay" onClick={() => setSupportRequest(null)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="support-request-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="support-request-title">How can IT help?</h3>
+            <p style={{ color: '#64748b', fontSize: 14 }}>{supportCopy[supportRequest.type]}</p>
+            <label>
+              Your name
+              <input value={supportRequest.name} onChange={(event) => setSupportRequest((current) => ({ ...current, name: event.target.value }))} autoComplete="name" />
+            </label>
+            <label>
+              Organisation
+              <input value={supportRequest.organisation} onChange={(event) => setSupportRequest((current) => ({ ...current, organisation: event.target.value }))} autoComplete="organization" />
+            </label>
+            <label>
+              Email address
+              <input type="email" value={supportRequest.email} onChange={(event) => setSupportRequest((current) => ({ ...current, email: event.target.value }))} autoComplete="email" />
+            </label>
+            <p style={{ color: '#64748b', fontSize: 12 }}>Your mail application will open a prefilled request addressed to {supportEmail}.</p>
+            <div className="btn-group">
+              <button type="button" className="btn btn--secondary" onClick={() => setSupportRequest(null)}>Cancel</button>
+              <a className="btn btn--primary" href={supportMailto()}>Open support request</a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
