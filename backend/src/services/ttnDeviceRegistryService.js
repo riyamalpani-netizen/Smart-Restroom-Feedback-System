@@ -519,11 +519,25 @@ async function deleteDeviceFromTTN({ deviceEui, deviceId, organizationId }) {
   const devEui = normalizeHex(deviceEui, 16, "Device EUI");
   const resolvedDeviceId = makeDeviceId(devEui, deviceId);
 
-  await ttnRequest(
-    `${apiBaseUrl}/api/v3/applications/${encodeURIComponent(applicationId)}/devices/${encodeURIComponent(resolvedDeviceId)}`,
-    apiKey,
-    "DELETE",
-  );
+  // TTN v3 stores device data across 4 registries (IS, JS, NS, AS).
+  // Deleting only IS leaves orphan EUI entries in JS/NS/AS that block
+  // re-registration of the same EUI in a different application.
+  // We must delete all 4 sub-registries before the EUI is freed.
+  const subRegistries = ["", "/js", "/ns", "/as"];
+  for (const prefix of subRegistries) {
+    try {
+      await ttnRequest(
+        `${apiBaseUrl}/api/v3${prefix}/applications/${encodeURIComponent(applicationId)}/devices/${encodeURIComponent(resolvedDeviceId)}`,
+        apiKey,
+        "DELETE",
+      );
+    } catch (err) {
+      // 404 = already gone from this sub-registry, that's fine
+      if (!err.message.includes("404") && !err.message.includes("not found")) {
+        console.warn(`[TTN] delete from ${prefix || "IS"} failed (non-fatal): ${err.message}`);
+      }
+    }
+  }
 
   return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui };
 }

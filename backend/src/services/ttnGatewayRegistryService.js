@@ -351,7 +351,7 @@ async function registerGatewayInTTN({ gatewayEui, gatewayId, frequencyPlanId, la
     // or the key lacks update rights — still treat as registered since it exists
     if (updateStatus === 403) {
       console.warn(`[TTN] Gateway ${resolvedGatewayId} exists on TTN but cannot be updated (403) — treating as registered.`)
-      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan }
+      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, clusterHost, frequencyPlanId: resolvedFrequencyPlan, ownedByUs: false }
     }
 
     throw new Error(`TTN gateway registration failed: PUT ${updateUrl} failed (${updateStatus}): ${updateText}`)

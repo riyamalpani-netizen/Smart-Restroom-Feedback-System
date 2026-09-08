@@ -1231,6 +1231,8 @@ async function updateDevice(req, res) {
     }
 
     const oldGatewayId = existing.gatewayId;
+    // Capture old org before update — needed for TTN re-registration
+    const oldOrganizationId = existing.organizationId;
 
     const device = await prisma.device.update({
       where: { id },
@@ -1266,6 +1268,64 @@ async function updateDevice(req, res) {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     const lastSeen = device.lastSeen ? new Date(device.lastSeen) : null;
     const isOnline = lastSeen && lastSeen > fiveMinutesAgo && device.healthStatus === "healthy";
+
+    // ── TTN org re-registration ─────────────────────────────────────────────
+    // When super admin moves a device to a different vendor org, remove it from
+    // the old TTN application (and the global app) then re-register in the
+    // new vendor's TTN app using their VendorTTNConfig credentials.
+    let ttnReregistered = false;
+    let ttnReregisterError = null;
+    const orgChanged = organizationId !== undefined && userRole === "super_admin" && organizationId !== oldOrganizationId;
+    if (orgChanged && device.deviceEui && device.appKey) {
+      const deviceId = `device-${device.deviceEui.toLowerCase()}`;
+
+      // 1. Delete from old org's TTN app (best-effort)
+      if (oldOrganizationId) {
+        try {
+          await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId, organizationId: oldOrganizationId });
+          console.log(`[Device] Removed ${device.deviceEui} from old org TTN app (${oldOrganizationId})`);
+        } catch (delErr) {
+          console.warn(`[Device] TTN delete from old org failed for ${device.deviceEui}: ${delErr.message}`);
+        }
+      }
+
+      // 2. Delete from global app — EUI may be registered there from initial creation
+      //    Use null orgId so getOrgTTNSettings falls through to global .env creds
+      try {
+        await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId, organizationId: null });
+        console.log(`[Device] Removed ${device.deviceEui} from global TTN app`);
+      } catch (delErr) {
+        // 404 = not in global app, that's fine
+        if (!delErr.message.includes("404") && !delErr.message.includes("not found")) {
+          console.warn(`[Device] TTN delete from global app failed for ${device.deviceEui}: ${delErr.message}`);
+        }
+      }
+
+      // 3. Re-register in new vendor's TTN app
+      if (organizationId) {
+        try {
+          await registerOtaaDevice({
+            deviceEui: device.deviceEui,
+            deviceId,
+            joinEui: device.joinEui || "0000000000000000",
+            appKey: device.appKey,
+            lorawanVersion: device.lorawanVersion || undefined,
+            lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+            organizationId,
+          });
+          ttnReregistered = true;
+          console.log(`[Device] Re-registered ${device.deviceEui} in vendor TTN app (org: ${organizationId})`);
+        } catch (regErr) {
+          if (regErr.message.includes("409") || regErr.message.includes("already exists") || regErr.message.includes("already registered")) {
+            ttnReregistered = true;
+            console.log(`[Device] ${device.deviceEui} already in vendor TTN app — OK`);
+          } else {
+            ttnReregisterError = regErr.message;
+            console.warn(`[Device] TTN re-registration failed for ${device.deviceEui}: ${regErr.message}`);
+          }
+        }
+      }
+    }
 
     let ttnAutoRegistered = false;
     let ttnAutoError = null;
@@ -1332,6 +1392,7 @@ async function updateDevice(req, res) {
       message: "Device updated successfully",
       device: mappedDevice,
       ttnRegistration: isBeingPlaced ? { registered: ttnAutoRegistered, error: ttnAutoError } : undefined,
+      ttnReregistration: orgChanged ? { registered: ttnReregistered, error: ttnReregisterError } : undefined,
     });
   } catch (error) {
     console.error("Update device error:", error);

@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { ToastProvider } from './context/ToastContext'
+import { useToast } from './context/ToastContext'
 import MainLayout from './layouts/MainLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
@@ -26,9 +28,23 @@ const ALL_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.REGIONAL_MANAGER
 const MGMT_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN]
 const EDIT_ROLES = [ROLES.SUPER_ADMIN, ROLES.VENDOR_ADMIN, ROLES.REGIONAL_MANAGER, ROLES.VENDOR_MANAGER, ROLES.FACILITY_MANAGER]
 
+// Listens for plan-limit-exceeded events dispatched by api.js and shows a toast
+function PlanLimitListener() {
+  const toast = useToast()
+  useEffect(() => {
+    function handler(e) {
+      toast.error(e.detail?.message || 'You have reached your plan limit. Upgrade your subscription to add more.', 6000)
+    }
+    window.addEventListener('plan-limit-exceeded', handler)
+    return () => window.removeEventListener('plan-limit-exceeded', handler)
+  }, [toast])
+  return null
+}
+
 export default function App() {
   return (
     <ToastProvider>
+      <PlanLimitListener />
       <Routes>
       <Route path="/login" element={<Login />} />
 

@@ -41,9 +41,9 @@ const getUsers = async (req, res) => {
 
     const where = {};
     if (userRole === "vendor_admin") {
-      // Vendor admin sees only their org's facility_manager and viewer accounts
+      // Vendor admin sees all users in their org including themselves (vendor_admin)
       where.organizationId = userOrgId;
-      where.role = { in: VENDOR_MANAGEABLE_ROLES };
+      where.role = { in: ["vendor_admin", ...VENDOR_MANAGEABLE_ROLES] };
     }
 
     const users = await prisma.user.findMany({

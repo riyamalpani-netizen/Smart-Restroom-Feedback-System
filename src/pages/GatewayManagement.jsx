@@ -459,7 +459,7 @@ export default function GatewayManagement() {
                               <>
                                 {gw.organizationId && (
                                   <span style={{ padding: '3px 8px', fontSize: 11, background: 'var(--success-bg, #dcfce7)', color: 'var(--success, #16a34a)', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                    ✓ Assigned
+                                    ✓ {gw.organizationName || organizations.find(o => o.id === gw.organizationId)?.name || 'Assigned'}
                                   </span>
                                 )}
                                 <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(gw)}>
@@ -633,7 +633,7 @@ export default function GatewayManagement() {
               </div>
             </div>
             <div className="drawer-section">
-              <p className="drawer-section__title">LNS Credentials</p>
+              <p className="drawer-section__title">LNS / CUPS Credentials</p>
               <div className="drawer-fields">
                 <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                   <span className="drawer-field__label">LNS Server</span>
@@ -651,6 +651,32 @@ export default function GatewayManagement() {
                         className="btn btn--sm btn--secondary"
                         style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
                         onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('LNS key copied to clipboard.') }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Not generated — register the gateway in TTN first.
+                    </span>
+                  )}
+                </div>
+                <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                  <span className="drawer-field__label">CUPS Server</span>
+                  <code style={{ fontSize: 11, wordBreak: 'break-all' }}>https://eu1.cloud.thethings.network:443</code>
+                </div>
+                <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                  <span className="drawer-field__label">CUPS Key</span>
+                  {drawerGw.lnsKey ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                      <code style={{ fontSize: 11, wordBreak: 'break-all', flex: 1, background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
+                        {drawerGw.lnsKey}
+                      </code>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--secondary"
+                        style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                        onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('CUPS key copied to clipboard.') }}
                       >
                         Copy
                       </button>

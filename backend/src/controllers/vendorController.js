@@ -310,6 +310,7 @@ async function createVendor(req, res) {
           keyName:       "SRFS Device & Traffic Key",
           rights: [
             "RIGHT_APPLICATION_DEVICES_WRITE",
+            "RIGHT_APPLICATION_DEVICES_WRITE_KEYS",
             "RIGHT_APPLICATION_DEVICES_READ",
             "RIGHT_APPLICATION_TRAFFIC_READ",
             "RIGHT_APPLICATION_TRAFFIC_DOWN_WRITE",

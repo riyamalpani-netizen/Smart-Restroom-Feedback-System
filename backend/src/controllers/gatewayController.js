@@ -746,14 +746,17 @@ async function getGateways(req, res) {
         location: { select: { id: true, city: true, officeName: true } },
         floor: { select: { id: true, floorName: true } },
         zone: { select: { id: true, name: true, restroom: { select: { id: true, name: true } } } },
+        organization: { select: { id: true, name: true } },
       },
       orderBy: { updatedAt: "desc" },
     });
     const mapped = gateways.map((g) => ({
       id: g.id, name: g.name, gatewayEui: g.gatewayEui, status: g.status, lastSeen: g.lastSeen,
+      organizationId: g.organizationId, organizationName: g.organization?.name || null,
       site: g.location?.officeName || g.location?.city || null, floor: g.floor?.floorName || null, zone: g.zone?.name || null, restroomName: g.zone?.restroom?.name || null,
       locationId: g.locationId, floorId: g.floorId, zoneId: g.zoneId,
       ttnStatus: g.ttnStatus, gatewayId: g.gatewayId, ttnDeviceId: g.ttnDeviceId, frequencyPlanId: g.frequencyPlanId,
+      lnsKey: g.lnsKey || null,
       latitude: g.latitude, longitude: g.longitude, connectedDevices: g.connectedDevices,
       createdAt: g.createdAt, updatedAt: g.updatedAt,
     }));
@@ -886,13 +889,19 @@ async function createGateway(req, res) {
         ttnStatus = "registered";
 
         // Generate the LNS key for this gateway (RIGHT_GATEWAY_LINK)
-        try {
-          lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, gateway.organizationId || undefined);
-          console.log(`[TTN] LNS key created for gateway ${ttnRegistration.gatewayId}`);
-        } catch (lnsError) {
-          console.error(`[TTN] LNS key creation failed for gateway ${ttnRegistration.gatewayId}:`, lnsError.message);
-          // Non-fatal — gateway is registered, user can recreate the key manually from TTN Console
-          ttnErrorMessage = `Gateway registered in TTN but LNS key generation failed: ${lnsError.message}`;
+        // Skip if the gateway exists on TTN but is owned by a different account
+        if (ttnRegistration.ownedByUs !== false) {
+          try {
+            lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, gateway.organizationId || undefined);
+            console.log(`[TTN] LNS key created for gateway ${ttnRegistration.gatewayId}`);
+          } catch (lnsError) {
+            console.error(`[TTN] LNS key creation failed for gateway ${ttnRegistration.gatewayId}:`, lnsError.message);
+            // Non-fatal — gateway is registered, user can recreate the key manually from TTN Console
+            ttnErrorMessage = `Gateway registered in TTN but LNS key generation failed: ${lnsError.message}`;
+          }
+        } else {
+          console.warn(`[TTN] Skipping LNS key creation for ${ttnRegistration.gatewayId} — gateway not owned by this account`);
+          ttnErrorMessage = `Gateway ID "${ttnRegistration.gatewayId}" already exists on TTN under a different account. Please use a different Gateway ID.`;
         }
       } catch (ttnError) {
         console.error("TTN gateway registration failed:", ttnError.message);
@@ -922,6 +931,7 @@ async function createGateway(req, res) {
       message: ttnErrorMessage ? "Gateway saved, but TTN registration failed" : "Gateway created and registered in TTN successfully",
       ttnError: ttnErrorMessage,
       gateway: { id: updatedGateway.id, name: updatedGateway.name, gatewayEui: updatedGateway.gatewayEui, status: updatedGateway.status, lastSeen: updatedGateway.lastSeen,
+        organizationId: updatedGateway.organizationId || null,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null, restroomName: gateway.zone?.restroom?.name || null,
         locationId: updatedGateway.locationId, floorId: updatedGateway.floorId, zoneId: updatedGateway.zoneId,
         ttnStatus: updatedGateway.ttnStatus, gatewayId: updatedGateway.gatewayId, ttnDeviceId: updatedGateway.ttnDeviceId, frequencyPlanId: updatedGateway.frequencyPlanId,
@@ -1150,9 +1160,11 @@ async function updateGateway(req, res) {
       ttnError: ttnErrorMessage,
       ttnRegistration: (placement?.changed && !existing.locationId && !existing.floorId && !existing.zoneId && existing.ttnStatus !== "registered") ? { registered: ttnAutoRegistered, error: ttnErrorMessage } : undefined,
       gateway: { id: finalGateway.id, name: finalGateway.name, gatewayEui: finalGateway.gatewayEui, status: finalGateway.status, lastSeen: finalGateway.lastSeen,
+        organizationId: finalGateway.organizationId || null,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,
         locationId: finalGateway.locationId, floorId: finalGateway.floorId, zoneId: finalGateway.zoneId,
         ttnStatus: finalGateway.ttnStatus, gatewayId: finalGateway.gatewayId, ttnDeviceId: finalGateway.ttnDeviceId, frequencyPlanId: finalGateway.frequencyPlanId,
+        lnsKey: finalGateway.lnsKey || null,
         latitude: finalGateway.latitude, longitude: finalGateway.longitude, connectedDevices: finalGateway.connectedDevices,
         createdAt: finalGateway.createdAt, updatedAt: finalGateway.updatedAt },
     });

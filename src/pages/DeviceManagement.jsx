@@ -569,7 +569,7 @@ export default function DeviceManagement() {
                               <>
                                 {device.organizationId && (
                                   <span style={{ padding: '3px 8px', fontSize: 11, background: 'var(--success-bg, #dcfce7)', color: 'var(--success, #16a34a)', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                    ✓ Assigned
+                                    ✓ {organizations.find(o => o.id === device.organizationId)?.name || 'Assigned'}
                                   </span>
                                 )}
                                 <button type="button" className="btn btn--sm btn--secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => openAssignOrg(device)}>

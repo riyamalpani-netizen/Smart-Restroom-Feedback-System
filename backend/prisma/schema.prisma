@@ -20,9 +20,69 @@ model Organization {
   settings             Settings?
   users                User[]
   devices              Device[]
+  gateways             Gateway[]
   notificationChannels NotificationChannel[]
+  // Vendor configuration (Super Admin managed)
+  subscriptionPlan     SubscriptionPlan?     @relation(fields: [subscriptionPlanId], references: [id])
+  subscriptionPlanId   String?
+  vendorTTNConfig      VendorTTNConfig?
+  vendorStatus         VendorStatus          @default(active)
 
   @@map("organizations")
+}
+
+// ── Subscription Plans ─────────────────────────────────────────────────────────
+
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  maxSites      Int      @default(1)
+  maxGateways   Int      @default(5)
+  maxDevices    Int      @default(20)
+  maxUsers      Int      @default(10)
+  features      String   @default("[]") // JSON array of feature keys
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  organizations Organization[]
+
+  @@map("subscription_plans")
+}
+
+// ── Vendor TTN / MQTT Configuration (Super Admin managed) ─────────────────────
+
+model VendorTTNConfig {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  // TTN Application
+  ttnAppId            String?
+  ttnApiKey           String?
+  ttnGatewayApiKey    String?
+  ttnApiBaseUrl       String?
+  // MQTT broker
+  ttnMqttBroker       String?  @default("eu1.cloud.thethings.network")
+  ttnMqttUsername     String?
+  ttnMqttPassword     String?
+  ttnMqttTopic        String?
+  // LoRaWAN / gateway defaults
+  ttnFrequencyPlanId  String?
+  ttnGatewayOwnerType String?
+  ttnGatewayOwnerId   String?
+  // LNS / CUPS
+  lnsAddress          String?
+  lnsKey              String?
+  cupsAddress         String?
+  cupsKey             String?
+  // Control
+  integrationEnabled  Boolean  @default(false)
+  connectionStatus    String?  @default("disconnected") // connected | disconnected | error
+  lastStatusAt        DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("vendor_ttn_configs")
 }
 
 model User {
@@ -182,6 +242,7 @@ model Gateway {
   name            String
   gatewayEui      String         @unique
   organizationId  String?
+  organization    Organization?  @relation(fields: [organizationId], references: [id])
   locationId      String?
   location        Location?      @relation(fields: [locationId], references: [id])
   floorId         String?
@@ -194,6 +255,7 @@ model Gateway {
   gatewayId       String?        @unique
   ttnDeviceId     String?
   frequencyPlanId String?
+  lnsKey          String?
   latitude        Float?
   longitude       Float?
   connectedDevices Int           @default(0)
@@ -291,6 +353,17 @@ model Settings {
   reportFrequency String?      @default("daily")
   sessionTimeout  Int?         @default(28800)
   passwordPolicy  String?      @default("min 8 chars, 1 uppercase, 1 number")
+  // Per-vendor TTN credentials
+  ttnAppId        String?
+  ttnApiKey       String?
+  ttnGatewayApiKey String?
+  ttnMqttBroker   String?
+  ttnMqttUsername String?
+  ttnMqttPassword String?
+  ttnMqttTopic    String?
+  ttnFrequencyPlanId String?
+  ttnGatewayOwnerType String?
+  ttnGatewayOwnerId String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   organization    Organization @relation(fields: [organizationId], references: [id])
@@ -443,6 +516,12 @@ enum UserRole {
   site_incharge
   facility_manager
   viewer
+}
+
+enum VendorStatus {
+  active
+  inactive
+  suspended
 }
 
 enum NotificationType {
