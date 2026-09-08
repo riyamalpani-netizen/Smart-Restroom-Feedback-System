@@ -1058,18 +1058,30 @@ async function updateGateway(req, res) {
       },
     });
 
+    // Capture the old org before the DB update was applied
+    const oldOrganizationId = existing.organizationId;
+    const newOrganizationId = gateway.organizationId; // already written to DB above
+
     let resolvedGatewayId = gateway.gatewayId;
     let ttnStatus = existing.ttnStatus;
     let ttnErrorMessage = null;
     let ttnAutoRegistered = false;
+    let lnsKey = null;
     if (registerGatewayInTTNService) {
       const wasGatewayUnplaced = !existing.locationId && !existing.floorId && !existing.zoneId;
+      const orgChanged = organizationId !== undefined && userRole === "super_admin" && organizationId !== oldOrganizationId;
+
+      // ── Branch A: EUI changed — delete old, register new ──────────────────
       if (gatewayEui !== undefined && existing.gatewayEui !== gateway.gatewayEui) {
         if (existing.ttnStatus === "registered") {
           try {
-            await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined });
+            await deleteGatewayFromTTN({
+              gatewayEui: existing.gatewayEui,
+              gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined,
+              organizationId: oldOrganizationId || undefined,
+            });
           } catch (ttnError) {
-            console.error("TTN gateway delete error during update:", ttnError.message);
+            console.error("TTN gateway delete error during EUI change:", ttnError.message);
           }
         }
         try {
@@ -1080,9 +1092,17 @@ async function updateGateway(req, res) {
             latitude: gateway.latitude || undefined,
             longitude: gateway.longitude || undefined,
             description: gateway.name,
+            organizationId: newOrganizationId || undefined,
           });
           ttnStatus = "registered";
           resolvedGatewayId = ttnRegistration.gatewayId;
+          if (ttnRegistration.ownedByUs !== false) {
+            try {
+              lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, newOrganizationId || undefined);
+            } catch (lnsErr) {
+              console.error("[TTN] LNS key creation failed after EUI change:", lnsErr.message);
+            }
+          }
           if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
             await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
           }
@@ -1092,6 +1112,75 @@ async function updateGateway(req, res) {
           ttnErrorMessage = ttnError.message;
           resolvedGatewayId = null;
         }
+
+      // ── Branch B: org changed — re-register under new vendor's TTN app ────
+      } else if (orgChanged && existing.ttnStatus === "registered") {
+        // 1. Delete from old org's TTN (best-effort)
+        if (oldOrganizationId) {
+          try {
+            await deleteGatewayFromTTN({
+              gatewayEui: existing.gatewayEui,
+              gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined,
+              organizationId: oldOrganizationId,
+            });
+            console.log(`[Gateway] Removed gateway ${existing.gatewayEui} from old org TTN (${oldOrganizationId})`);
+          } catch (delErr) {
+            console.warn(`[Gateway] TTN delete from old org failed for ${existing.gatewayEui}:`, delErr.message);
+          }
+        }
+        // Also attempt delete from global TTN (in case it was registered without an org)
+        try {
+          await deleteGatewayFromTTN({
+            gatewayEui: existing.gatewayEui,
+            gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined,
+            organizationId: undefined,
+          });
+        } catch (_) { /* 404 / already gone is fine */ }
+
+        // 2. Re-register in new vendor's TTN app
+        if (newOrganizationId) {
+          try {
+            const ttnRegistration = await registerGatewayInTTNService({
+              gatewayEui: gateway.gatewayEui,
+              gatewayId: gateway.gatewayId || existing.ttnDeviceId || `gateway-${gateway.gatewayEui.toLowerCase()}`,
+              frequencyPlanId: gateway.frequencyPlanId || undefined,
+              latitude: gateway.latitude || undefined,
+              longitude: gateway.longitude || undefined,
+              description: gateway.name,
+              organizationId: newOrganizationId,
+            });
+            ttnStatus = "registered";
+            resolvedGatewayId = ttnRegistration.gatewayId;
+            console.log(`[Gateway] Re-registered gateway ${gateway.gatewayEui} under new org TTN (${newOrganizationId})`);
+            if (ttnRegistration.ownedByUs !== false) {
+              try {
+                lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, newOrganizationId);
+              } catch (lnsErr) {
+                console.error("[TTN] LNS key creation failed after org change:", lnsErr.message);
+                ttnErrorMessage = `Gateway re-registered in new vendor TTN app but LNS key generation failed: ${lnsErr.message}`;
+              }
+            }
+            if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
+              await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
+            }
+          } catch (ttnError) {
+            console.error(`[Gateway] TTN re-registration failed for org change (${newOrganizationId}):`, ttnError.message);
+            ttnErrorMessage = ttnError.message;
+            if (ttnError.message.includes("409") || ttnError.message.includes("already exists")) {
+              ttnStatus = "registered";
+              resolvedGatewayId = gateway.gatewayId || existing.ttnDeviceId || `gateway-${gateway.gatewayEui.toLowerCase()}`;
+            } else {
+              ttnStatus = "not_registered";
+            }
+          }
+        } else {
+          // Unassigned from all orgs — gateway is no longer linked to any vendor TTN app
+          ttnStatus = "not_registered";
+          ttnErrorMessage = "Gateway unassigned from vendor — removed from TTN. Re-register manually if needed.";
+          console.log(`[Gateway] Gateway ${gateway.gatewayEui} unassigned from org and removed from TTN`);
+        }
+
+      // ── Branch C: first placement after creation ───────────────────────────
       } else if (placement?.changed && wasGatewayUnplaced && existing.ttnStatus !== "registered") {
         try {
           const ttnRegistration = await registerGatewayInTTNService({
@@ -1101,10 +1190,18 @@ async function updateGateway(req, res) {
             latitude: gateway.latitude || undefined,
             longitude: gateway.longitude || undefined,
             description: gateway.name,
+            organizationId: newOrganizationId || undefined,
           });
           ttnStatus = "registered";
           resolvedGatewayId = ttnRegistration.gatewayId;
           ttnAutoRegistered = true;
+          if (ttnRegistration.ownedByUs !== false) {
+            try {
+              lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, newOrganizationId || undefined);
+            } catch (lnsErr) {
+              console.error("[TTN] LNS key creation failed on first placement:", lnsErr.message);
+            }
+          }
           if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
             await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
           }
@@ -1117,6 +1214,8 @@ async function updateGateway(req, res) {
             ttnStatus = "not_registered";
           }
         }
+
+      // ── Branch D: metadata update (freq plan / lat-lon / name changed) ─────
       } else if (frequencyPlanId !== undefined || latitude !== undefined || longitude !== undefined || name !== undefined) {
         try {
           const ttnRegistration = await registerGatewayInTTNService({
@@ -1126,6 +1225,7 @@ async function updateGateway(req, res) {
             latitude: gateway.latitude || undefined,
             longitude: gateway.longitude || undefined,
             description: gateway.name,
+            organizationId: newOrganizationId || undefined,
           });
           ttnStatus = "registered";
           resolvedGatewayId = ttnRegistration.gatewayId;
@@ -1146,7 +1246,11 @@ async function updateGateway(req, res) {
 
     const finalGateway = await prisma.gateway.update({
       where: { id: gateway.id },
-      data: { ttnStatus, gatewayId: resolvedGatewayId },
+      data: {
+        ttnStatus,
+        gatewayId: resolvedGatewayId,
+        ...(lnsKey ? { lnsKey } : {}),
+      },
     });
 
     await logAudit(req, {
@@ -1159,6 +1263,7 @@ async function updateGateway(req, res) {
       message: ttnErrorMessage ? "Gateway updated, but TTN sync failed" : "Gateway updated successfully",
       ttnError: ttnErrorMessage,
       ttnRegistration: (placement?.changed && !existing.locationId && !existing.floorId && !existing.zoneId && existing.ttnStatus !== "registered") ? { registered: ttnAutoRegistered, error: ttnErrorMessage } : undefined,
+      ttnReregistration: (organizationId !== undefined && userRole === "super_admin" && organizationId !== existing.organizationId) ? { registered: finalGateway.ttnStatus === "registered", newOrg: organizationId || null, error: ttnErrorMessage } : undefined,
       gateway: { id: finalGateway.id, name: finalGateway.name, gatewayEui: finalGateway.gatewayEui, status: finalGateway.status, lastSeen: finalGateway.lastSeen,
         organizationId: finalGateway.organizationId || null,
         site: gateway.location?.officeName || gateway.location?.city || null, floor: gateway.floor?.floorName || null, zone: gateway.zone?.name || null,

@@ -18,8 +18,9 @@ router.post("/bulk", authenticate, authorize("super_admin"), bulkCreateDevices);
 // Super Admin can also reassign organizationId via PUT
 router.put("/:id", authenticate, authorize("super_admin", "vendor_admin"), updateDevice);
 
-// Delete / TTN — Super Admin ONLY
-router.delete("/:id", authenticate, authorize("super_admin"), deleteDevice);
+// Delete — vendor_admin can delete devices assigned to their org (scoped by org in controller)
+// Super Admin can delete any device
+router.delete("/:id", authenticate, authorize("super_admin", "vendor_admin"), deleteDevice);
 router.post("/:id/register-ttn", authenticate, authorize("super_admin"), registerDeviceInTTN);
 
 module.exports = router;

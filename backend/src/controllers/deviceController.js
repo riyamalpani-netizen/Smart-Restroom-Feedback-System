@@ -708,8 +708,7 @@
 //   deleteDevice,
 // };
 const prisma = require("../config/database");
-const { registerOtaaDevice } = require("../services/ttnDeviceRegistryService");
-const { deleteDeviceFromTTN } = require("../services/ttnDeviceRegistryService");
+const { registerOtaaDevice, repairExistingDevice, deleteDeviceFromTTN } = require("../services/ttnDeviceRegistryService");
 const crypto = require("crypto");
 const { checkPlanLimit } = require("../utils/planLimits");
 const { logAudit } = require("../utils/auditLogger");
@@ -1271,58 +1270,87 @@ async function updateDevice(req, res) {
 
     // ── TTN org re-registration ─────────────────────────────────────────────
     // When super admin moves a device to a different vendor org, remove it from
-    // the old TTN application (and the global app) then re-register in the
-    // new vendor's TTN app using their VendorTTNConfig credentials.
+    // the old TTN application and re-register it in the new vendor's TTN app.
     let ttnReregistered = false;
     let ttnReregisterError = null;
     const orgChanged = organizationId !== undefined && userRole === "super_admin" && organizationId !== oldOrganizationId;
-    if (orgChanged && device.deviceEui && device.appKey) {
-      const deviceId = `device-${device.deviceEui.toLowerCase()}`;
+    if (orgChanged && device.deviceEui) {
+      // Re-derive the TTN device ID using the same logic used in createDevice.
+      // The Device model has no ttnDeviceId column, so we reconstruct both
+      // possible forms and try each on delete.
+      const nameSlug = device.name
+        ? device.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
+        : null;
+      const euiSuffix = device.deviceEui.toLowerCase().slice(-8);
+      const primaryTtnId = nameSlug
+        ? `device-${nameSlug}-${euiSuffix}`
+        : `device-${device.deviceEui.toLowerCase()}`;
+      const fallbackTtnId = `device-${device.deviceEui.toLowerCase()}`;
+      const ttnIdCandidates = [...new Set([primaryTtnId, fallbackTtnId])];
 
-      // 1. Delete from old org's TTN app (best-effort)
+      // 1. Delete from old org's TTN app (best-effort, try both ID forms)
       if (oldOrganizationId) {
-        try {
-          await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId, organizationId: oldOrganizationId });
-          console.log(`[Device] Removed ${device.deviceEui} from old org TTN app (${oldOrganizationId})`);
-        } catch (delErr) {
-          console.warn(`[Device] TTN delete from old org failed for ${device.deviceEui}: ${delErr.message}`);
+        for (const candidateId of ttnIdCandidates) {
+          try {
+            await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId: candidateId, organizationId: oldOrganizationId });
+            console.log(`[Device] Removed ${device.deviceEui} (${candidateId}) from old org TTN app (${oldOrganizationId})`);
+            break;
+          } catch (delErr) {
+            if (!delErr.message.includes("404") && !delErr.message.includes("not found")) {
+              console.warn(`[Device] TTN delete from old org failed for ${candidateId}: ${delErr.message}`);
+            }
+          }
         }
       }
-
-      // 2. Delete from global app — EUI may be registered there from initial creation
-      //    Use null orgId so getOrgTTNSettings falls through to global .env creds
-      try {
-        await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId, organizationId: null });
-        console.log(`[Device] Removed ${device.deviceEui} from global TTN app`);
-      } catch (delErr) {
-        // 404 = not in global app, that's fine
-        if (!delErr.message.includes("404") && !delErr.message.includes("not found")) {
-          console.warn(`[Device] TTN delete from global app failed for ${device.deviceEui}: ${delErr.message}`);
-        }
+      // 2. Also delete from global TTN app (registered via env creds on initial creation)
+      for (const candidateId of ttnIdCandidates) {
+        try {
+          await deleteDeviceFromTTN({ deviceEui: device.deviceEui, deviceId: candidateId, organizationId: null });
+          break;
+        } catch (_) { /* 404 = not there, fine */ }
       }
 
       // 3. Re-register in new vendor's TTN app
-      if (organizationId) {
+      if (organizationId && device.appKey) {
         try {
           await registerOtaaDevice({
             deviceEui: device.deviceEui,
-            deviceId,
+            deviceId: primaryTtnId,
             joinEui: device.joinEui || "0000000000000000",
             appKey: device.appKey,
+            lorawanVersion: device.lorawanVersion || undefined,
+            lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+            name: device.name || undefined,
+            organizationId,
+          });
+          ttnReregistered = true;
+          console.log(`[Device] Re-registered ${device.deviceEui} in new vendor TTN app (${organizationId})`);
+        } catch (regErr) {
+          if (regErr.message.includes("409") || regErr.message.includes("already exists") || regErr.message.includes("already registered")) {
+            ttnReregistered = true;
+            console.log(`[Device] ${device.deviceEui} already in new vendor TTN app — OK`);
+          } else {
+            ttnReregisterError = regErr.message;
+            console.warn(`[Device] TTN re-registration in new vendor app failed for ${device.deviceEui}: ${regErr.message}`);
+          }
+        }
+      } else if (organizationId && !device.appKey) {
+        // appKey not stored in DB — attempt repair using existing.appKey (captured before update)
+        try {
+          await repairExistingDevice({
+            deviceEui: device.deviceEui,
+            deviceId: primaryTtnId,
+            joinEui: device.joinEui || "0000000000000000",
+            appKey: existing.appKey || "",
             lorawanVersion: device.lorawanVersion || undefined,
             lorawanPhyVersion: device.lorawanPhyVersion || undefined,
             organizationId,
           });
           ttnReregistered = true;
-          console.log(`[Device] Re-registered ${device.deviceEui} in vendor TTN app (org: ${organizationId})`);
-        } catch (regErr) {
-          if (regErr.message.includes("409") || regErr.message.includes("already exists") || regErr.message.includes("already registered")) {
-            ttnReregistered = true;
-            console.log(`[Device] ${device.deviceEui} already in vendor TTN app — OK`);
-          } else {
-            ttnReregisterError = regErr.message;
-            console.warn(`[Device] TTN re-registration failed for ${device.deviceEui}: ${regErr.message}`);
-          }
+          console.log(`[Device] Repaired ${device.deviceEui} in new vendor TTN app (${organizationId})`);
+        } catch (repairErr) {
+          ttnReregisterError = repairErr.message;
+          console.warn(`[Device] TTN repair in new vendor app failed for ${device.deviceEui}: ${repairErr.message}`);
         }
       }
     }
@@ -1333,13 +1361,21 @@ async function updateDevice(req, res) {
     const isBeingPlaced = placement?.changed && wasUnplaced;
     if (isBeingPlaced && device.deviceEui && device.appKey) {
       try {
+        const nameSlug = device.name
+          ? device.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
+          : null;
+        const euiSuffix = device.deviceEui.toLowerCase().slice(-8);
+        const placementTtnId = nameSlug
+          ? `device-${nameSlug}-${euiSuffix}`
+          : `device-${device.deviceEui.toLowerCase()}`;
         await registerOtaaDevice({
           deviceEui: device.deviceEui,
-          deviceId: `device-${device.deviceEui.toLowerCase()}`,
+          deviceId: placementTtnId,
           joinEui: device.joinEui || "0000000000000000",
           appKey: device.appKey,
           lorawanVersion: device.lorawanVersion || undefined,
           lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+          name: device.name || undefined,
           organizationId: device.organizationId || userOrgId || undefined,
         });
         ttnAutoRegistered = true;
@@ -1594,10 +1630,7 @@ async function deleteDevice(req, res) {
 
     const whereClause = { id };
     if (userRole !== "super_admin") {
-      whereClause.OR = [
-        { restroom: { organizationId: userOrgId } },
-        { restroomId: null }
-      ];
+      whereClause.organizationId = userOrgId;
     }
 
     const existing = await prisma.device.findFirst({
