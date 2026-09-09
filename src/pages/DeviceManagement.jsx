@@ -371,7 +371,6 @@ export default function DeviceManagement() {
         restroomId: editForm.restroomId || null,
         floorId: editForm.floorId || null,
         badgeId: editForm.badgeId || undefined,
-        zoneId: null,
         batteryLevel: editForm.batteryLevel ? Number(editForm.batteryLevel) : undefined,
         deviceEui: editForm.deviceEui || undefined,
         appKey: editForm.appKey || undefined,

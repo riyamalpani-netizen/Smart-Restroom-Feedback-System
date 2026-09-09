@@ -1206,7 +1206,7 @@ select::-webkit-scrollbar {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 460px;
+  max-height: 600px;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
@@ -1222,6 +1222,9 @@ select::-webkit-scrollbar {
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
   overflow: hidden;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 
@@ -1419,6 +1422,7 @@ select::-webkit-scrollbar {
   flex-wrap: wrap;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  margin-top: auto;
 }
 
 .unhappy-panel__note-form-actions {

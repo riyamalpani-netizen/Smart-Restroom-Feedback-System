@@ -828,6 +828,7 @@ async function getDevices(req, res) {
         appKey: device.appKey || null,
         lorawanVersion: device.lorawanVersion || null,
         lorawanPhyVersion: device.lorawanPhyVersion || null,
+        frequencyPlanId: device.frequencyPlanId || null,
       };
     });
 
@@ -901,6 +902,7 @@ async function getDeviceById(req, res) {
       appKey: device.appKey || null,
       lorawanVersion: device.lorawanVersion || null,
       lorawanPhyVersion: device.lorawanPhyVersion || null,
+      frequencyPlanId: device.frequencyPlanId || null,
       feedback: device.feedback,
       healthRecords: device.deviceHealth,
     };
@@ -1074,6 +1076,7 @@ async function createDevice(req, res) {
       appKey: resolvedAppKey,
       lorawanVersion: lorawanVersion || null,
       lorawanPhyVersion: lorawanPhyVersion || null,
+      frequencyPlanId: frequencyPlanId || null,
       healthStatus: "healthy",
     };
 
@@ -1154,7 +1157,7 @@ async function updateDevice(req, res) {
     const {
       badgeId, restroomId, batteryLevel, healthStatus, floorPlanPosX, floorPlanPosY,
       floorId, zoneId, deviceType, joinEui, appKey, gatewayId, name, deviceEui,
-      latitude, longitude, organizationId, // ← organizationId for super admin assignment
+      latitude, longitude, organizationId, frequencyPlanId, // ← organizationId for super admin assignment
     } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
@@ -1219,6 +1222,7 @@ async function updateDevice(req, res) {
     if (deviceEui) updateData.deviceEui = deviceEui
     if (latitude !== undefined) updateData.latitude = latitude
     if (longitude !== undefined) updateData.longitude = longitude
+    if (frequencyPlanId !== undefined) updateData.frequencyPlanId = frequencyPlanId || null
     // Super admin can assign/unassign a device to an organisation
     if (organizationId !== undefined && userRole === "super_admin") {
       // Check plan limit before assigning
@@ -1416,6 +1420,7 @@ async function updateDevice(req, res) {
       appKey: device.appKey || null,
       lorawanVersion: device.lorawanVersion || null,
       lorawanPhyVersion: device.lorawanPhyVersion || null,
+      frequencyPlanId: device.frequencyPlanId || null,
     };
 
     await logAudit(req, {
@@ -1645,33 +1650,47 @@ async function deleteDevice(req, res) {
     let ttnDeleted = false;
     let ttnDeleteError = null;
 
-    // Try to delete from TTN — attempt the vendor's app first, then fall back to
-    // the global app. A 404 from TTN means the device isn't in that app, which is
-    // fine — we just move on to the next attempt.
-    const deleteAttempts = [];
-    if (existing.organizationId) deleteAttempts.push(existing.organizationId);
-    deleteAttempts.push(null); // global / env-var fallback
+    // Build the same TTN device ID candidates that createDevice/updateDevice use,
+    // so we find the device regardless of whether it was registered with a name-slug
+    // or a plain EUI-based ID.
+    const euiLower = existing.deviceEui.toLowerCase();
+    const euiSuffix = euiLower.slice(-8);
+    const nameSlug = existing.name
+      ? existing.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
+      : null;
+    const nameTtnId = nameSlug ? `device-${nameSlug}-${euiSuffix}` : null;
+    const euiTtnId = `device-${euiLower}`;
+    // Deduplicate — if name-based and eui-based happen to be the same string, only try once
+    const ttnIdCandidates = [...new Set([nameTtnId, euiTtnId].filter(Boolean))];
 
-    for (const orgId of deleteAttempts) {
-      try {
-        await deleteDeviceFromTTN({
-          deviceEui: existing.deviceEui,
-          deviceId: `device-${existing.deviceEui.toLowerCase()}`,
-          organizationId: orgId || undefined,
-        });
-        ttnDeleted = true;
-        console.log(`[Device] Device ${existing.deviceEui} deleted from TTN (org: ${orgId || "global"})`);
-        break; // success — stop trying
-      } catch (ttnError) {
-        if (ttnError.message.includes("404") || ttnError.message.includes("not_found")) {
-          // Not in this app — try the next one
-          console.log(`[Device] Device ${existing.deviceEui} not found in TTN app for org ${orgId || "global"} — trying next`);
-          continue;
+    // Try each candidate ID against vendor app first, then global/env-var fallback.
+    const orgScopes = [];
+    if (existing.organizationId) orgScopes.push(existing.organizationId);
+    orgScopes.push(null); // global / env-var fallback
+
+    outer:
+    for (const candidateId of ttnIdCandidates) {
+      for (const orgId of orgScopes) {
+        try {
+          await deleteDeviceFromTTN({
+            deviceEui: existing.deviceEui,
+            deviceId: candidateId,
+            organizationId: orgId || undefined,
+          });
+          ttnDeleted = true;
+          console.log(`[Device] Device ${existing.deviceEui} (${candidateId}) deleted from TTN (org: ${orgId || "global"})`);
+          break outer; // found and deleted — stop all loops
+        } catch (ttnError) {
+          if (ttnError.message.includes("404") || ttnError.message.includes("not_found")) {
+            // Not in this app/id combo — try next
+            console.log(`[Device] ${candidateId} not found in TTN app for org ${orgId || "global"} — trying next`);
+            continue;
+          }
+          // Real error (auth, network, etc.) — record and stop
+          ttnDeleteError = ttnError.message;
+          console.warn(`[Device] TTN delete failed for ${candidateId} (org: ${orgId || "global"}): ${ttnError.message}`);
+          break outer;
         }
-        // Real error on last attempt
-        ttnDeleteError = ttnError.message;
-        console.warn(`[Device] TTN delete failed for ${existing.deviceEui} (org: ${orgId || "global"}): ${ttnError.message}`);
-        break;
       }
     }
 

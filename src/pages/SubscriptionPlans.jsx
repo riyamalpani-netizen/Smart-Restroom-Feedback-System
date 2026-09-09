@@ -90,7 +90,7 @@ export default function SubscriptionPlans() {
       <PageHeader
         title="Subscription Plans"
         subtitle="Define resource limits and feature access for each vendor tier"
-        action={<button className="btn btn--primary" onClick={openCreate}>+ New Plan</button>}
+        action={<button className="btn btn--primary" data-tour="plans-add-btn" onClick={openCreate}>+ New Plan</button>}
       />
 
       {loading ? (
@@ -101,7 +101,7 @@ export default function SubscriptionPlans() {
           <p style={{ fontSize: 13, color: '#8ba3ad', marginTop: 6 }}>Create a plan to assign resource limits to vendors.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        <div data-tour="plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {plans.map(p => {
             const features = parsedFeatures(p)
             return (

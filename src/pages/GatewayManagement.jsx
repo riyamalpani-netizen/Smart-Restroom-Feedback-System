@@ -642,18 +642,37 @@ export default function GatewayManagement() {
                 <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                   <span className="drawer-field__label">LNS API Key</span>
                   {drawerGw.lnsKey ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                      <code style={{ fontSize: 11, wordBreak: 'break-all', flex: 1, background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                      <code style={{ fontSize: 11, wordBreak: 'break-all', width: '100%', background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
                         {drawerGw.lnsKey}
                       </code>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--secondary"
-                        style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
-                        onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('LNS key copied to clipboard.') }}
-                      >
-                        Copy
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--secondary"
+                          style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                          onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('LNS key copied to clipboard.') }}
+                        >
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--secondary"
+                          style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                          onClick={() => {
+                            const blob = new Blob([drawerGw.lnsKey], { type: 'text/plain' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `lns-key-${drawerGw.gatewayId || drawerGw.id}.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            toast.success('LNS key downloaded.');
+                          }}
+                        >
+                          Download
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -668,18 +687,37 @@ export default function GatewayManagement() {
                 <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                   <span className="drawer-field__label">CUPS Key</span>
                   {drawerGw.lnsKey ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                      <code style={{ fontSize: 11, wordBreak: 'break-all', flex: 1, background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                      <code style={{ fontSize: 11, wordBreak: 'break-all', width: '100%', background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
                         {drawerGw.lnsKey}
                       </code>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--secondary"
-                        style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
-                        onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('CUPS key copied to clipboard.') }}
-                      >
-                        Copy
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--secondary"
+                          style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                          onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('CUPS key copied to clipboard.') }}
+                        >
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--secondary"
+                          style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
+                          onClick={() => {
+                            const blob = new Blob([drawerGw.lnsKey], { type: 'text/plain' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `cups-key-${drawerGw.gatewayId || drawerGw.id}.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            toast.success('CUPS key downloaded.');
+                          }}
+                        >
+                          Download
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>

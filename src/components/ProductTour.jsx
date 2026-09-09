@@ -7,15 +7,39 @@ import api from '../services/api'
 import { ROLES } from '../utils/constants'
 
 // ─── Step definitions ─────────────────────────────────────────────────────────
-const ALL_STEPS = [
-  {
+
+const WELCOME_TITLES = {
+  [ROLES.SUPER_ADMIN]:      '👋 Welcome to the Super Admin Portal',
+  [ROLES.VENDOR_ADMIN]:     '👋 Welcome to your Vendor Portal',
+  [ROLES.REGIONAL_MANAGER]: '👋 Welcome to your Regional Manager Portal',
+  [ROLES.VENDOR_MANAGER]:   '👋 Welcome to your Vendor Manager Portal',
+  [ROLES.SITE_INCHARGE]:    '👋 Welcome to your Site Incharge Portal',
+  [ROLES.FACILITY_MANAGER]: '👋 Welcome to your Facility Manager Portal',
+  [ROLES.VIEWER]:           '👋 Welcome to the Smart Restroom System',
+}
+
+const WELCOME_DESCRIPTIONS = {
+  [ROLES.SUPER_ADMIN]:
+    '<ul><li>Covers every page — Dashboard, Vendors, Subscription Plans, Devices, Gateways, Users and more</li><li>Takes about 2 minutes to complete</li><li>You can relaunch this tour any time from the top bar</li></ul>',
+  [ROLES.VENDOR_ADMIN]:
+    '<ul><li>Covers every page — Dashboard, Live Feedback, Alerts, Devices, Users and more</li><li>Takes about 2 minutes to complete</li><li>You can relaunch this tour any time from the top bar</li></ul>',
+}
+
+const DEFAULT_WELCOME_DESCRIPTION =
+  '<ul><li>Covers your key pages — Dashboard, Live Feedback, Alerts, Devices, and Reports</li><li>Takes about 2 minutes to complete</li><li>You can relaunch this tour any time from the top bar</li></ul>'
+
+function makeWelcomeStep(role) {
+  return {
     element: null,
     route: '/dashboard',
     popover: {
-      title: '👋 Welcome to your Vendor Portal',
-      description: '<ul><li>Covers every page — Dashboard, Live Feedback, Alerts, Devices, Users and more</li><li>Takes about 2 minutes to complete</li><li>You can relaunch this tour any time from the top bar</li></ul>',
+      title: WELCOME_TITLES[role] ?? '👋 Welcome to the Smart Restroom System',
+      description: WELCOME_DESCRIPTIONS[role] ?? DEFAULT_WELCOME_DESCRIPTION,
     },
-  },
+  }
+}
+
+const ALL_STEPS = [
   {
     element: '[data-tour="navbar"]',
     route: '/dashboard',
@@ -358,10 +382,73 @@ const ALL_STEPS = [
       side: 'top', align: 'start',
     },
   },
+  // ── Vendor Configuration (Super Admin only) ───────────────────────────────
+  {
+    element: '[data-tour="vendor-add-btn"]',
+    route: '/vendors',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Create a Vendor',
+      description: '<ul><li>Provision a new vendor organisation with a single form</li><li>Optionally create an initial Vendor Admin account at the same time</li><li>A TTN application is auto-created in The Things Network on save</li></ul>',
+      side: 'bottom', align: 'end',
+    },
+  },
+  {
+    element: '[data-tour="vendor-stats"]',
+    route: '/vendors',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Vendor Overview Stats',
+      description: '<ul><li>Live count of Total, Active, Inactive, and Suspended vendors</li><li><strong>Integrated</strong> shows how many have an active TTN/MQTT connection</li><li>Use these to gauge platform adoption at a glance</li></ul>',
+      side: 'bottom', align: 'start',
+    },
+  },
+  {
+    element: '[data-tour="vendor-filters"]',
+    route: '/vendors',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Filter & Search Vendors',
+      description: '<ul><li>Search by vendor name to jump directly to a specific organisation</li><li>Filter by status — Active, Inactive, or Suspended</li><li>Suspended vendors cannot log in and their MQTT connection is dropped</li></ul>',
+      side: 'bottom', align: 'start',
+    },
+  },
+  {
+    element: '[data-tour="vendor-table"]',
+    route: '/vendors',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Vendor Table',
+      description: '<ul><li>Shows each vendor\'s subscription plan, resource usage (users / devices / sites), and TTN integration status</li><li><strong>Details</strong> — view live resource usage and integration health</li><li><strong>⚙ TTN</strong> — configure MQTT broker, API keys, and frequency plan per vendor</li><li><strong>Suspend</strong> — instantly disables login and disconnects the vendor\'s integration</li></ul>',
+      side: 'top', align: 'start',
+    },
+  },
+  // ── Subscription Plans (Super Admin only) ────────────────────────────────
+  {
+    element: '[data-tour="plans-add-btn"]',
+    route: '/subscription-plans',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Create a Subscription Plan',
+      description: '<ul><li>Define a new tier with its own resource limits</li><li>Set max Sites, Gateways, Devices, and Users allowed per vendor</li><li>Optionally restrict which features the tier can access</li></ul>',
+      side: 'bottom', align: 'end',
+    },
+  },
+  {
+    element: '[data-tour="plans-grid"]',
+    route: '/subscription-plans',
+    roles: [ROLES.SUPER_ADMIN],
+    popover: {
+      title: 'Plan Cards',
+      description: '<ul><li>Each card shows the plan name, status, and resource limits at a glance</li><li><strong>Edit</strong> to change limits or feature flags — takes effect immediately for all assigned vendors</li><li><strong>Deactivate</strong> hides a plan from the vendor assignment dropdown without deleting it</li><li>Plans in use by at least one vendor cannot be deleted — reassign vendors first</li></ul>',
+      side: 'top', align: 'start',
+    },
+  },
 ]
 
 function getStepsForRole(role) {
-  return ALL_STEPS.filter((s) => !s.roles || s.roles.includes(role))
+  const filtered = ALL_STEPS.filter((s) => !s.roles || s.roles.includes(role))
+  return [makeWelcomeStep(role), ...filtered]
 }
 
 // ─── Core: run steps one at a time, navigating between pages ─────────────────

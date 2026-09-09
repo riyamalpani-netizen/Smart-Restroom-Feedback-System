@@ -238,11 +238,11 @@ export default function VendorManagement() {
       <PageHeader
         title="Vendor Management"
         subtitle="Provision vendors, assign subscription plans, and configure TTN/MQTT integrations"
-        action={<button className="btn btn--primary" onClick={openCreate}>+ New Vendor</button>}
+        action={<button className="btn btn--primary" data-tour="vendor-add-btn" onClick={openCreate}>+ New Vendor</button>}
       />
 
       {/* ── Filters ── */}
-      <div className="vm-filters">
+      <div className="vm-filters" data-tour="vendor-filters">
         <input className="search-input" placeholder="Search vendors…" value={search} onChange={e => setSearch(e.target.value)} />
         <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All statuses</option>
@@ -256,7 +256,7 @@ export default function VendorManagement() {
 
       {/* ── Stats row ── */}
       {!loading && (
-        <div className="vm-stats">
+        <div className="vm-stats" data-tour="vendor-stats">
           {[
             { label: 'Total', val: vendors.length, color: '#6366f1' },
             { label: 'Active', val: vendors.filter(v => v.vendorStatus === 'active').length, color: '#10b981' },
@@ -278,7 +278,7 @@ export default function VendorManagement() {
       ) : visible.length === 0 ? (
         <div className="empty-state"><p>No vendors found. Create one to get started.</p></div>
       ) : (
-        <div className="vm-table-wrap">
+        <div className="vm-table-wrap" data-tour="vendor-table">
           <table className="vm-table">
             <thead>
               <tr>

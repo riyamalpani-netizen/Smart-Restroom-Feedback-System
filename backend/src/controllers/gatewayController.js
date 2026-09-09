@@ -1113,71 +1113,22 @@ async function updateGateway(req, res) {
           resolvedGatewayId = null;
         }
 
-      // ── Branch B: org changed — re-register under new vendor's TTN app ────
-      } else if (orgChanged && existing.ttnStatus === "registered") {
-        // 1. Delete from old org's TTN (best-effort)
-        if (oldOrganizationId) {
-          try {
-            await deleteGatewayFromTTN({
-              gatewayEui: existing.gatewayEui,
-              gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined,
-              organizationId: oldOrganizationId,
-            });
-            console.log(`[Gateway] Removed gateway ${existing.gatewayEui} from old org TTN (${oldOrganizationId})`);
-          } catch (delErr) {
-            console.warn(`[Gateway] TTN delete from old org failed for ${existing.gatewayEui}:`, delErr.message);
-          }
-        }
-        // Also attempt delete from global TTN (in case it was registered without an org)
-        try {
-          await deleteGatewayFromTTN({
-            gatewayEui: existing.gatewayEui,
-            gatewayId: existing.gatewayId || existing.ttnDeviceId || undefined,
-            organizationId: undefined,
-          });
-        } catch (_) { /* 404 / already gone is fine */ }
-
-        // 2. Re-register in new vendor's TTN app
+      // ── Branch B: org changed — just update DB, gateway stays on TTN ────────
+      // Gateways on TTN are global (owned by riyamalpani account), not per-vendor.
+      // Assigning a gateway to a vendor is a DB-only operation — the gateway
+      // stays registered on TTN under the same account. Never delete it from TTN
+      // just because the vendor org changed.
+      } else if (orgChanged) {
         if (newOrganizationId) {
-          try {
-            const ttnRegistration = await registerGatewayInTTNService({
-              gatewayEui: gateway.gatewayEui,
-              gatewayId: gateway.gatewayId || existing.ttnDeviceId || `gateway-${gateway.gatewayEui.toLowerCase()}`,
-              frequencyPlanId: gateway.frequencyPlanId || undefined,
-              latitude: gateway.latitude || undefined,
-              longitude: gateway.longitude || undefined,
-              description: gateway.name,
-              organizationId: newOrganizationId,
-            });
-            ttnStatus = "registered";
-            resolvedGatewayId = ttnRegistration.gatewayId;
-            console.log(`[Gateway] Re-registered gateway ${gateway.gatewayEui} under new org TTN (${newOrganizationId})`);
-            if (ttnRegistration.ownedByUs !== false) {
-              try {
-                lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, newOrganizationId);
-              } catch (lnsErr) {
-                console.error("[TTN] LNS key creation failed after org change:", lnsErr.message);
-                ttnErrorMessage = `Gateway re-registered in new vendor TTN app but LNS key generation failed: ${lnsErr.message}`;
-              }
-            }
-            if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
-              await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
-            }
-          } catch (ttnError) {
-            console.error(`[Gateway] TTN re-registration failed for org change (${newOrganizationId}):`, ttnError.message);
-            ttnErrorMessage = ttnError.message;
-            if (ttnError.message.includes("409") || ttnError.message.includes("already exists")) {
-              ttnStatus = "registered";
-              resolvedGatewayId = gateway.gatewayId || existing.ttnDeviceId || `gateway-${gateway.gatewayEui.toLowerCase()}`;
-            } else {
-              ttnStatus = "not_registered";
-            }
-          }
+          // Gateway already on TTN — just keep ttnStatus as-is
+          ttnStatus = existing.ttnStatus || "not_registered";
+          resolvedGatewayId = gateway.gatewayId;
+          console.log(`[Gateway] Gateway ${gateway.gatewayEui} org updated to ${newOrganizationId} — TTN unchanged`);
         } else {
-          // Unassigned from all orgs — gateway is no longer linked to any vendor TTN app
-          ttnStatus = "not_registered";
-          ttnErrorMessage = "Gateway unassigned from vendor — removed from TTN. Re-register manually if needed.";
-          console.log(`[Gateway] Gateway ${gateway.gatewayEui} unassigned from org and removed from TTN`);
+          // Unassigned from vendor — gateway stays on TTN, just clear org in DB
+          ttnStatus = existing.ttnStatus || "not_registered";
+          resolvedGatewayId = gateway.gatewayId;
+          console.log(`[Gateway] Gateway ${gateway.gatewayEui} unassigned from org — TTN unchanged`);
         }
 
       // ── Branch C: first placement after creation ───────────────────────────
