@@ -136,6 +136,55 @@ async function getProfile(req, res) {
   }
 }
 
+async function updateProfile(req, res) {
+  const userId = req.user?.sub;
+  const { name, currentPassword, newPassword } = req.body || {};
+
+  if (!name && !newPassword) {
+    return res.status(400).json({ message: "Nothing to update. Provide a name or new password." });
+  }
+
+  if (name && typeof name !== "string") {
+    return res.status(400).json({ message: "Name must be a string." });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const updates = {};
+
+    if (name) {
+      updates.name = name.trim();
+    }
+
+    if (newPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Current password is required to set a new password." });
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) {
+        return res.status(400).json({ message: "Current password is incorrect." });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters." });
+      }
+      updates.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updates,
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    return res.json({ message: "Profile updated successfully", user: updated });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
 async function getTutorialStatus(req, res) {
   try {
     const user = await prisma.user.findUnique({
@@ -175,6 +224,7 @@ module.exports = {
   logout,
   refreshToken,
   getProfile,
+  updateProfile,
   getTutorialStatus,
   updateTutorialStatus,
 };

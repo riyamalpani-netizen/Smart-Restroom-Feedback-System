@@ -93,6 +93,7 @@ export default function VendorManagement() {
   const [ttnTab, setTtnTab] = useState('mqtt')
   const [ttnSaving, setTtnSaving] = useState(false)
   const [ttnTesting, setTtnTesting] = useState(false)
+  const [ttnRegenerating, setTtnRegenerating] = useState(false)
   const [ttnTestResult, setTtnTestResult] = useState(null)
 
   const [detailVendor, setDetailVendor] = useState(null)
@@ -210,6 +211,17 @@ export default function VendorManagement() {
       setTtnTestResult({ ok: true, msg: 'Connection successful' })
     } catch (err) { setTtnTestResult({ ok: false, msg: err.message || 'Connection failed' }) }
     finally { setTtnTesting(false) }
+  }
+
+  async function regenerateApiKey() {
+    if (!window.confirm(`Regenerate the TTN API key for "${ttnVendor.name}"?\n\nThis will create a new key with the correct rights (including simulate support), save it automatically, and reload the MQTT connection. The old key will remain in TTN but is no longer used.`)) return
+    setTtnRegenerating(true); setTtnTestResult(null)
+    try {
+      await api.post(`/api/vendors/${ttnVendor.id}/regenerate-api-key`)
+      setTtnTestResult({ ok: true, msg: 'API key regenerated — MQTT reconnected ✓' })
+      load()
+    } catch (err) { setTtnTestResult({ ok: false, msg: err.message || 'Regeneration failed' }) }
+    finally { setTtnRegenerating(false) }
   }
 
   async function toggleIntegration(v, enabled) {
@@ -573,6 +585,11 @@ export default function VendorManagement() {
                   <button type="button" className="vm-btn vm-btn--test" onClick={testTTN}
                     disabled={ttnTesting || !ttnForm.ttnMqttBroker || !ttnForm.ttnMqttUsername}>
                     {ttnTesting ? <><span className="vm-spinner" />Testing…</> : '⚡ Test Connection'}
+                  </button>
+                  <button type="button" className="vm-btn vm-btn--secondary" onClick={regenerateApiKey}
+                    disabled={ttnRegenerating}
+                    title="Create a new TTN API key with all required rights (including simulate) and reload MQTT">
+                    {ttnRegenerating ? <><span className="vm-spinner" />Regenerating…</> : '🔑 Regenerate API Key'}
                   </button>
                   {ttnTestResult && (
                     <span className={`vm-test-result ${ttnTestResult.ok ? 'vm-test-result--ok' : 'vm-test-result--fail'}`}>

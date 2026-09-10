@@ -82,17 +82,47 @@ async function simulateFeedback(req, res) {
     let ttnSimulated = false;
     let ttnSimulateError = null;
     try {
+      // Build the same TTN device ID that createDevice registered the device under.
+      // Two possible forms — try name-slug first, fall back to plain EUI.
+      const euiLower = device.deviceEui.toLowerCase();
+      const euiSuffix = euiLower.slice(-8);
+      const nameSlug = device.name
+        ? device.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
+        : null;
+      const ttnDeviceId = nameSlug
+        ? `device-${nameSlug}-${euiSuffix}`
+        : `device-${euiLower}`;
+
+      // Resolve the vendor's TTN app credentials so simulate hits the right application.
+      const { resolveApiCreds } = require("../services/ttnApplicationService");
+      const orgCreds = await resolveApiCreds(device.organizationId || null);
+
+      // Look up the vendor's TTN application ID from VendorTTNConfig / env fallback.
+      let ttnAppId = process.env.TTN_APPLICATION_ID;
+      if (device.organizationId) {
+        try {
+          const vendorCfg = await prisma.vendorTTNConfig.findUnique({
+            where: { organizationId: device.organizationId },
+            select: { ttnAppId: true },
+          });
+          if (vendorCfg?.ttnAppId) ttnAppId = vendorCfg.ttnAppId;
+        } catch { /* use global fallback */ }
+      }
+
       await simulateUplinkTTN({
         deviceEui: device.deviceEui,
+        ttnDeviceId,
+        applicationId: ttnAppId,
+        apiKey: orgCreds.apiKey,
+        apiBaseUrl: orgCreds.apiBaseUrl,
         feedbackType,
         battery: battery ?? device.batteryLevel ?? 100,
         signalStrength: signalStrength ?? -60,
       });
       ttnSimulated = true;
-      console.log(`[TestMode] TTN simulate uplink triggered for ${device.badgeId} (${device.deviceEui})`);
-    } catch (ttnError) {
-      ttnSimulateError = ttnError.message;
-      console.warn(`[TestMode] TTN simulate failed, falling back to local simulation:`, ttnError.message);
+      console.log(`[TestMode] TTN simulate uplink triggered for ${device.badgeId} (${device.deviceEui}) in app ${ttnAppId}`);
+    } catch (ttnError) {      ttnSimulateError = ttnError.message;
+      console.warn(`[TestMode] TTN simulate failed (${ttnError.message}), falling back to local simulation`);
     }
 
     if (ttnSimulated) {

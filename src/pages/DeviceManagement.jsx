@@ -62,6 +62,10 @@ export default function DeviceManagement() {
   const [testForm, setTestForm] = useState({ feedbackType: 'happy', count: 1 })
   const [testResult, setTestResult] = useState(null)
   const [testing, setTesting] = useState(false)
+  const [testEvents, setTestEvents] = useState([])
+  const [testEventsLoading, setTestEventsLoading] = useState(false)
+  const [testEventsTab, setTestEventsTab] = useState('simulate') // 'simulate' | 'history'
+  const [clearingEvents, setClearingEvents] = useState(false)
   // Assign to org (super admin only)
   const [assignOrgOpen, setAssignOrgOpen] = useState(false)
   const [assignOrgTarget, setAssignOrgTarget] = useState(null)
@@ -473,6 +477,43 @@ export default function DeviceManagement() {
     }
   }
 
+  const loadTestEvents = async (device) => {
+    if (!device) return
+    setTestEventsLoading(true)
+    try {
+      const data = await testModeAPI.getEvents({
+        badgeId: device.badgeId,
+        deviceEui: device.deviceEui,
+        limit: 20,
+      })
+      setTestEvents(data.events || [])
+    } catch (e) {
+      toast.error(e.message || 'Failed to load test events.')
+      setTestEvents([])
+    } finally {
+      setTestEventsLoading(false)
+    }
+  }
+
+  const handleClearTestEvents = async () => {
+    if (!selected) return
+    if (!window.confirm('Delete all test events for this device? This cannot be undone.')) return
+    setClearingEvents(true)
+    try {
+      const data = await testModeAPI.clearEvents({
+        badgeId: selected.badgeId,
+        deviceEui: selected.deviceEui,
+      })
+      toast.success(`${data.deleted ?? 0} test event(s) deleted.`)
+      setTestEvents([])
+      setTestResult(null)
+    } catch (e) {
+      toast.error(e.message || 'Failed to clear test events.')
+    } finally {
+      setClearingEvents(false)
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="page management-page">
@@ -670,7 +711,7 @@ export default function DeviceManagement() {
                   <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openEdit(drawerDevice); setDrawerDevice(null) }}>Edit</button>
                   <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openReplace(drawerDevice); setDrawerDevice(null) }}>Replace Badge</button>
                   <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openMap(drawerDevice); setDrawerDevice(null) }}>Map Badge</button>
-                  <button type="button" className="btn btn--sm btn--primary" onClick={() => { setSelected(drawerDevice); setTestForm({ feedbackType: 'happy', count: 1 }); setTestResult(null); setTestOpen(true); setDrawerDevice(null) }}>Test Device</button>
+                  <button type="button" className="btn btn--sm btn--primary" onClick={() => { setSelected(drawerDevice); setTestForm({ feedbackType: 'happy', count: 1 }); setTestResult(null); setTestEvents([]); setTestEventsTab('simulate'); setTestOpen(true); setDrawerDevice(null) }}>Test Device</button>
                   {isSuperAdmin && <button type="button" className="btn btn--sm btn--danger" onClick={() => { setSelected(drawerDevice); setDeleteOpen(true); setDrawerDevice(null) }}>Delete</button>}
                 </div>
               </div>
@@ -900,50 +941,164 @@ export default function DeviceManagement() {
       {/* ── Test mode modal ── */}
       {testOpen && selected && (
         <div className="modal-overlay" onClick={() => setTestOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Test Mode</h3>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <h3>Test Mode — {selected.badgeId || selected.deviceEui}</h3>
             <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
               Simulate device feedback without pressing the physical button. Test data is separated from live data.
             </p>
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
-                <div><strong>Device:</strong> <code>{selected.badgeId || selected.deviceEui}</code></div>
-                <div><strong>Badge ID:</strong> <code>{selected.badgeId}</code></div>
-                <div><strong>Device EUI:</strong> <code>{selected.deviceEui || '—'}</code></div>
-                <div><strong>Gateway:</strong> <code>{selected.gatewayName || '—'}</code></div>
-                <div><strong>Restroom:</strong> {selected.restroomName}</div>
-                <div><strong>Status:</strong> <StatusBadge status={selected.status || 'offline'} variant="device" /></div>
-              </div>
+
+            {/* ── Tabs ── */}
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
+              {[
+                { key: 'simulate', label: 'Simulate' },
+                { key: 'history', label: 'Event History' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setTestEventsTab(key)
+                    if (key === 'history') loadTestEvents(selected)
+                  }}
+                  style={{
+                    padding: '7px 16px',
+                    fontSize: 13,
+                    fontWeight: testEventsTab === key ? 600 : 400,
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: testEventsTab === key ? '2px solid var(--primary, #0ea5e9)' : '2px solid transparent',
+                    cursor: 'pointer',
+                    color: testEventsTab === key ? 'var(--primary, #0ea5e9)' : 'var(--text-muted)',
+                    marginBottom: -1,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            {testResult && (
-              <div style={{ background: testResult.testMode ? '#dcfce7' : '#fee2e2', border: `1px solid ${testResult.testMode ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
-                <strong>{testResult.testMode ? 'Test Event Generated' : 'Error'}</strong>
-                <p style={{ margin: '4px 0 0' }}>
-                  {testResult.testMode
-                    ? `${testResult.count} feedback event(s) simulated for ${testResult.results?.[0]?.badgeId || selected.badgeId}`
-                    : testResult.message || 'Something went wrong'}
-                </p>
-              </div>
+
+            {/* ── Simulate tab ── */}
+            {testEventsTab === 'simulate' && (
+              <>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
+                    <div><strong>Device:</strong> <code>{selected.badgeId || selected.deviceEui}</code></div>
+                    <div><strong>Badge ID:</strong> <code>{selected.badgeId}</code></div>
+                    <div><strong>Device EUI:</strong> <code>{selected.deviceEui || '—'}</code></div>
+                    <div><strong>Gateway:</strong> <code>{selected.gatewayName || '—'}</code></div>
+                    <div><strong>Restroom:</strong> {selected.restroomName}</div>
+                    <div><strong>Status:</strong> <StatusBadge status={selected.status || 'offline'} variant="device" /></div>
+                  </div>
+                </div>
+                {testResult && (
+                  <div style={{ background: testResult.testMode ? '#dcfce7' : '#fee2e2', border: `1px solid ${testResult.testMode ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
+                    <strong>{testResult.testMode ? '✓ Test Event Generated' : 'Error'}</strong>
+                    <p style={{ margin: '4px 0 0' }}>
+                      {testResult.testMode
+                        ? `${testResult.count} feedback event(s) simulated for ${testResult.results?.[0]?.badgeId || selected.badgeId}`
+                        : testResult.message || 'Something went wrong'}
+                    </p>
+                    {testResult.ttnSimulated && (
+                      <p style={{ margin: '4px 0 0', color: '#0369a1' }}>TTN uplink triggered — check TTN Console Live Data.</p>
+                    )}
+                  </div>
+                )}
+                <form onSubmit={handleSimulate}>
+                  <label>
+                    Feedback Type
+                    <select value={testForm.feedbackType} onChange={(e) => setTestForm((f) => ({ ...f, feedbackType: e.target.value }))}>
+                      <option value="happy">Happy</option>
+                      <option value="average">Average</option>
+                      <option value="needs_cleaning">Needs Cleaning</option>
+                      <option value="emergency">Emergency</option>
+                    </select>
+                  </label>
+                  <label>
+                    Count (1–100)
+                    <input type="number" min="1" max="100" value={testForm.count} onChange={(e) => setTestForm((f) => ({ ...f, count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))} />
+                  </label>
+                  <div className="btn-group">
+                    <button type="button" className="btn btn--secondary" onClick={() => setTestOpen(false)}>Close</button>
+                    <button type="submit" className="btn btn--primary" disabled={testing}>{testing ? 'Simulating…' : 'Generate Test Event'}</button>
+                  </div>
+                </form>
+              </>
             )}
-            <form onSubmit={handleSimulate}>
-              <label>
-                Feedback Type
-                <select value={testForm.feedbackType} onChange={(e) => setTestForm((f) => ({ ...f, feedbackType: e.target.value }))}>
-                  <option value="happy">Happy</option>
-                  <option value="average">Average</option>
-                  <option value="needs_cleaning">Needs Cleaning</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </label>
-              <label>
-                Count (1–100)
-                <input type="number" min="1" max="100" value={testForm.count} onChange={(e) => setTestForm((f) => ({ ...f, count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))} />
-              </label>
-              <div className="btn-group">
-                <button type="button" className="btn btn--secondary" onClick={() => setTestOpen(false)}>Close</button>
-                <button type="submit" className="btn btn--primary" disabled={testing}>{testing ? 'Simulating…' : 'Generate Test Event'}</button>
-              </div>
-            </form>
+
+            {/* ── History tab ── */}
+            {testEventsTab === 'history' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    Last 20 test events for <code>{selected.badgeId}</code>
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={() => loadTestEvents(selected)}
+                      disabled={testEventsLoading}
+                      title="Refresh list"
+                    >
+                      ↺ Refresh
+                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="btn btn--danger btn--sm"
+                        onClick={handleClearTestEvents}
+                        disabled={clearingEvents || testEvents.length === 0}
+                      >
+                        {clearingEvents ? 'Clearing…' : 'Clear All'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {testEventsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0' }}><div className="loader" /></div>
+                ) : testEvents.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
+                    No test events found for this device.
+                  </p>
+                ) : (
+                  <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <table className="data-table" style={{ fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Feedback</th>
+                          <th>Restroom</th>
+                          <th>Battery</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {testEvents.map((ev) => (
+                          <tr key={ev.id}>
+                            <td style={{ whiteSpace: 'nowrap' }}>{ev.simulatedAt ? formatDateTime(ev.simulatedAt) : formatDateTime(ev.timestamp)}</td>
+                            <td>
+                              <span style={{
+                                padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                                background: ev.feedbackType === 'happy' ? '#dcfce7' : ev.feedbackType === 'emergency' ? '#fee2e2' : ev.feedbackType === 'needs_cleaning' ? '#fef3c7' : '#f1f5f9',
+                                color: ev.feedbackType === 'happy' ? '#16a34a' : ev.feedbackType === 'emergency' ? '#dc2626' : ev.feedbackType === 'needs_cleaning' ? '#92400e' : '#475569',
+                              }}>
+                                {ev.feedbackType?.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td>{ev.restroomName || '—'}</td>
+                            <td>{ev.battery != null ? `${ev.battery}%` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="btn-group" style={{ marginTop: 16 }}>
+                  <button type="button" className="btn btn--secondary" onClick={() => setTestOpen(false)}>Close</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

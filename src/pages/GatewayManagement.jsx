@@ -686,17 +686,17 @@ export default function GatewayManagement() {
                 </div>
                 <div className="drawer-field" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                   <span className="drawer-field__label">CUPS Key</span>
-                  {drawerGw.lnsKey ? (
+                  {drawerGw.cupsKey ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                       <code style={{ fontSize: 11, wordBreak: 'break-all', width: '100%', background: 'var(--surface-2, #f1f5f9)', padding: '4px 6px', borderRadius: 4 }}>
-                        {drawerGw.lnsKey}
+                        {drawerGw.cupsKey}
                       </code>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
                           type="button"
                           className="btn btn--sm btn--secondary"
                           style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
-                          onClick={() => { navigator.clipboard.writeText(drawerGw.lnsKey); toast.success('CUPS key copied to clipboard.') }}
+                          onClick={() => { navigator.clipboard.writeText(drawerGw.cupsKey); toast.success('CUPS key copied to clipboard.') }}
                         >
                           Copy
                         </button>
@@ -705,7 +705,7 @@ export default function GatewayManagement() {
                           className="btn btn--sm btn--secondary"
                           style={{ flexShrink: 0, padding: '3px 8px', fontSize: 11 }}
                           onClick={() => {
-                            const blob = new Blob([drawerGw.lnsKey], { type: 'text/plain' });
+                            const blob = new Blob([drawerGw.cupsKey], { type: 'text/plain' });
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
                             a.href = url;

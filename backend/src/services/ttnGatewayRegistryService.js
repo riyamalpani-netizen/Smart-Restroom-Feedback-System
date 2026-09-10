@@ -403,4 +403,28 @@ async function createGatewayLnsKey(gatewayId, organizationId) {
   return data.key;
 }
 
-module.exports = { registerGatewayInTTN, deleteGatewayFromTTN, createGatewayLnsKey };
+async function createGatewayCupsKey(gatewayId, organizationId) {
+  const orgSettings = await getOrgSettings(organizationId);
+  const { apiBaseUrl, apiKey } = getConfiguration(orgSettings);
+  const url = `${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(gatewayId)}/api-keys`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "CUPS key",
+      rights: ["RIGHT_GATEWAY_SETTINGS_BASIC", "RIGHT_GATEWAY_INFO"],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`TTN CUPS key creation failed for gateway ${gatewayId} (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  // data.key is the full NNSXS.… value — TTN only returns it once
+  return data.key;
+}
+
+module.exports = { registerGatewayInTTN, deleteGatewayFromTTN, createGatewayLnsKey, createGatewayCupsKey };

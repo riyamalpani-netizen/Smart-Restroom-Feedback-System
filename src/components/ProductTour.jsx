@@ -496,7 +496,7 @@ export default function ProductTour() {
     })
   }
 
-  // Show a single step at the current index
+  // Show a single step at the current index — always returns a Promise
   async function showStep(idx, steps) {
     if (!activeRef.current) return
 
@@ -562,8 +562,9 @@ export default function ProductTour() {
               idxRef.current = idx + 1
               try { d.destroy() } catch (_) {}
               driverRef.current = null
-              transitioningRef.current = false
-              showStep(idxRef.current, steps)
+              showStep(idxRef.current, steps).finally(() => {
+                transitioningRef.current = false
+              })
             },
             onPrevClick: () => {
               if (!activeRef.current) return
@@ -571,8 +572,9 @@ export default function ProductTour() {
               idxRef.current = Math.max(0, idx - 1)
               try { d.destroy() } catch (_) {}
               driverRef.current = null
-              transitioningRef.current = false
-              showStep(idxRef.current, steps)
+              showStep(idxRef.current, steps).finally(() => {
+                transitioningRef.current = false
+              })
             },
             onCloseClick: () => {
               endTour('skipped')

@@ -161,7 +161,7 @@ function toTtnDeviceId(deviceEui) {
   return `device-${deviceEui.toLowerCase()}`;
 }
 
-async function simulateUplink({ deviceEui, feedbackType, battery, signalStrength, applicationId, apiKey, apiBaseUrl }) {
+async function simulateUplink({ deviceEui, ttnDeviceId, feedbackType, battery, signalStrength, applicationId, apiKey, apiBaseUrl }) {
   const resolvedApiBaseUrl = apiBaseUrl || TTN_API_BASE_URL;
   const resolvedAppId = applicationId || TTN_APPLICATION_ID;
   const resolvedApiKey = apiKey || TTN_API_KEY;
@@ -175,8 +175,10 @@ async function simulateUplink({ deviceEui, feedbackType, battery, signalStrength
     throw new Error(`Device EUI must be exactly 16 hexadecimal characters, got: ${deviceEui}`);
   }
 
-  const ttnDeviceId = toTtnDeviceId(normalizedEui);
-  const url = `${resolvedApiBaseUrl.replace(/\/$/, "")}/api/v3/as/applications/${encodeURIComponent(resolvedAppId)}/devices/${encodeURIComponent(ttnDeviceId)}/up/simulate`;
+  // Use the caller-supplied TTN device ID (which matches the registration-time ID)
+  // or fall back to the plain EUI form if not provided.
+  const resolvedTtnDeviceId = ttnDeviceId || toTtnDeviceId(normalizedEui);
+  const url = `${resolvedApiBaseUrl.replace(/\/$/, "")}/api/v3/as/applications/${encodeURIComponent(resolvedAppId)}/devices/${encodeURIComponent(resolvedTtnDeviceId)}/up/simulate`;
 
   const payload = {
     uplink_message: {
@@ -201,7 +203,7 @@ async function simulateUplink({ deviceEui, feedbackType, battery, signalStrength
 
   console.log(`[TTN] Simulating uplink -> ${url}`);
   const result = await ttnRequest(url, resolvedApiKey, "POST", payload);
-  console.log(`[TTN] Simulate uplink accepted for device_id=${ttnDeviceId}`);
+  console.log(`[TTN] Simulate uplink accepted for device_id=${resolvedTtnDeviceId}`);
   return result;
 }
 

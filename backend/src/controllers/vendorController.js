@@ -314,6 +314,7 @@ async function createVendor(req, res) {
             "RIGHT_APPLICATION_DEVICES_READ",
             "RIGHT_APPLICATION_TRAFFIC_READ",
             "RIGHT_APPLICATION_TRAFFIC_DOWN_WRITE",
+            "RIGHT_APPLICATION_TRAFFIC_UP_WRITE",
             "RIGHT_APPLICATION_SETTINGS_BASIC",
           ],
           apiKey:    adminApiKey,
@@ -837,9 +838,78 @@ async function testVendorTTNConnection(req, res) {
   }
 }
 
+/**
+ * Regenerate the TTN application API key for a vendor with the full set of
+ * required rights including RIGHT_APPLICATION_TRAFFIC_UP_WRITE (needed for simulate).
+ * Saves the new key to VendorTTNConfig and restarts the org's MQTT connection.
+ */
+async function regenerateVendorApiKey(req, res) {
+  try {
+    const { id } = req.params;
+    const org = await prisma.organization.findUnique({
+      where: { id },
+      include: { vendorTTNConfig: true },
+    });
+    if (!org) return res.status(404).json({ message: "Vendor not found" });
+
+    const cfg = org.vendorTTNConfig;
+    if (!cfg?.ttnAppId) {
+      return res.status(400).json({ message: "This vendor has no TTN application configured. Create the vendor's TTN app first." });
+    }
+
+    // Use the admin key to create a new app-level key
+    const adminApiKey = TTN_USER_API_KEY || TTN_API_KEY;
+    const apiBaseUrl  = (cfg.ttnApiBaseUrl || TTN_API_BASE_URL || "https://eu1.cloud.thethings.network").replace(/\/$/, "");
+
+    if (!adminApiKey) {
+      return res.status(500).json({ message: "TTN_USER_API_KEY is not configured in .env." });
+    }
+
+    const newApiKey = await createApplicationApiKey({
+      applicationId: cfg.ttnAppId,
+      keyName: `SRFS Device & Traffic Key (regenerated ${new Date().toISOString().slice(0, 10)})`,
+      rights: [
+        "RIGHT_APPLICATION_DEVICES_WRITE",
+        "RIGHT_APPLICATION_DEVICES_WRITE_KEYS",
+        "RIGHT_APPLICATION_DEVICES_READ",
+        "RIGHT_APPLICATION_TRAFFIC_READ",
+        "RIGHT_APPLICATION_TRAFFIC_DOWN_WRITE",
+        "RIGHT_APPLICATION_TRAFFIC_UP_WRITE",
+        "RIGHT_APPLICATION_SETTINGS_BASIC",
+      ],
+      apiKey: adminApiKey,
+      apiBaseUrl,
+    });
+
+    if (!newApiKey) {
+      return res.status(500).json({ message: "TTN returned an empty API key. Check that TTN_USER_API_KEY has sufficient rights." });
+    }
+
+    // Save new key — also update ttnMqttPassword since it doubles as MQTT password on TTN v3
+    await prisma.vendorTTNConfig.update({
+      where: { organizationId: id },
+      data: { ttnApiKey: newApiKey, ttnMqttPassword: newApiKey },
+    });
+    // Mirror to legacy Settings table
+    await prisma.settings.updateMany({
+      where: { organizationId: id },
+      data: { ttnApiKey: newApiKey, ttnMqttPassword: newApiKey },
+    });
+
+    // Reload MQTT connection with the new password
+    const { reloadOrg } = require("../services/mqttManager");
+    await reloadOrg(id);
+
+    res.status(200).json({ message: "API key regenerated and MQTT connection reloaded successfully." });
+  } catch (err) {
+    console.error("regenerateVendorApiKey error:", err);
+    res.status(500).json({ message: err.message || "Internal server error" });
+  }
+}
+
 module.exports = {
   getVendors, getVendorById, createVendor, updateVendor, deleteVendor,
   updateVendorTTNConfig, getVendorTTNConfig, toggleIntegration,
   getIntegrationStatus, assignSubscriptionPlan, getResourceUsage,
-  testVendorTTNConnection,
+  testVendorTTNConnection, regenerateVendorApiKey,
 };

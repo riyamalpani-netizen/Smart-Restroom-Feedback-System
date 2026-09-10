@@ -19,6 +19,7 @@ const {
   assignSubscriptionPlan,
   getResourceUsage,
   testVendorTTNConnection,
+  regenerateVendorApiKey,
 } = require("../controllers/vendorController");
 const { authenticate, authorize } = require("../auth/authMiddleware");
 
@@ -39,6 +40,9 @@ router.put("/:id/ttn-config",    ...superAdminOnly, updateVendorTTNConfig);
 router.patch("/:id/toggle-integration", ...superAdminOnly, toggleIntegration);
 router.get("/:id/integration-status",   ...superAdminOnly, getIntegrationStatus);
 router.post("/:id/test-ttn-connection", ...superAdminOnly, testVendorTTNConnection);
+
+// ── Regenerate TTN API Key ────────────────────────────────────────────────────
+router.post("/:id/regenerate-api-key", ...superAdminOnly, regenerateVendorApiKey);
 
 // ── Subscription Plan ─────────────────────────────────────────────────────────
 router.put("/:id/assign-plan", ...superAdminOnly, assignSubscriptionPlan);

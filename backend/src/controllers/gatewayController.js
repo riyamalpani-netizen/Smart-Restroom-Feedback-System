@@ -696,7 +696,7 @@
 //   getRecoveryStatus, manualCloseIncident, getAuditLog, getServerStatus, createAuditLog,
 // };
 const prisma = require("../config/database");
-const { registerGatewayInTTN: registerGatewayInTTNService, deleteGatewayFromTTN, createGatewayLnsKey } = require("../services/ttnGatewayRegistryService");
+const { registerGatewayInTTN: registerGatewayInTTNService, deleteGatewayFromTTN, createGatewayLnsKey, createGatewayCupsKey } = require("../services/ttnGatewayRegistryService");
 const { logAudit } = require("../utils/auditLogger");
 
 function getOrgFilter(req) {
@@ -757,6 +757,7 @@ async function getGateways(req, res) {
       locationId: g.locationId, floorId: g.floorId, zoneId: g.zoneId,
       ttnStatus: g.ttnStatus, gatewayId: g.gatewayId, ttnDeviceId: g.ttnDeviceId, frequencyPlanId: g.frequencyPlanId,
       lnsKey: g.lnsKey || null,
+      cupsKey: g.cupsKey || null,
       latitude: g.latitude, longitude: g.longitude, connectedDevices: g.connectedDevices,
       createdAt: g.createdAt, updatedAt: g.updatedAt,
     }));
@@ -804,6 +805,7 @@ async function getGatewayById(req, res) {
         locationId: gateway.locationId, floorId: gateway.floorId, zoneId: gateway.zoneId,
         ttnStatus: gateway.ttnStatus, gatewayId: gateway.gatewayId, ttnDeviceId: gateway.ttnDeviceId, frequencyPlanId: gateway.frequencyPlanId,
         lnsKey: gateway.lnsKey || null,
+        cupsKey: gateway.cupsKey || null,
         latitude: gateway.latitude, longitude: gateway.longitude, connectedDevices: gateway.connectedDevices,
         organizationId: gateway.organizationId, createdAt: gateway.createdAt, updatedAt: gateway.updatedAt,
         devices: mappedDevices,
@@ -875,6 +877,7 @@ async function createGateway(req, res) {
     let ttnStatus = "not_registered";
     let ttnErrorMessage = null;
     let lnsKey = null;
+    let cupsKey = null;
     if (registerGatewayInTTNService && process.env.NODE_ENV !== "test") {
       try {
         ttnRegistration = await registerGatewayInTTNService({
@@ -899,8 +902,15 @@ async function createGateway(req, res) {
             // Non-fatal — gateway is registered, user can recreate the key manually from TTN Console
             ttnErrorMessage = `Gateway registered in TTN but LNS key generation failed: ${lnsError.message}`;
           }
+          try {
+            cupsKey = await createGatewayCupsKey(ttnRegistration.gatewayId, gateway.organizationId || undefined);
+            console.log(`[TTN] CUPS key created for gateway ${ttnRegistration.gatewayId}`);
+          } catch (cupsError) {
+            console.error(`[TTN] CUPS key creation failed for gateway ${ttnRegistration.gatewayId}:`, cupsError.message);
+            // Non-fatal
+          }
         } else {
-          console.warn(`[TTN] Skipping LNS key creation for ${ttnRegistration.gatewayId} — gateway not owned by this account`);
+          console.warn(`[TTN] Skipping LNS/CUPS key creation for ${ttnRegistration.gatewayId} — gateway not owned by this account`);
           ttnErrorMessage = `Gateway ID "${ttnRegistration.gatewayId}" already exists on TTN under a different account. Please use a different Gateway ID.`;
         }
       } catch (ttnError) {
@@ -918,6 +928,7 @@ async function createGateway(req, res) {
         ttnDeviceId: ttnRegistration?.gatewayId || gateway.gatewayId,
         frequencyPlanId: ttnRegistration?.frequencyPlanId || gateway.frequencyPlanId,
         ...(lnsKey ? { lnsKey } : {}),
+        ...(cupsKey ? { cupsKey } : {}),
       },
     });
 
@@ -936,6 +947,7 @@ async function createGateway(req, res) {
         locationId: updatedGateway.locationId, floorId: updatedGateway.floorId, zoneId: updatedGateway.zoneId,
         ttnStatus: updatedGateway.ttnStatus, gatewayId: updatedGateway.gatewayId, ttnDeviceId: updatedGateway.ttnDeviceId, frequencyPlanId: updatedGateway.frequencyPlanId,
         lnsKey: updatedGateway.lnsKey || null,
+        cupsKey: updatedGateway.cupsKey || null,
         latitude: updatedGateway.latitude, longitude: updatedGateway.longitude, connectedDevices: updatedGateway.connectedDevices,
         createdAt: updatedGateway.createdAt, updatedAt: updatedGateway.updatedAt },
     });
@@ -1067,6 +1079,7 @@ async function updateGateway(req, res) {
     let ttnErrorMessage = null;
     let ttnAutoRegistered = false;
     let lnsKey = null;
+    let cupsKey = null;
     if (registerGatewayInTTNService) {
       const wasGatewayUnplaced = !existing.locationId && !existing.floorId && !existing.zoneId;
       const orgChanged = organizationId !== undefined && userRole === "super_admin" && organizationId !== oldOrganizationId;
@@ -1101,6 +1114,11 @@ async function updateGateway(req, res) {
               lnsKey = await createGatewayLnsKey(ttnRegistration.gatewayId, newOrganizationId || undefined);
             } catch (lnsErr) {
               console.error("[TTN] LNS key creation failed after EUI change:", lnsErr.message);
+            }
+            try {
+              cupsKey = await createGatewayCupsKey(ttnRegistration.gatewayId, newOrganizationId || undefined);
+            } catch (cupsErr) {
+              console.error("[TTN] CUPS key creation failed after EUI change:", cupsErr.message);
             }
           }
           if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
@@ -1152,6 +1170,11 @@ async function updateGateway(req, res) {
             } catch (lnsErr) {
               console.error("[TTN] LNS key creation failed on first placement:", lnsErr.message);
             }
+            try {
+              cupsKey = await createGatewayCupsKey(ttnRegistration.gatewayId, newOrganizationId || undefined);
+            } catch (cupsErr) {
+              console.error("[TTN] CUPS key creation failed on first placement:", cupsErr.message);
+            }
           }
           if (!gateway.frequencyPlanId && ttnRegistration.frequencyPlanId) {
             await prisma.gateway.update({ where: { id: gateway.id }, data: { frequencyPlanId: ttnRegistration.frequencyPlanId } });
@@ -1201,6 +1224,7 @@ async function updateGateway(req, res) {
         ttnStatus,
         gatewayId: resolvedGatewayId,
         ...(lnsKey ? { lnsKey } : {}),
+        ...(cupsKey ? { cupsKey } : {}),
       },
     });
 
@@ -1221,6 +1245,7 @@ async function updateGateway(req, res) {
         locationId: finalGateway.locationId, floorId: finalGateway.floorId, zoneId: finalGateway.zoneId,
         ttnStatus: finalGateway.ttnStatus, gatewayId: finalGateway.gatewayId, ttnDeviceId: finalGateway.ttnDeviceId, frequencyPlanId: finalGateway.frequencyPlanId,
         lnsKey: finalGateway.lnsKey || null,
+        cupsKey: finalGateway.cupsKey || null,
         latitude: finalGateway.latitude, longitude: finalGateway.longitude, connectedDevices: finalGateway.connectedDevices,
         createdAt: finalGateway.createdAt, updatedAt: finalGateway.updatedAt },
     });
