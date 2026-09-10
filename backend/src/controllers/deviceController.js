@@ -708,7 +708,7 @@
 //   deleteDevice,
 // };
 const prisma = require("../config/database");
-const { registerOtaaDevice, repairExistingDevice, deleteDeviceFromTTN } = require("../services/ttnDeviceRegistryService");
+const { registerOtaaDevice, repairExistingDevice, deleteDeviceFromTTN, updateDeviceFrequencyPlan } = require("../services/ttnDeviceRegistryService");
 const crypto = require("crypto");
 const { checkPlanLimit } = require("../utils/planLimits");
 const { logAudit } = require("../utils/auditLogger");
@@ -1392,6 +1392,41 @@ async function updateDevice(req, res) {
       }
     }
 
+    // ── TTN frequency plan sync ───────────────────────────────────────────
+    // Push the new frequency_plan_id to the TTN Network Server whenever it
+    // changes. Skipped during org-reassignment and first-placement because
+    // those paths already call registerOtaaDevice (full 4-step registration).
+    let ttnFreqPlanUpdated = false;
+    let ttnFreqPlanError = null;
+    const freqPlanChanged =
+      frequencyPlanId !== undefined &&
+      frequencyPlanId !== existing.frequencyPlanId &&
+      !!device.deviceEui;
+    if (freqPlanChanged && !orgChanged && !isBeingPlaced) {
+      const nameSlug = device.name
+        ? device.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
+        : null;
+      const euiSuffix = device.deviceEui.toLowerCase().slice(-8);
+      const ttnDeviceId = nameSlug
+        ? `device-${nameSlug}-${euiSuffix}`
+        : `device-${device.deviceEui.toLowerCase()}`;
+      try {
+        await updateDeviceFrequencyPlan({
+          deviceEui: device.deviceEui,
+          deviceId: ttnDeviceId,
+          frequencyPlanId: device.frequencyPlanId,
+          lorawanVersion: device.lorawanVersion || undefined,
+          lorawanPhyVersion: device.lorawanPhyVersion || undefined,
+          organizationId: device.organizationId || undefined,
+        });
+        ttnFreqPlanUpdated = true;
+        console.log(`[Device] Frequency plan updated to ${device.frequencyPlanId} for ${device.deviceEui} in TTN`);
+      } catch (fpErr) {
+        ttnFreqPlanError = fpErr.message;
+        console.warn(`[Device] TTN frequency plan update failed for ${device.deviceEui}: ${fpErr.message}`);
+      }
+    }
+
     const mappedDevice = {
       id: device.id,
       name: device.name,
@@ -1434,6 +1469,7 @@ async function updateDevice(req, res) {
       device: mappedDevice,
       ttnRegistration: isBeingPlaced ? { registered: ttnAutoRegistered, error: ttnAutoError } : undefined,
       ttnReregistration: orgChanged ? { registered: ttnReregistered, error: ttnReregisterError } : undefined,
+      ttnFrequencyPlan: freqPlanChanged && !orgChanged && !isBeingPlaced ? { updated: ttnFreqPlanUpdated, error: ttnFreqPlanError } : undefined,
     });
   } catch (error) {
     console.error("Update device error:", error);

@@ -7,6 +7,7 @@ import api from '../services/api'
 import { formatDateTime } from '../utils/formatters'
 import { useAuth } from '../hooks/useAuth'
 import { ROLES } from '../utils/constants'
+import './Reports.print.css'
 
 const REPORT_TYPES = [
   { value: 'feedback', label: 'Feedback Trends' },
@@ -154,8 +155,9 @@ export default function Reports() {
 
   const handleExportCsv = useCallback(() => {
     if (!tableData.length) return
-    const headers = Object.keys(tableData[0]).join(',')
-    const rows = tableData.map((r) => Object.values(r).map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+    const columns = Object.keys(tableData[0])
+    const headers = columns.join(',')
+    const rows = tableData.map((r) => columns.map((col) => `"${String(r[col] ?? '').replace(/"/g, '""')}"`).join(','))
     const csv = [headers, ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)

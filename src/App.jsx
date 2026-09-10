@@ -21,6 +21,7 @@ import SiteConfiguration from './pages/SiteConfiguration'
 import AuditHistory from './pages/AuditHistory'
 import VendorManagement from './pages/VendorManagement'
 import SubscriptionPlans from './pages/SubscriptionPlans'
+import NotificationChannels from './pages/NotificationChannels'
 import NotFound from './pages/NotFound'
 import { ROLES } from './utils/constants'
 
@@ -101,6 +102,8 @@ export default function App() {
           element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/vendors"><VendorManagement /></ProtectedRoute>} />
         <Route path="subscription-plans"
           element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]} path="/subscription-plans"><SubscriptionPlans /></ProtectedRoute>} />
+        <Route path="notification-channels"
+          element={<ProtectedRoute allowedRoles={MGMT_ROLES} path="/notification-channels"><NotificationChannels /></ProtectedRoute>} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

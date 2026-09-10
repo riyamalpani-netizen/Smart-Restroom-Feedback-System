@@ -542,4 +542,38 @@ async function deleteDeviceFromTTN({ deviceEui, deviceId, organizationId }) {
   return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui };
 }
 
-module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration, getOrgTTNSettings, deleteDeviceFromTTN };
+/**
+ * Update only the frequency_plan_id on the TTN Network Server for a device
+ * that is already registered. No other registries (IS/JS/AS) need to change.
+ */
+async function updateDeviceFrequencyPlan({ deviceEui, deviceId, frequencyPlanId, lorawanVersion, lorawanPhyVersion, organizationId }) {
+  const orgSettings = await getOrgTTNSettings(organizationId);
+  const { apiBaseUrl, applicationId, apiKey } = getConfiguration(orgSettings);
+
+  const devEui = normalizeHex(deviceEui, 16, "Device EUI");
+  const resolvedDeviceId = makeDeviceId(devEui, deviceId);
+  const resolvedLorawanVersion = lorawanVersion || TTN_LORAWAN_VERSION || "MAC_V1_0_3";
+  const resolvedLorawanPhyVersion = lorawanPhyVersion || TTN_LORAWAN_PHY_VERSION || "PHY_V1_0_3_REV_A";
+
+  await ttnRequest(
+    `${apiBaseUrl}/api/v3/ns/applications/${encodeURIComponent(applicationId)}/devices/${encodeURIComponent(resolvedDeviceId)}`,
+    apiKey,
+    "PUT",
+    {
+      end_device: {
+        ids: { device_id: resolvedDeviceId, dev_eui: devEui },
+        lorawan_version: resolvedLorawanVersion,
+        lorawan_phy_version: resolvedLorawanPhyVersion,
+        frequency_plan_id: frequencyPlanId,
+        supports_join: true,
+      },
+      field_mask: {
+        paths: ["ids.device_id", "ids.dev_eui", "lorawan_version", "lorawan_phy_version", "frequency_plan_id", "supports_join"],
+      },
+    },
+  );
+
+  return { applicationId, deviceId: resolvedDeviceId, deviceEui: devEui, frequencyPlanId };
+}
+
+module.exports = { registerOtaaDevice, repairExistingDevice, listTtnDevices, getConfiguration, getOrgTTNSettings, deleteDeviceFromTTN, updateDeviceFrequencyPlan };

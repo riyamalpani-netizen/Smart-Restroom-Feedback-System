@@ -1,0 +1,68 @@
+@media print {
+  /* Hide navigation, sidebar, filters, and action buttons */
+  .sidebar,
+  nav,
+  .navbar,
+  .toolbar,
+  .filters,
+  .btn-group,
+  .btn,
+  .info-banner,
+  .loader-wrap {
+    display: none !important;
+  }
+
+  /* Let the page content fill the full width */
+  .page,
+  .main-content,
+  .layout,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Summary cards in a single row */
+  .report-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .report-summary__item {
+    border: 1px solid #ccc;
+    padding: 6px 12px;
+    border-radius: 4px;
+    min-width: 100px;
+  }
+
+  /* Tables clean for print */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .data-table th,
+  .data-table td {
+    border: 1px solid #ccc;
+    padding: 4px 8px;
+    text-align: left;
+  }
+
+  .table-wrapper {
+    overflow: visible !important;
+  }
+
+  /* No shadows on cards */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd;
+  }
+
+  /* Page break hints */
+  .card {
+    page-break-inside: avoid;
+  }
+}

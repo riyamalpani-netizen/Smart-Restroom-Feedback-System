@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
+import SearchBar from '../components/common/SearchBar'
+import Pagination from '../components/common/Pagination'
 import { formatDateTime } from '../utils/formatters'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
@@ -18,6 +20,10 @@ export default function RestroomManagement() {
   const [form, setForm] = useState({ name: '', floorId: '', organizationId: '', gender: '', status: 'good', zoneId: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 20
 
   // Detail panel
   const [selected, setSelected] = useState(null)
@@ -106,6 +112,7 @@ export default function RestroomManagement() {
       } else {
         const data = await api.post('/api/restrooms', payload)
         setRooms((prev) => [data.restroom, ...prev])
+        setPage(1)
       }
       toast.success(editingId ? 'Restroom updated.' : 'Restroom created.')
       cancelEdit()
@@ -120,7 +127,13 @@ export default function RestroomManagement() {
     if (!window.confirm('Delete this restroom?')) return
     try {
       await api.delete(`/api/restrooms/${id}`)
-      setRooms((prev) => prev.filter((r) => r.id !== id))
+      setRooms((prev) => {
+        const updated = prev.filter((r) => r.id !== id)
+        // If current page is now beyond the last page, go back to page 1
+        const newTotalPages = Math.max(1, Math.ceil(updated.length / PAGE_SIZE))
+        if (page > newTotalPages) setPage(1)
+        return updated
+      })
       if (selected?.id === id) setSelected(null)
       toast.success('Restroom deleted.')
     } catch (err) {
@@ -138,6 +151,25 @@ export default function RestroomManagement() {
 
   // Zones filtered by selected floor
   const floorsZones = zones.filter((z) => !form.floorId || z.floorId === form.floorId)
+
+  // Search + status filter + pagination
+  const filteredRooms = useMemo(() => {
+    let list = rooms
+    if (search) {
+      const sl = search.toLowerCase()
+      list = list.filter((r) =>
+        r.name?.toLowerCase().includes(sl) ||
+        r.floor?.floorName?.toLowerCase().includes(sl) ||
+        r.floor?.location?.officeName?.toLowerCase().includes(sl) ||
+        r.floor?.location?.city?.toLowerCase().includes(sl)
+      )
+    }
+    if (filterStatus) list = list.filter((r) => r.status === filterStatus)
+    return list
+  }, [rooms, search, filterStatus])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / PAGE_SIZE))
+  const pagedRooms = filteredRooms.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="page">
@@ -230,6 +262,24 @@ export default function RestroomManagement() {
         </form>
       )}
 
+      {/* ── Search + Filter toolbar ── */}
+      <div className="toolbar" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <SearchBar value={search} onChange={(v) => { setSearch(v); setPage(1) }} placeholder="Search restrooms…" />
+        <select
+          className="select"
+          value={filterStatus}
+          onChange={(e) => { setFilterStatus(e.target.value); setPage(1) }}
+        >
+          <option value="">All Status</option>
+          <option value="good">Good</option>
+          <option value="alert">Alert</option>
+          <option value="offline">Offline</option>
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+          {filteredRooms.length} restroom{filteredRooms.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
       {/* ── Main layout: table + detail panel ── */}
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 380px' : '1fr', gap: 16 }}>
         {/* Table */}
@@ -251,7 +301,7 @@ export default function RestroomManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rooms.map((room) => {
+                  {pagedRooms.map((room) => {
                     const siteName = room.floor?.location
                       ? `${room.floor.location.city} — ${room.floor.location.officeName}` : '—'
                     const linkedZone = room.zones?.[0]?.name || '—'
@@ -279,14 +329,19 @@ export default function RestroomManagement() {
                       </tr>
                     )
                   })}
-                  {rooms.length === 0 && (
+                  {pagedRooms.length === 0 && (
                     <tr>
-                      <td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', color: '#64748b' }}>No restrooms found</td>
+                      <td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', color: '#64748b' }}>
+                        {rooms.length === 0 ? 'No restrooms found' : 'No restrooms match the current filters'}
+                      </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+          )}
+          {totalPages > 1 && (
+            <Pagination page={page} totalPages={totalPages} onPageChange={(p) => setPage(p)} />
           )}
         </div>
 

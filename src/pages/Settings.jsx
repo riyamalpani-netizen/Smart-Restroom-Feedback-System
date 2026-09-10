@@ -512,6 +512,9 @@ export default function Settings() {
             reportFrequency:data.settings.reportFrequency||'daily',
             sessionTimeout:data.settings.sessionTimeout||28800,
             passwordPolicy:data.settings.passwordPolicy||'min 8 chars, 1 uppercase, 1 number',
+            timeZone:data.settings.timeZone||'UTC',
+            teamsWebhook:data.settings.teamsWebhook||'',
+            teamsRecipient:data.settings.teamsRecipient||'Operations Teams channel',
             // vendor_admin read-only integration status
             ttnIntegrationStatus: data.settings.ttnIntegrationStatus || null,
           }))
@@ -539,7 +542,10 @@ export default function Settings() {
         reportFrequency:settings.reportFrequency,
         sessionTimeout:settings.sessionTimeout,
       }
-      if(isSuperAdmin) payload.passwordPolicy=settings.passwordPolicy
+      if(isSuperAdmin){
+        payload.passwordPolicy = settings.passwordPolicy
+        payload.timeZone       = settings.timeZone
+      }
       // vendor_admin only sends general settings — TTN is Super Admin territory
       if(isVendorAdmin){
         payload.teamsWebhook   = settings.teamsWebhook
@@ -587,7 +593,7 @@ export default function Settings() {
         </section>
 
         {/* ── Notification Channels — vendor admin only ────────── */}
-        {isVendorAdmin&&(
+        {(isVendorAdmin||isSuperAdmin)&&(
           <section className="settings-card">
             <div className="settings-card__header">
               <span className="settings-card__icon">🔔</span>

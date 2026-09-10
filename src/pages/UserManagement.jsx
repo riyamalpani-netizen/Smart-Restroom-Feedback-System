@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import PageHeader from '../components/common/PageHeader'
 import StatusBadge from '../components/common/StatusBadge'
 import api from '../services/api'
@@ -57,6 +57,7 @@ export default function UserManagement() {
   const assignableRoles = getAssignableRoles(currentUser?.role)
 
   const [users, setUsers] = useState([])
+  const [organizations, setOrganizations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -71,7 +72,17 @@ export default function UserManagement() {
   const orgIdForNew = isVendorAdmin ? currentUser?.organizationId : ''
   const toast = useToast()
 
-  useEffect(() => { loadUsers() }, [])
+  const loadOrganizations = useCallback(async () => {
+    if (!isSuperAdmin) return
+    try {
+      const data = await api.get('/api/organizations')
+      setOrganizations(data.organizations || [])
+    } catch {
+      // non-critical — fall back to manual entry
+    }
+  }, [isSuperAdmin])
+
+  useEffect(() => { loadUsers(); loadOrganizations() }, [loadOrganizations])
 
   async function loadUsers() {
     setLoading(true); setError(null)
@@ -294,14 +305,28 @@ export default function UserManagement() {
               {/* Organisation */}
               {isSuperAdmin ? (
                 <div className="um-field">
-                  <label className="um-label">Organisation ID <span className="um-required">*</span></label>
-                  <input
-                    className="um-input"
-                    value={form.organizationId}
-                    onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
-                    placeholder="org-cuid"
-                    required
-                  />
+                  <label className="um-label">Organisation <span className="um-required">*</span></label>
+                  {organizations.length > 0 ? (
+                    <select
+                      className="um-input"
+                      value={form.organizationId}
+                      onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
+                      required
+                    >
+                      <option value="">— Select organisation —</option>
+                      {organizations.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="um-input"
+                      value={form.organizationId}
+                      onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
+                      placeholder="Organisation ID (cuid)"
+                      required
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="um-field">

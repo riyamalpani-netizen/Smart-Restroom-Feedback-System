@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useRealtimeSocket } from '../hooks/useRealtimeSocket'
 import StatusBadge from '../components/common/StatusBadge'
 import SearchBar from '../components/common/SearchBar'
 import Pagination from '../components/common/Pagination'
@@ -52,6 +53,50 @@ export default function AlertManagement() {
     [zones, floorId],
   )
 
+  // Refs so socket handlers always read the latest filter/tab values
+  // without needing to re-subscribe on every state change.
+  const tabRef = useRef(tab)
+  const statusFilterRef = useRef(statusFilter)
+  const locationIdRef = useRef(locationId)
+  const floorIdRef = useRef(floorId)
+  useEffect(() => { tabRef.current = tab }, [tab])
+  useEffect(() => { statusFilterRef.current = statusFilter }, [statusFilter])
+  useEffect(() => { locationIdRef.current = locationId }, [locationId])
+  useEffect(() => { floorIdRef.current = floorId }, [floorId])
+
+  // Real-time socket — show new alerts from badge presses immediately.
+  useRealtimeSocket({
+    // new-alert fires when a needs_cleaning or emergency badge is pressed.
+    // Only act when we're on the active tab (history tab is historical only).
+    'new-alert': (alert) => {
+      if (tabRef.current === 'history') return
+
+      // If a location/floor filter is active, skip alerts that don't match.
+      const loc = locationIdRef.current
+      const floor = floorIdRef.current
+      if (loc && alert.locationId && alert.locationId !== loc) return
+      if (floor && alert.floorId && alert.floorId !== floor) return
+
+      // Status filter: if user is filtering to a specific status, only 'open'
+      // alerts can match (new alerts always arrive as 'open').
+      const sf = statusFilterRef.current
+      if (sf !== 'all' && sf !== 'open') return
+
+      // Reload page 1 to get the full server-shaped alert object (with
+      // restroom name, assignedTo, etc.) rather than patching the sparse
+      // socket payload into the table.
+      loadAlerts(1)
+    },
+    // new-feedback fires for every badge press — only acts if we're watching
+    // active alerts and the feedback is an actionable type.
+    'new-feedback': (feedback) => {
+      if (tabRef.current === 'history') return
+      const actionable = feedback.feedbackType === 'needs_cleaning' || feedback.feedbackType === 'emergency'
+      if (!actionable) return
+      loadAlerts(1)
+    },
+  })
+
   const loadMeta = useCallback(async () => {
     try {
       const [locRes, floorRes, zoneRes, devRes, userRes] = await Promise.all([
@@ -91,6 +136,7 @@ export default function AlertManagement() {
       if (floorId) params.set('floorId', floorId)
       if (zoneId) params.set('zoneId', zoneId)
       if (deviceId) params.set('deviceId', deviceId)
+      if (search) params.set('search', search)
 
       const data = await api.get(`/api/alerts?${params.toString()}`)
       setAlerts(data.alerts || [])
@@ -101,7 +147,7 @@ export default function AlertManagement() {
     } finally {
       setLoading(false)
     }
-  }, [tab, statusFilter, priorityFilter, locationId, floorId, zoneId, deviceId])
+  }, [tab, statusFilter, priorityFilter, locationId, floorId, zoneId, deviceId, search])
 
   useEffect(() => { loadMeta() }, [loadMeta])
   useEffect(() => { loadAlerts(1) }, [loadAlerts])
@@ -111,17 +157,6 @@ export default function AlertManagement() {
     const t = setInterval(() => loadAlerts(page), 30000)
     return () => clearInterval(t)
   }, [loadAlerts, page])
-
-  const filtered = useMemo(() => {
-    if (!search) return alerts
-    const sl = search.toLowerCase()
-    return alerts.filter((a) =>
-      (a.restroom?.name || '').toLowerCase().includes(sl) ||
-      (a.feedback?.feedbackType || '').toLowerCase().includes(sl) ||
-      (a.assignedTo?.name || '').toLowerCase().includes(sl) ||
-      (a.notes || '').toLowerCase().includes(sl),
-    )
-  }, [alerts, search])
 
   const handleCascadeFilter = (setter, ...cascadeSetters) => (e) => {
     setter(e.target.value)
@@ -245,7 +280,7 @@ export default function AlertManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((alert) => (
+                  {alerts.map((alert) => (
                     <tr key={alert.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>{formatDateTime(alert.createdAt)}</td>
                       <td>{alert.restroom?.name || '—'}</td>
@@ -341,7 +376,7 @@ export default function AlertManagement() {
                       )}
                     </tr>
                   ))}
-                  {filtered.length === 0 && (
+                  {alerts.length === 0 && (
                     <tr>
                       <td colSpan={10} style={{ textAlign: 'center', color: '#64748b' }}>
                         No alerts found

@@ -109,7 +109,7 @@ export default function VendorManagement() {
       ])
       setVendors(vr.vendors || [])
       setPlans(pr.plans || [])
-    } catch (e) { toast(e.message, 'error') }
+    } catch (e) { toast.error(e.message) }
     finally { setLoading(false) }
   }, [toast])
 
@@ -134,24 +134,24 @@ export default function VendorManagement() {
     try {
       if (editing) {
         await api.put(`/api/vendors/${editing.id}`, form)
-        toast('Vendor updated', 'success')
+        toast.success('Vendor updated')
       } else {
         const result = await api.post('/api/vendors', form)
         if (result.ttn?.success) {
-          toast(`Vendor created — TTN app "${result.ttn.ttnAppId}" auto-created ✓`, 'success')
+          toast.success(`Vendor created — TTN app "${result.ttn.ttnAppId}" auto-created ✓`)
         } else {
-          toast(`Vendor created. TTN auto-create failed: ${result.ttn?.error || 'unknown'}. Configure manually via ⚙ TTN.`, 'warning')
+          toast.warning(`Vendor created. TTN auto-create failed: ${result.ttn?.error || 'unknown'}. Configure manually via ⚙ TTN.`)
         }
       }
       setShowForm(false); load()
-    } catch (err) { toast(err.message, 'error') }
+    } catch (err) { toast.error(err.message) }
     finally { setFormSaving(false) }
   }
 
   async function suspendVendor(v) {
     if (!confirm(`Suspend "${v.name}"? Their integration will be disconnected.`)) return
-    try { await api.delete(`/api/vendors/${v.id}`); toast('Vendor suspended', 'success'); load() }
-    catch (err) { toast(err.message, 'error') }
+    try { await api.delete(`/api/vendors/${v.id}`); toast.success('Vendor suspended'); load() }
+    catch (err) { toast.error(err.message) }
   }
 
   // ── TTN panel ──────────────────────────────────────────────────────────────
@@ -198,8 +198,8 @@ export default function VendorManagement() {
     if (!payload.cupsKey)          delete payload.cupsKey
     try {
       await api.put(`/api/vendors/${ttnVendor.id}/ttn-config`, payload)
-      toast('TTN configuration saved', 'success'); load()
-    } catch (err) { toast(err.message, 'error') }
+      toast.success('TTN configuration saved'); load()
+    } catch (err) { toast.error(err.message) }
     finally { setTtnSaving(false) }
   }
 
@@ -227,8 +227,8 @@ export default function VendorManagement() {
   async function toggleIntegration(v, enabled) {
     try {
       await api.put(`/api/vendors/${v.id}/ttn-config`, { integrationEnabled: enabled })
-      toast(`Integration ${enabled ? 'enabled' : 'disabled'}`, 'success'); load()
-    } catch (err) { toast(err.message, 'error') }
+      toast.success(`Integration ${enabled ? 'enabled' : 'disabled'}`); load()
+    } catch (err) { toast.error(err.message) }
   }
 
   // ── Detail panel ──────────────────────────────────────────────────────────

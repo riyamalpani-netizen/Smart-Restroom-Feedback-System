@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   '/profile': 'Profile',
   '/vendors': 'Vendor Configuration',
   '/subscription-plans': 'Subscription Plans',
+  '/notification-channels': 'Notification Channels',
 }
 
 const PAGE_SUBTITLES = {
@@ -37,6 +38,7 @@ const PAGE_SUBTITLES = {
   '/profile': 'Your account information',
   '/vendors': 'Provision vendors, assign subscription plans and TTN/MQTT integrations',
   '/subscription-plans': 'Define resource limits and feature access for each vendor tier',
+  '/notification-channels': 'Configure email, Teams, Slack and webhook notification channels',
 }
 
 // Maps each route to its breadcrumb trail — mirrors the sidebar groups exactly
@@ -63,6 +65,7 @@ const BREADCRUMBS = {
   '/profile':        [{ label: 'Administration' }, { label: 'Profile' }],
   '/vendors':             [{ label: 'Administration' }, { label: 'Vendor Configuration' }],
   '/subscription-plans':  [{ label: 'Administration' }, { label: 'Subscription Plans' }],
+  '/notification-channels': [{ label: 'Administration' }, { label: 'Notification Channels' }],
 }
 
 export default function Navbar({ onMenuToggle }) {

@@ -795,6 +795,13 @@ export default function SiteConfiguration() {
     }
   }
 
+  const loadLocations = useCallback(async () => {
+    try {
+      const data = await locationAPI.getAll(user?.organizationId)
+      setLocations(data.locations || [])
+    } catch { }
+  }, [user?.organizationId])
+
   useEffect(() => {
     loadLocations()
   }, [loadLocations])
@@ -978,13 +985,6 @@ export default function SiteConfiguration() {
     const longitude = (nextBounds.eastLng + nextBounds.westLng) / 2
     handleSitePinMove(latitude, longitude)
     await savePlanAlignment(nextBounds, planRotation, planScale)
-  }
-
-  async function loadLocations() {
-    try {
-      const data = await locationAPI.getAll(user?.organizationId)
-      setLocations(data.locations || [])
-    } catch { }
   }
 
   async function loadSiteStats(locationId, allFloors) {
@@ -1401,7 +1401,7 @@ export default function SiteConfiguration() {
         const locationData = await locationAPI.update(site.id, {
           officeName: siteForm.name.trim(),
           city: siteForm.location.trim(),
-          address: `${siteForm.type}${siteForm.description ? ` â€” ${siteForm.description}` : ''}`,
+          address: `${siteForm.type}${siteForm.description ? ` — ${siteForm.description}` : ''}`,
           latitude,
           longitude,
         })

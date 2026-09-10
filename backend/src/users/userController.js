@@ -54,6 +54,7 @@ const getUsers = async (req, res) => {
         email: true,
         role: true,
         active: true,
+        scope: true,
         createdAt: true,
         updatedAt: true,
         organizationId: true,
@@ -86,6 +87,7 @@ const getUserById = async (req, res) => {
         email: true,
         role: true,
         active: true,
+        scope: true,
         createdAt: true,
         updatedAt: true,
         organizationId: true,
@@ -114,7 +116,7 @@ const getUserById = async (req, res) => {
 // ---------------------------------------------------------------------------
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, role, organizationId } = req.body;
+    const { name, email, password, role, organizationId, scope } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -170,6 +172,7 @@ const createUser = async (req, res) => {
         role,
         organizationId: newUserOrgId,
         active: true,
+        scope: scope || null,
       },
       select: {
         id: true,
@@ -177,6 +180,7 @@ const createUser = async (req, res) => {
         email: true,
         role: true,
         active: true,
+        scope: true,
         createdAt: true,
         organizationId: true,
       },
@@ -201,7 +205,7 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, active, organizationId } = req.body;
+    const { name, email, password, role, active, organizationId, scope } = req.body;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
 
@@ -250,6 +254,8 @@ const updateUser = async (req, res) => {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
+    if (scope !== undefined) updateData.scope = scope || null;
+
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
@@ -259,6 +265,7 @@ const updateUser = async (req, res) => {
         email: true,
         role: true,
         active: true,
+        scope: true,
         createdAt: true,
         updatedAt: true,
         organizationId: true,

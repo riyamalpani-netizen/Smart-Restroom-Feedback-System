@@ -153,8 +153,8 @@ export default function DisasterManagement() {
       <PageHeader
         action={
           canEdit ? (
-            <button type="button" className="btn btn--danger" onClick={() => setActiveTab('incidents')}>
-              Manual Closure
+            <button type="button" className="btn btn--secondary" onClick={() => setActiveTab('incidents')}>
+              View Incident Log
             </button>
           ) : null
         }

@@ -47,13 +47,14 @@ export default function LiveFeedback() {
     [zones, floorId],
   )
   const filteredDevices = useMemo(() => {
-    if (!floorId && !zoneId) return devices
+    if (!locationId && !floorId && !zoneId) return devices
     return devices.filter((d) => {
+      const locMatch = !locationId || d.locationId === locationId
       const floorMatch = !floorId || d.floorId === floorId
       const zoneMatch = !zoneId || d.zoneId === zoneId
-      return floorMatch && zoneMatch
+      return locMatch && floorMatch && zoneMatch
     })
-  }, [devices, floorId, zoneId])
+  }, [devices, locationId, floorId, zoneId])
 
   const loadFeedback = useCallback(async (pageNum = 1, opts = {}) => {
     try {

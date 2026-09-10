@@ -106,12 +106,10 @@ export default function AuditHistory() {
 
       {/* ── Header strip ─────────────────────────────────────────────── */}
       <div className="audit-header">
-        {!isSuperAdmin && (
-          <div className="audit-scope-badge">
-            <span className="audit-scope-badge__dot" />
-            Showing audit history for your organisation only
-          </div>
-        )}
+        <div className="audit-scope-badge">
+          <span className="audit-scope-badge__dot" />
+          {isSuperAdmin ? 'Showing all organisations — use filters to narrow down' : 'Showing audit history for your organisation only'}
+        </div>
         <div className="audit-stats">
           <div className="audit-stat">
             <span className="audit-stat__value">{pagination.total}</span>

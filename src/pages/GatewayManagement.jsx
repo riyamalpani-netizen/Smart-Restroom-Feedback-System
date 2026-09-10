@@ -779,6 +779,15 @@ export default function GatewayManagement() {
                   <button type="button" className={`btn btn--sm ${drawerGw.status === 'online' ? 'btn--secondary' : 'btn--primary'}`} onClick={() => handleToggleActive(drawerGw)} disabled={saving}>{drawerGw.status === 'online' ? 'Deactivate' : 'Activate'}</button>
                   {hasAssignedLocation(drawerGw) && <button type="button" className="btn btn--sm btn--secondary" onClick={() => { handleUnassignLocation(drawerGw); setDrawerGw(null) }}>Unplace</button>}
                   <button type="button" className="btn btn--sm btn--secondary" onClick={() => { openEdit(drawerGw); setDrawerGw(null) }}>Edit</button>
+                  {isSuperAdmin && drawerGw.ttnStatus !== 'registered' && (
+                    <button
+                      type="button"
+                      className="btn btn--sm btn--primary"
+                      onClick={() => { setSelected(drawerGw); setRegisterOpen(true) }}
+                    >
+                      Register in TTN
+                    </button>
+                  )}
                   {isSuperAdmin && <button type="button" className="btn btn--sm btn--danger" onClick={() => { setSelected(drawerGw); setDeleteOpen(true); setDrawerGw(null) }}>Delete</button>}
                 </div>
               </div>

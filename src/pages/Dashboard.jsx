@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { useRealtimeSocket } from '../hooks/useRealtimeSocket'
 import DashboardCards from '../components/DashboardCards'
 import FeedbackChart from '../components/FeedbackChart'
 import RestroomMap from '../components/RestroomMap'
@@ -147,6 +148,20 @@ export default function Dashboard() {
     const interval = setInterval(() => { loadDashboard(); loadSitePerformance() }, 30000)
     return () => clearInterval(interval)
   }, [loadDashboard, loadSitePerformance])
+
+  // Real-time socket — refresh dashboard stats immediately when a TTN badge event arrives.
+  // useRealtimeSocket keeps handlers fresh via ref, so loadDashboard always uses the
+  // latest filter values without needing to re-subscribe the socket on filter change.
+  useRealtimeSocket({
+    'new-feedback': () => {
+      loadDashboard()
+      loadAggregated()
+      loadSitePerformance()
+    },
+    'new-alert': () => {
+      loadDashboard()
+    },
+  })
 
   const handleFilterChange = useCallback((field) => (e) => {
     setFilters((prev) => {

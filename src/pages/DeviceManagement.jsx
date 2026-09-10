@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { io } from 'socket.io-client'
+import { useRealtimeSocket } from '../hooks/useRealtimeSocket'
 import PageHeader from '../components/common/PageHeader'
 import SearchBar from '../components/common/SearchBar'
 import StatusBadge from '../components/common/StatusBadge'
@@ -10,8 +10,6 @@ import api, { deviceAPI, gatewayAPI, testModeAPI } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../context/ToastContext'
 import { TTN_FREQUENCY_PLANS } from '../utils/constants'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 /**
  * Parse a CSV string (RFC 4180 — handles quoted fields with commas/newlines).
@@ -94,7 +92,6 @@ export default function DeviceManagement() {
   const [bulkUploading, setBulkUploading] = useState(false)
   const [bulkResult, setBulkResult] = useState(null)   // { created, skipped, errors: [{row,message}] }
 
-  const socketRef = useRef(null)
   const bulkFileRef = useRef(null)
 
   // ── Sample CSV download ──────────────────────────────────────────────────
@@ -167,18 +164,29 @@ export default function DeviceManagement() {
     return () => clearInterval(timer)
   }, [loadDevices])
 
-  useEffect(() => {
-    const token = localStorage.getItem('srfs_token')
-    if (!token) return
-    const socket = io(API_URL, { auth: { token }, transports: ['websocket'] })
-    socketRef.current = socket
-    socket.on('connect', () => { socket.on('new-feedback', loadDevices) })
-    return () => {
-      socket.off('new-feedback')
-      socket.disconnect()
-      socketRef.current = null
-    }
-  }, [loadDevices])
+  // Real-time — update battery/health/lastSeen immediately when a badge press arrives.
+  // useRealtimeSocket fixes the previous bug where new-feedback was registered inside
+  // the 'connect' event, causing duplicate handlers on every reconnect.
+  useRealtimeSocket({
+    'new-feedback': (feedback) => {
+      // Optimistically update the matching device row so battery/status/lastSeen
+      // reflect the new uplink instantly, without waiting for the next poll.
+      setDevices((prev) => prev.map((d) => {
+        if (d.id !== feedback.deviceId) return d
+        const battery = feedback.battery ?? d.battery
+        const health = battery < 20 ? 'critical' : battery < 50 ? 'warning' : 'healthy'
+        return {
+          ...d,
+          battery,
+          health,
+          status: 'online',
+          lastCommunication: feedback.timestamp || new Date().toISOString(),
+        }
+      }))
+      // Also do a full reload so any server-side computed fields stay in sync.
+      loadDevices()
+    },
+  })
 
   // ── Bulk upload ──────────────────────────────────────────────────────────
   const handleBulkUpload = async (event) => {
@@ -240,6 +248,7 @@ export default function DeviceManagement() {
   const filtered = devices.filter(
     (d) =>
       !search ||
+      d.name?.toLowerCase().includes(search.toLowerCase()) ||
       d.badgeId?.toLowerCase().includes(search.toLowerCase()) ||
       d.restroomName?.toLowerCase().includes(search.toLowerCase()),
   )
@@ -443,7 +452,7 @@ export default function DeviceManagement() {
     setSaving(true)
     try {
       const data = await api.put(`/api/devices/${device.id}`, { healthStatus: newHealth })
-      const updated = { ...device, ...data.device, health: data.device?.healthStatus || newHealth, status: newHealth === 'healthy' ? 'online' : 'offline' }
+      const updated = { ...device, ...data.device, health: data.device?.health || newHealth, status: newHealth === 'healthy' ? 'online' : 'offline' }
       setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)))
       setSelected((prev) => prev?.id === device.id ? updated : prev)
       toast.success(`Device ${newHealth === 'healthy' ? 'activated' : 'deactivated'}.`)
@@ -521,6 +530,11 @@ export default function DeviceManagement() {
         action={
           canEdit ? (
             <div className="btn-group">
+              {!isSuperAdmin && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                  Devices are provisioned by Super Admin. You can edit and manage assigned devices.
+                </span>
+              )}
               {isSuperAdmin && (
                 <>
                   <button type="button" className="btn btn--secondary" onClick={downloadSampleCSV}>

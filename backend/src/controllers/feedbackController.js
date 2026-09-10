@@ -267,6 +267,10 @@ async function createFeedback(req, res) {
           id: alert.id,
           feedbackId: alert.feedbackId,
           restroomId: alert.restroomId,
+          restroomName: feedback.restroom.name,
+          locationId: feedback.restroom.floor?.locationId || null,
+          floorId: feedback.restroom.floor?.id || null,
+          feedbackType: feedback.feedbackType,
           status: alert.status,
           priority: alert.priority,
         });
