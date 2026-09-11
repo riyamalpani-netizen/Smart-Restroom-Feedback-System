@@ -1277,8 +1277,14 @@ async function deleteGateway(req, res) {
 
     for (const candidate of candidateIds) {
       try {
-        await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: candidate, organizationId: existing.organizationId || undefined });
-        ttnDeleted = true;
+        const ttnResult = await deleteGatewayFromTTN({ gatewayEui: existing.gatewayEui, gatewayId: candidate, organizationId: existing.organizationId || undefined });
+        // ttnDeleted=false + reason="not_owned" means 403 — gateway exists but is owned by another account
+        if (ttnResult?.ttnDeleted === false && ttnResult?.reason === "not_owned") {
+          ttnDeleteError = `Gateway "${candidate}" exists on TTN but is owned by a different account. It has been removed from this app. Delete it manually from TTN Console if needed.`;
+          ttnDeleted = false;
+        } else {
+          ttnDeleted = true;
+        }
         break;
       } catch (ttnError) {
         ttnDeleteError = ttnError.message;
@@ -1295,7 +1301,11 @@ async function deleteGateway(req, res) {
     });
 
     res.status(200).json({
-      message: ttnDeleted ? "Gateway deleted successfully from app and TTN" : "Gateway deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
+      message: ttnDeleted
+        ? "Gateway deleted successfully from app and TTN"
+        : ttnDeleteError?.includes("owned by a different account")
+          ? "Gateway removed from app. It could not be deleted from TTN because it belongs to a different TTN account — delete it manually from TTN Console."
+          : "Gateway deleted from app, but could not delete from TTN. Please delete it manually from TTN Console.",
       ttnDeleted,
       ttnDeleteError,
     });
@@ -1532,7 +1542,9 @@ async function getOfflineDevices(req, res) {
 
 async function getIncidentLog(req, res) {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const take = parseInt(limit, 10);
     const role = req.user?.role;
     const orgId = req.user?.organizationId;
     let where = {};
@@ -1543,8 +1555,15 @@ async function getIncidentLog(req, res) {
       const orgRestrooms = await prisma.restroom.findMany({ where: { floorId: { in: orgFloors.map((f) => f.id) } }, select: { id: true } });
       where.restroomId = { in: orgRestrooms.map((r) => r.id) };
     }
-    const incidents = await prisma.alert.findMany({ where, include: { restroom: { include: { floor: { include: { location: true } } } }, feedback: true, notifications: true }, orderBy: { createdAt: "desc" } });
-    res.status(200).json({ message: "Incident log fetched successfully", incidents });
+    const [incidents, total] = await Promise.all([
+      prisma.alert.findMany({ where, include: { restroom: { include: { floor: { include: { location: true } } } }, feedback: true, notifications: true }, orderBy: { createdAt: "desc" }, skip, take }),
+      prisma.alert.count({ where }),
+    ]);
+    res.status(200).json({
+      message: "Incident log fetched successfully",
+      incidents,
+      pagination: { page: parseInt(page, 10), limit: take, total, pages: Math.ceil(total / take) },
+    });
   } catch (error) {
     console.error("Get incident log error:", error);
     res.status(500).json({ message: "Internal server error" });

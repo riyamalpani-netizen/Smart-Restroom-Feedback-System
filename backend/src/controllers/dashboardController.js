@@ -162,14 +162,11 @@ async function getDashboard(req, res) {
           feedbackType: "average",
         },
       }),
-      prisma.feedback.count({
+      prisma.alert.count({
         where: {
-          timestamp: { gte: startOfToday },
+          createdAt: { gte: startOfToday },
+          status: { not: "closed" },
           restroom: restroomWhere,
-          OR: [
-            { feedbackType: "needs_cleaning" },
-            { feedbackType: "emergency" },
-          ],
         },
       }),
       prisma.restroom.findMany({

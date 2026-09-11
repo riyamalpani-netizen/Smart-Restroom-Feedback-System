@@ -99,7 +99,7 @@ async function processFeedback(payload) {
       return { success: false, error: "Invalid payload" };
     }
 
-    const { deviceEui, badgeId, feedbackType, battery, signalStrength, gatewayEui, beacons, rawPayload } = decoded;
+    const { deviceEui, badgeId, sosMode, feedbackType, battery, signalStrength, gatewayEui, beacons, rawPayload } = decoded;
 
     const device = await prisma.device.findUnique({
       where: { deviceEui },
@@ -156,7 +156,7 @@ async function processFeedback(payload) {
           feedbackType,
           battery,
           signalStrength,
-          rawPayload: JSON.stringify({ ...rawPayload, _parsed: { beacons, gatewayEui } }),
+          rawPayload: JSON.stringify({ ...rawPayload, _parsed: { sosMode, beacons, gatewayEui } }),
         },
         include: {
           device: true,
@@ -234,10 +234,50 @@ function decodePayload(payload) {
     // ── Badge ID ───────────────────────────────────────────────────────────
     const badgeId = decodedApp.badge_id || decodedApp.badgeId || decodedApp.badge || null;
 
+    // ── rx_metadata (needed early for SOS_mode early-return path) ─────────
+    const rxMeta = uplinkMessage?.rx_metadata?.[0];
+
+    // ── SOS_mode extraction ────────────────────────────────────────────────
+    // Primary source: decoded_payload.SOS_mode (top-level, e.g. Seeed T1000 codec)
+    // Fallback: decoded.messages codec array — type "SOS Mode" / measurementId "3941"
+    let sosMode = decodedApp.SOS_mode ?? decodedApp.sos_mode ?? null;
+    if (sosMode === null || sosMode === undefined) {
+      const codecMsgs = decodedApp.decoded?.messages ?? [];
+      outer: for (const msgGroup of codecMsgs) {
+        for (const msg of (Array.isArray(msgGroup) ? msgGroup : [msgGroup])) {
+          if (msg.type === "SOS Mode" || msg.measurementId === "3941") {
+            sosMode = msg.measurementValue ?? null;
+            break outer;
+          }
+        }
+      }
+    }
+    if (sosMode !== null && sosMode !== undefined) {
+      sosMode = Number(sosMode);
+    }
+
     // ── Feedback type ──────────────────────────────────────────────────────
-    const rawType = decodedApp.feedback_type || decodedApp.feedbackType || decodedApp.type || "average";
-    const validTypes = ["happy", "average", "needs_cleaning", "emergency"];
-    const feedbackType = validTypes.includes(rawType) ? rawType : "average";
+    // SOS_mode takes priority over the legacy feedback_type field.
+    //   SOS_mode = 1  → happy
+    //   SOS_mode = 2  → emergency  (critical alert, immediate notification)
+    //   SOS_mode = 4  → needs_cleaning  (UNHAPPY)
+    //   other values  → fall through to legacy feedback_type field
+    let feedbackType;
+    if (sosMode === 1) {
+      feedbackType = "happy";
+    } else if (sosMode === 2) {
+      feedbackType = "emergency";
+    } else if (sosMode === 4) {
+      feedbackType = "needs_cleaning";
+    } else {
+      // No SOS_mode or unrecognised value — use legacy feedback_type field
+      if (sosMode !== null && sosMode !== undefined) {
+        logger.warn(`[decodePayload] EUI=${deviceEui} | Unknown SOS_mode=${sosMode} — falling back to feedback_type field`);
+      }
+      const rawType = decodedApp.feedback_type || decodedApp.feedbackType || decodedApp.type || "average";
+      const validTypes = ["happy", "average", "needs_cleaning", "emergency"];
+      feedbackType = validTypes.includes(rawType) ? rawType : "average";
+    }
 
     // ── Battery ────────────────────────────────────────────────────────────
     // T1000/Seeed devices report BatteryPercentage (capital B) in decoded_payload
@@ -250,7 +290,6 @@ function decodePayload(payload) {
 
     // ── Signal strength ────────────────────────────────────────────────────
     // Prefer real LoRaWAN RSSI from rx_metadata over any app-level field
-    const rxMeta = uplinkMessage?.rx_metadata?.[0];
     const signalStrength =
       rxMeta?.rssi ??
       rxMeta?.channel_rssi ??
@@ -285,13 +324,14 @@ function decodePayload(payload) {
     }
 
     logger.info(
-      `[decodePayload] EUI=${deviceEui} | type=${feedbackType} | battery=${battery ?? "?"}% | ` +
+      `[decodePayload] EUI=${deviceEui} | SOS_mode=${sosMode ?? "n/a"} | type=${feedbackType} | battery=${battery ?? "?"}% | ` +
       `rssi=${signalStrength} | gateway=${gatewayEui ?? "unknown"} | beacons=${beacons.length}`
     );
 
     return {
       deviceEui,
       badgeId,
+      sosMode,
       feedbackType,
       battery,
       signalStrength,

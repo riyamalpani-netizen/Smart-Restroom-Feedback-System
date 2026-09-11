@@ -369,14 +369,19 @@ async function deleteGatewayFromTTN({ gatewayEui, gatewayId, organizationId }) {
   try {
     await ttnRequest(`${apiBaseUrl}/api/v3/gateways/${encodeURIComponent(resolvedGatewayId)}`, apiKey, "DELETE");
   } catch (error) {
-    if (error.message.includes("403") || error.message.includes("no_gateway_rights") || error.message.includes("404")) {
-      console.warn(`TTN gateway ${resolvedGatewayId} delete skipped: ${error.message}`);
+    if (error.message.includes("404")) {
+      // Already gone from TTN — treat as success
+      console.warn(`TTN gateway ${resolvedGatewayId} not found on TTN (404) — already deleted or never registered.`);
+    } else if (error.message.includes("403") || error.message.includes("no_gateway_rights")) {
+      // Gateway exists on TTN but owned by a different account — cannot delete remotely
+      console.warn(`TTN gateway ${resolvedGatewayId} delete skipped (403) — not owned by this account. Delete it manually from TTN Console.`);
+      return { gatewayId: resolvedGatewayId, gatewayEui: gEui, ttnDeleted: false, reason: "not_owned" };
     } else {
       throw new Error(`TTN gateway delete failed: ${error.message}`);
     }
   }
 
-  return { gatewayId: resolvedGatewayId, gatewayEui: gEui };
+  return { gatewayId: resolvedGatewayId, gatewayEui: gEui, ttnDeleted: true };
 }
 
 async function createGatewayLnsKey(gatewayId, organizationId) {
