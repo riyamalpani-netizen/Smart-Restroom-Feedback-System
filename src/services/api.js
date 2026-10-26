@@ -37,6 +37,12 @@ async function request(path, options = {}) {
       // keep text as message
     }
     console.error(`[API] ${method} ${path} failed:`, message)
+
+    // Dispatch a global event for plan-limit 403s so any component can show a toast
+    if (response.status === 403 && message.toLowerCase().includes('limit reached')) {
+      window.dispatchEvent(new CustomEvent('plan-limit-exceeded', { detail: { message } }))
+    }
+
     return Promise.reject(new Error(message))
   }
 

@@ -29,6 +29,7 @@ const testModeRoutes = require("./routes/testModeRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
 const vendorRoutes = require("./routes/vendorRoutes");
 const subscriptionPlanRoutes = require("./routes/subscriptionPlanRoutes");
+const ttnWebhookRoutes = require("./routes/ttnWebhookRoutes");
 const { JWT_SECRET, NODE_ENV } = require("./config/env");
 const logger = require("./middleware/logger");
 const http = require("http");
@@ -601,6 +602,7 @@ app.use("/api/test-mode", testModeRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/subscription-plans", subscriptionPlanRoutes);
+app.use("/api/ttn", ttnWebhookRoutes);
 
 // ── Organizations (Super Admin only — used by device/gateway assignment UI) ──
 app.get("/api/organizations", require("./auth/authMiddleware").authenticate, require("./auth/authMiddleware").authorize("super_admin"), async (req, res) => {

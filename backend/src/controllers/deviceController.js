@@ -1363,7 +1363,14 @@ async function updateDevice(req, res) {
     let ttnAutoError = null;
     const wasUnplaced = !existing.floorId && !existing.restroomId && !existing.zoneId;
     const isBeingPlaced = placement?.changed && wasUnplaced;
-    if (isBeingPlaced && device.deviceEui && device.appKey) {
+    // Only attempt TTN registration on placement if the device was NOT already
+    // registered at creation time. A device that went through createDevice()
+    // is already on TTN — calling registerOtaaDevice() again would hit 409,
+    // trigger the error-handler cleanup inside registerOtaaDevice(), and
+    // DELETE the device from TTN. Guard: skip if joinEui is already set
+    // (populated by createDevice when TTN registration succeeded).
+    const alreadyRegisteredOnTTN = !!(existing.joinEui);
+    if (isBeingPlaced && !alreadyRegisteredOnTTN && device.deviceEui && device.appKey) {
       try {
         const nameSlug = device.name
           ? device.name.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20)
@@ -1390,6 +1397,8 @@ async function updateDevice(req, res) {
           console.warn(`[Device] TTN auto-registration skipped for ${device.deviceEui}: ${ttnErr.message}`);
         }
       }
+    } else if (isBeingPlaced && alreadyRegisteredOnTTN) {
+      console.log(`[Device] Placement of ${device.deviceEui} — already registered on TTN, skipping re-registration.`);
     }
 
     // ── TTN frequency plan sync ───────────────────────────────────────────

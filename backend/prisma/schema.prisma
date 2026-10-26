@@ -93,6 +93,7 @@ model User {
   password           String
   role               UserRole       @default(viewer)
   active             Boolean        @default(true)
+  scope              String?
   tutorialStatus     String         @default("pending")
   tutorialCompletedAt DateTime?
   createdAt          DateTime       @default(now())
@@ -225,6 +226,7 @@ model Device {
   name              String?
   lorawanPhyVersion String?
   lorawanVersion    String?
+  frequencyPlanId   String?
   gatewayId         String?
   gateway           Gateway?             @relation(fields: [gatewayId], references: [id])
   deviceHealth      DeviceHealthRecord[]
@@ -256,6 +258,7 @@ model Gateway {
   ttnDeviceId     String?
   frequencyPlanId String?
   lnsKey          String?
+  cupsKey         String?
   latitude        Float?
   longitude       Float?
   connectedDevices Int           @default(0)
